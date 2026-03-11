@@ -1,3 +1,7 @@
-Appended the requested `## Implementation in propagate` section to [bootstrap-stage-1.md](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/docs/capabilities/bootstrap-stage-1.md). It documents the actual repo-specific implementation in `propagate.py`, the stage 2 bootstrap config/prompts under `config/`, and the minimal `PyYAML` dependency.
+Updated the two requested fixes.
 
-Verified the edit only appends new content and does not rewrite the existing capability text.
+`[config/prompts/design-stage2.md](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/config/prompts/design-stage2.md)` now preserves future compatibility for `:`-prefixed context keys and explicitly calls out the stage-3 `propagate context set :source-name` requirement, instead of leaving the design free to ban `:` entirely.
+
+`[.last-message.txt](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/.last-message.txt)` was removed from the tracked tree, and `[.gitignore](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/.gitignore)` now ignores it going forward.
+
+I did not run tests; this change only touched prompt text and repo hygiene.
