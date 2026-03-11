@@ -9,6 +9,7 @@ context_sources:
 
 
 executions:
+  run:
     git:
       branch:
         name: propagate/example-config
