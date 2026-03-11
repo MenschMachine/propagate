@@ -2,13 +2,20 @@
 
 ## Scope
 
-Stage 2 adds a local, file-backed context bag to the existing stage 1 runtime. It introduces `propagate context set <key> <value>`, `propagate context get <key>`, and prompt augmentation during `propagate run`. It does not add hooks, git operations, signals, includes, defaults, or guidelines.
+Stage 2 is a narrow extension of the current stage-1 CLI in [`propagate.py`](/Users/michael/Code/TFC/propagate/propagate.py). It adds:
 
-The implementation should stay in `propagate.py`, keep `PyYAML` as the only external dependency, and preserve stage 1 `run` behavior except for the new context injection when local context exists.
+- `propagate context set <key> <value>`
+- `propagate context get <key>`
+- a local file-backed context bag under `.propagate-context`
+- automatic prompt augmentation during `propagate run`
 
-## CLI changes
+Stage 2 does not add hooks, git automation, signals, propagation, includes, defaults, guidelines, or package restructuring.
 
-`build_parser()` should keep the existing `run` subcommand and add a top-level `context` command with nested subcommands:
+The implementation should remain in `propagate.py`, continue to use `PyYAML` as the only external dependency, and preserve the existing stage-1 run lifecycle unless this document explicitly extends it.
+
+## CLI Shape
+
+Stage 2 must expose exactly these entry points:
 
 ```text
 propagate run --config <path> [--execution <name>]
@@ -16,131 +23,215 @@ propagate context set <key> <value>
 propagate context get <key>
 ```
 
-Suggested parser shape:
+`build_parser()` should keep the existing top-level `run` command and add a top-level `context` command with nested `set` and `get` subcommands.
 
-- `subparsers = parser.add_subparsers(dest="command", required=True)`
-- `run` remains unchanged
-- `context_parser = subparsers.add_parser("context", help="Manage local context values.")`
-- `context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)`
-- `set` takes positional `key` and `value`
-- `get` takes positional `key`
-
-`main()` should dispatch to `run_command()`, `context_set_command()`, or `context_get_command()`.
-
-## Context store location
-
-The local context directory is always derived from the invocation working directory:
+Recommended parser shape:
 
 ```python
-context_dir = Path.cwd() / ".propagate-context"
+parser = argparse.ArgumentParser(prog="propagate")
+subparsers = parser.add_subparsers(dest="command", required=True)
+
+run_parser = subparsers.add_parser("run", help="Run an execution from a config file.")
+run_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+run_parser.add_argument("--execution", help="Execution name to run.")
+
+context_parser = subparsers.add_parser("context", help="Manage local context values.")
+context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
+
+set_parser = context_subparsers.add_parser("set", help="Store a local context value.")
+set_parser.add_argument("key")
+set_parser.add_argument("value")
+
+get_parser = context_subparsers.add_parser("get", help="Read a local context value.")
+get_parser.add_argument("key")
 ```
 
-This applies to both `propagate context ...` and `propagate run ...`. The store is intentionally tied to the repo the user is operating on, not to the config file location.
+`main()` should dispatch to:
 
-Prompt file paths must continue to resolve relative to the config file exactly as they do in stage 1.
+- `run_command(args.config, args.execution)`
+- `context_set_command(args.key, args.value, Path.cwd())`
+- `context_get_command(args.key, Path.cwd())`
 
-## Key validation
+The run command shape stays unchanged from stage 1.
 
-Keys are stored literally as filenames under `.propagate-context`, so validation must make the filename safe and keep future context-source keys representable on disk.
+## Storage Model
 
-Allowed key format:
+The local context directory is always:
+
+```python
+Path.cwd() / ".propagate-context"
+```
+
+This is based on the invocation working directory, not the config file location. Prompt paths continue to resolve relative to the config file exactly as they do in stage 1.
+
+Storage format:
+
+- one direct child file per key
+- filename is the key, stored literally
+- file contents are the UTF-8 value for that key
+- no metadata files
+- no filename encoding, hashing, escaping, or subdirectories
+
+Examples:
 
 ```text
-^:?[A-Za-z0-9][A-Za-z0-9._-]*$
+.propagate-context/release-version
+.propagate-context/:openapi-spec
 ```
 
-Rules:
+This keeps the store simple now and leaves room for stage-3 named context sources to populate reserved `:`-prefixed keys later.
 
-- Reject empty keys.
-- Reject any key containing `/` or `\\`.
-- Reject `.` and `..`.
-- Reject whitespace.
-- Reject keys outside the allowed character set above.
-- Allow a single leading `:` so stage 3 hooks can write keys such as `:openapi-spec`.
-- Treat `:`-prefixed keys as reserved for future context-source usage.
-  Stage 2 still allows manual `set` and `get` on them, but the design note and help text should call out that those keys are reserved by convention.
-- Do not encode or transform keys before writing them to disk. The filename is the key.
+## Key Validation
 
-This keeps stage 2 simple while leaving room for stage 3 hooks to call `propagate context set :source-name`.
+Keys are stored as literal filenames, so validation must happen before any filesystem operation.
 
-## `context set` behavior
+Validation rules:
 
-`context set` should:
+1. Reject an empty key.
+2. Allow at most one `:` and only as the first character.
+3. After removing one optional leading `:`, require a non-empty body.
+4. Reject any key body equal to `.` or `..`.
+5. Reject any key containing `/`, `\\`, or any Unicode whitespace.
+6. Reject traversal-like names by validating the raw key before path construction and by never normalizing or encoding it.
+7. Keep filenames literal; the accepted key string is the on-disk filename.
+
+Implementation-ready rule:
+
+```python
+CONTEXT_KEY_PATTERN = re.compile(r"^:?[A-Za-z0-9][A-Za-z0-9._-]*$")
+```
+
+Additional checks:
+
+- `:` by itself is invalid
+- `:.` and `:..` are invalid
+- `.` and `..` are invalid
+
+This character set is intentionally conservative. It supports the current examples such as `release-version`, `sdk_version`, and future stage-3 source keys like `:openapi-spec` without introducing path ambiguity.
+
+## `context set`
+
+Behavior:
 
 1. Validate the key.
-2. Create `.propagate-context` with `mkdir(parents=True, exist_ok=True)` if needed.
-3. Write the provided value as UTF-8 text to `.propagate-context/<key>`.
-4. Overwrite any existing value for that key completely.
+2. Derive `context_dir = Path.cwd() / ".propagate-context"`.
+3. Create the directory with `mkdir(parents=True, exist_ok=True)`.
+4. Overwrite the stored value completely.
+5. Write UTF-8 text with no automatic newline.
+6. Return exit code `0` on success.
 
 Write semantics:
 
-- The stored value is exactly the CLI argument value, with no added newline.
-- Use an atomic replace pattern in the same directory if practical:
-  write to a temporary file in `.propagate-context`, then `Path.replace()` onto the target.
-- On success, log an `INFO` message naming the stored key.
-- On validation or filesystem failure, raise `PropagateError` with a clear user-facing message.
+- the stored bytes are exactly `value.encode("utf-8")`
+- an existing file is replaced, not appended to
+- no newline is added if the CLI argument does not contain one
 
-## `context get` behavior
+Atomicity:
 
-`context get` should:
+- use a temporary file in the same directory, then replace the target with `Path.replace()`
+- this is preferred over direct write because it avoids partially-written context values if the process is interrupted
+
+Suggested helper shape:
+
+```python
+def write_context_value(context_dir: Path, key: str, value: str) -> None:
+    ...
+```
+
+Logging:
+
+- `context set` may log a concise `INFO` success line
+- do not log the stored value
+
+Representative success log:
+
+```text
+INFO Stored context key 'release-version'.
+```
+
+Representative errors:
+
+- `Invalid context key ':'.`
+- `Invalid context key '../secret'.`
+- `Failed to write context key 'release-version' in /repo/.propagate-context: ...`
+
+## `context get`
+
+Behavior:
 
 1. Validate the key.
-2. Read `.propagate-context/<key>` as UTF-8 text.
-3. Write the value to stdout exactly with `sys.stdout.write(value)`.
+2. Read exactly one file: `.propagate-context/<key>`.
+3. Write its exact contents to stdout.
+4. Return exit code `0` on success.
+
+Read semantics:
+
+- read as UTF-8 text
+- write with `sys.stdout.write(value)`
+- do not append a newline
+- do not log the value
 
 Failure behavior:
 
-- If the key does not exist, raise `PropagateError` with a clear message, for example:
-  `Context key 'release_version' was not found in /repo/.propagate-context.`
-- If the path exists but is not a regular file, raise `PropagateError`.
-- Do not log the value itself.
-- Avoid success logging for `context get` so shell consumers get only the stored value on stdout.
+- if the directory does not exist, fail clearly
+- if the key file does not exist, fail clearly
+- if the path exists but is not a regular file, fail clearly
+- if UTF-8 decoding fails, raise `PropagateError`
 
-## `run` integration
+Representative missing-key error:
 
-Stage 1 flow stays intact:
+```text
+Context key 'release-version' was not found in /repo/.propagate-context.
+```
+
+## `run` Integration
+
+Stage 1 currently does:
 
 1. Load config.
 2. Select execution.
-3. Run sub-tasks sequentially.
-4. Read each prompt file.
-5. Write a temporary prompt file.
-6. Substitute `{prompt_file}` into `agent.command`.
-7. Execute the agent command in the invocation working directory.
-8. Remove the temporary prompt file.
+3. Read each prompt file.
+4. Write a temporary prompt file.
+5. Substitute `{prompt_file}` into the configured agent command.
+6. Run the agent command in `Path.cwd()`.
+7. Remove the temporary prompt file.
 
-Stage 2 inserts one step between prompt-file read and temporary prompt-file write:
+Stage 2 inserts local-context loading and rendering between prompt read and temporary-file write:
 
 1. Read the prompt file.
 2. Load local context from `Path.cwd() / ".propagate-context"`.
-3. If context exists, append a deterministic `Context` section to the prompt text.
-4. Write the augmented prompt text to the temporary prompt file.
+3. Sort keys deterministically.
+4. Append a Markdown section labeled exactly `## Context` when any context exists.
+5. Write the augmented prompt to the temporary file.
+6. Continue with the stage-1 agent execution flow unchanged.
 
-Context should be loaded per sub-task, not once per execution. That keeps behavior correct if a prior sub-task or an external process updates `.propagate-context` before a later sub-task runs.
+Context must be loaded fresh for every sub-task, not once per execution. That keeps later sub-tasks correct if an earlier sub-task or an external command changes `.propagate-context`.
 
-If `.propagate-context` does not exist or contains no valid context files, `run` should behave exactly like stage 1.
+If the context directory does not exist, `run` behaves exactly like stage 1.
 
-## Loading context values
+## Loading Rules
 
-Add a helper that reads local context into an ordered mapping or a sorted list of `(key, value)` pairs.
+`run` should load only direct children of `.propagate-context`.
 
-Loading rules:
+Rules:
 
-- If `.propagate-context` does not exist, return an empty collection.
-- Read only regular files directly inside `.propagate-context`.
-- Sort by filename/key in ascending lexical order before rendering.
-- Read file contents as UTF-8.
+- if the directory does not exist, return an empty list
+- if the path exists but is not a directory, raise `PropagateError`
+- each direct child must be a regular file
+- each filename must pass the same key validation used by `context set` and `context get`
+- read each file as UTF-8 text
+- sort by literal key string in ascending lexical order before rendering
 
-Invalid store entries:
+Store corruption policy:
 
-- Ignore non-file entries with a warning.
-- Treat any regular file whose name fails key validation as an error.
+- fail clearly on invalid filenames
+- fail clearly on non-file entries
 
-The store should normally only contain files created by `context set`, so an invalid filename indicates manual corruption and should fail clearly.
+This is stricter than silently skipping entries and is easier to reason about during self-hosting. Stage 2 owns the directory format, so unexpected entries should surface as user-facing errors.
 
-## Deterministic rendering format
+## Rendering
 
-Use this exact Markdown structure:
+When context exists, append this exact Markdown structure:
 
 ```markdown
 ## Context
@@ -154,76 +245,68 @@ value two
 
 Rendering rules:
 
-- Keys are sorted lexically before rendering.
-- The section header is exactly `## Context`.
-- Each key gets a `### <key>` heading.
-- Each value is inserted verbatim below its heading.
-- Ensure a blank line separates entries.
-- If a stored value does not end in `\n`, add one during rendering so the next heading starts on its own line.
+- section header must be exactly `## Context`
+- keys render in deterministic sorted order
+- each key renders as `### <key>`
+- each value is inserted verbatim, with no escaping or transformation
+- if a value does not end with `\n`, add one during rendering so the next heading starts on its own line
+- separate entries with a single blank line
+
+One implementation-friendly renderer:
+
+```python
+def render_context_section(items: list[tuple[str, str]]) -> str:
+    parts = ["## Context", ""]
+    for index, (key, value) in enumerate(items):
+        parts.append(f"### {key}")
+        parts.append(value if value.endswith("\n") else f"{value}\n")
+        if index != len(items) - 1:
+            parts.append("")
+    return "\n".join(parts).rstrip("\n") + "\n"
+```
 
 Prompt concatenation rules:
 
-- If no context exists, return the original prompt text unchanged.
-- If context exists, append the section after the original prompt with one blank line of separation.
-- Preserve the original prompt contents as much as possible; only add the separator and context section.
+- if there is no context, return the original prompt unchanged
+- if context exists, append one blank line between the original prompt and the `## Context` section
+- preserve the original prompt contents otherwise
 
-One implementation-friendly separator rule is:
+Simple separator rule:
 
-- If the prompt already ends with `\n\n`, append the context section directly.
-- If it ends with a single trailing newline, append one more newline before `## Context`.
-- Otherwise append `\n\n` before `## Context`.
+- prompt ends with `\n\n`: append the section directly
+- prompt ends with `\n`: append one more newline, then the section
+- otherwise append `\n\n`, then the section
 
-## Logging and error handling
+## Logging And Errors
 
-Keep the existing stage 1 error model:
+Keep the stage-1 error model:
 
-- Helpers raise `PropagateError` for user-facing validation and IO failures.
-- `main()` catches `PropagateError`, logs the message at `ERROR`, and returns exit code `1`.
-- `KeyboardInterrupt` still returns `130`.
+- helpers raise `PropagateError` for user-facing validation and IO failures
+- `main()` catches `PropagateError`, logs the message at `ERROR`, and returns `1`
+- `KeyboardInterrupt` still returns `130`
+- temporary prompt cleanup remains best-effort with a warning on failure
 
-Additional logging expectations:
+Logging expectations:
 
-- Preserve existing `run` lifecycle `INFO` logs.
-- `context set` logs a concise `INFO` success message.
-- `context get` should not log on success.
-- `run` may log a concise `INFO` line when context is loaded for a sub-task, but it should not log full context values.
-- Temporary prompt cleanup stays best-effort with a warning on failure.
+- preserve existing run lifecycle logs
+- `context set` may log success
+- `context get` should not log on success
+- `run` should not log context values
+- optional new run logging may mention the count of loaded context keys, but it should stay concise
 
-## Stage boundary
+Representative run logs:
 
-Stage 2 should remain a narrow extension of stage 1:
+```text
+INFO Running execution 'build-stage3' with 6 sub-task(s).
+INFO Running sub-task 'design' for execution 'build-stage3' using prompt '/repo/config/prompts/design-stage3.md'.
+INFO Execution 'build-stage3' completed successfully.
+```
 
-- Keep all logic in `propagate.py`.
-- Keep `PyYAML` as the only non-stdlib dependency.
-- Do not add config sections for hooks, context sources, git, signals, includes, defaults, or guidelines.
-- Do not change agent execution semantics beyond prompt augmentation.
-- Continue to resolve prompt paths relative to the config file.
+## Implementation Shape
 
-Because the runtime is now stage 2, bump the config schema marker from `version: "1"` to `version: "2"` and update `load_config()` to require `"2"`. The rest of the config structure stays the same.
+Keep the implementation in `propagate.py` and add small helpers rather than restructuring the package.
 
-## Bootstrap chain output
-
-The stage 2 implementation must also advance the self-hosting chain:
-
-- Update `config/propagate.yaml` to target stage 3.
-- Rename the execution from `build-stage2` to `build-stage3`.
-- Point its sub-task prompts at:
-  - `./prompts/design-stage3.md`
-  - `./prompts/implement-stage3.md`
-  - `./prompts/review-stage3.md`
-- Set the config version to `"2"`.
-
-The new stage 3 prompts should instruct the next run to add:
-
-- sub-task hooks: `before`, `after`, `on_failure`
-- context-source support, including the `:source-name` convention
-- hook-driven loading of context sources into the local context bag
-
-The prompts can be leaner than the stage 2 prompts because stage 2 now has a context bag, but they still need enough inline context to continue the bootstrapping chain without any hook system already in place.
-
-## Suggested helper additions
-
-To keep the implementation clear inside one file, add small helpers with narrow responsibilities:
+Suggested helpers:
 
 - `get_context_dir(working_dir: Path) -> Path`
 - `validate_context_key(key: str) -> str`
@@ -233,6 +316,94 @@ To keep the implementation clear inside one file, add small helpers with narrow 
 - `read_context_value(context_dir: Path, key: str) -> str`
 - `load_local_context(context_dir: Path) -> list[tuple[str, str]]`
 - `render_context_section(items: list[tuple[str, str]]) -> str`
-- `append_context_to_prompt(prompt_contents: str, items: list[tuple[str, str]]) -> str`
+- `append_context_to_prompt(prompt_text: str, items: list[tuple[str, str]]) -> str`
 
-This keeps the change implementation-ready without expanding stage 2 beyond the intended boundary.
+Minimal code changes outside those helpers:
+
+- import `re` and `sys`
+- extend `build_parser()`
+- extend `main()` dispatch
+- change `load_config()` to require `version == "2"` after the stage-2 bootstrap output is written
+- update `run_sub_task()` to append context before writing the temporary prompt
+
+## Tests
+
+Stage 2 should add direct tests for the new behavior. Since the runtime remains a single Python file with no extra dependencies, use stdlib `unittest` and temporary directories unless a test harness already exists by the implementation step.
+
+Required coverage:
+
+1. `context set` creates `.propagate-context` and writes the exact UTF-8 value with no newline added.
+2. `context set` overwrites an existing value completely.
+3. `context get` returns the exact stored value to stdout.
+4. `context get` fails clearly for a missing key.
+5. invalid keys are rejected for both `set` and `get`.
+6. `run` injects the `## Context` block when context exists.
+7. rendered context order is deterministic for multiple keys.
+8. `run` is unchanged when `.propagate-context` is absent.
+9. store corruption during `run` fails clearly for an invalid filename or non-file entry.
+
+Recommended test shape:
+
+- unit-test the helpers directly
+- add one CLI-level smoke test for parser dispatch or `main()`
+- use a temporary working directory and patch `Path.cwd()` or invoke the CLI with `cwd=...`
+
+## Stage-3 Bootstrap Output
+
+Stage 2 must advance the self-hosting chain to stage 3.
+
+Required repository output:
+
+1. Update [`config/propagate.yaml`](/Users/michael/Code/TFC/propagate/config/propagate.yaml) to `version: "2"`.
+2. Rename the execution from `build-stage2` to `build-stage3`.
+3. Use the standard six-step chain:
+   - `design`
+   - `implement`
+   - `test`
+   - `refactor`
+   - `verify`
+   - `review`
+4. In [`config/propagate.yaml`](/Users/michael/Code/TFC/propagate/config/propagate.yaml), point those sub-tasks at:
+   - `./prompts/design-stage3.md`
+   - `./prompts/implement-stage3.md`
+   - `./prompts/test-stage3.md`
+   - `./prompts/refactor-stage3.md`
+   - `./prompts/verify-stage3.md`
+   - `./prompts/review-stage3.md`
+5. Produce these files:
+   - [`config/prompts/design-stage3.md`](/Users/michael/Code/TFC/propagate/config/prompts/design-stage3.md)
+   - [`config/prompts/implement-stage3.md`](/Users/michael/Code/TFC/propagate/config/prompts/implement-stage3.md)
+   - [`config/prompts/test-stage3.md`](/Users/michael/Code/TFC/propagate/config/prompts/test-stage3.md)
+   - [`config/prompts/refactor-stage3.md`](/Users/michael/Code/TFC/propagate/config/prompts/refactor-stage3.md)
+   - [`config/prompts/verify-stage3.md`](/Users/michael/Code/TFC/propagate/config/prompts/verify-stage3.md)
+   - [`config/prompts/review-stage3.md`](/Users/michael/Code/TFC/propagate/config/prompts/review-stage3.md)
+
+Stage-3 prompt content must tell the next run to add only stage-3 features:
+
+- `before`, `after`, and `on_failure` hooks
+- named `context_sources` in config
+- hook-driven loading into the local bag via keys like `:openapi-spec`
+
+Stage 3 must continue to use the same local bag introduced in stage 2. It does not add a second context storage path.
+
+Because this repository already contains some stage-3 prompt files from an earlier draft, the stage-2 implementation should treat the bootstrap output above as authoritative and replace any outdated three-step stage-3 prompt set with the required six-step chain.
+
+## Stage Boundary
+
+Stage 2 deliberately stops here:
+
+- no hooks
+- no git automation
+- no signals or propagation triggers
+- no includes or defaults
+- no guidelines
+- no package restructuring
+
+That boundary matters for later stages:
+
+- stage 3 loads named context sources into this bag
+- stage 4 uses bag values for commit metadata
+- stage 5 injects signal metadata into the bag
+- stage 6 expands context scope beyond the local store
+
+The stage-2 design should therefore optimize for simple, literal, deterministic local storage now rather than prematurely adding higher-level abstractions.

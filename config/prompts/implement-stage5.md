@@ -18,7 +18,7 @@ Leave the repository in a stage 5 state. That includes:
    - stage-scoped git automation
 3. Keep the implementation in a single file and keep dependencies minimal.
 4. Update `config/propagate.yaml` so stage 5 targets stage 6.
-5. Create the next design, implementation, and review prompts for stage 6.
+5. Create all six stage-6 prompts: design, implement, review, test, refactor, and verify.
 
 ## Stage 5 requirements
 

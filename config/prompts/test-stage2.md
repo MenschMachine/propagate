@@ -1,60 +1,58 @@
-# Stage 2 Review Task
+# Stage 2 Test Task
 
-You are performing the final review for stage 2 of Propagate. Review the implemented repository state against the specification below, fix defects directly, and leave the repo ready for stage 3.
+You are testing the stage-2 implementation of Propagate. The repository started from the stage-1 runtime reproduced below and should now include the local context bag. Write tests, run them, and fix failures until they pass.
 
-## Review goals
+## Required outputs
 
-1. Confirm stage-1 behavior still works:
-   - YAML config parsing
-   - execution selection
-   - sequential sub-task execution
-   - prompt temp-file handling
-   - configured agent command execution
-2. Confirm stage-2 behavior works:
-   - `propagate context set <key> <value>`
-   - `propagate context get <key>`
-   - `.propagate-context/<key>` storage
-   - deterministic context injection into prompts during `run`
-3. Confirm the bootstrap chain advanced correctly:
-   - `config/propagate.yaml` targets `build-stage3`
-   - the six stage-3 prompts exist and describe hooks plus context sources
-4. Fix any issues you find instead of only reporting them.
+1. Add automated tests for stage 2.
+2. Run the tests locally and keep fixing the code until the suite is green.
+3. Preserve stage-2 scope while testing.
+4. Confirm the bootstrap output for stage 3 still exists and is coherent.
 
-## Review checklist
+## What the tests must cover
 
-- Unsafe keys are rejected.
-- Missing context keys fail clearly.
-- `context get` writes values to stdout, not logs.
-- `run` still works if `.propagate-context` does not exist.
-- Context files are loaded in sorted order.
-- Prompt augmentation uses a readable `## Context` section.
-- The code stays within stage-2 scope.
-- Tests exist and pass.
+- `propagate run --config <path> [--execution <name>]` still works.
+- Prompt paths still resolve relative to the config file.
+- Multiple executions require `--execution`.
+- `propagate context set <key> <value>` writes `.propagate-context/<key>`.
+- `propagate context get <key>` returns the exact stored value.
+- Invalid keys fail clearly.
+- Missing keys fail clearly.
+- During `run`, context values are appended in sorted order.
+- The injected section is labeled `## Context`.
+- `run` behaves normally when `.propagate-context` does not exist.
+- Temporary prompt handling still works.
+
+## Testing constraints
+
+- Prefer the standard library test stack unless there is already an existing test dependency you need.
+- Run the actual tests after writing them.
+- If you discover code defects or weak assumptions, fix them directly instead of only documenting them.
+- Keep dependencies minimal.
+
+## Stage 3 bootstrap requirement
+
+The repository should still be ready for the next stage after tests pass:
+
+- `config/propagate.yaml` should target `build-stage3`.
+- The six stage-3 prompts should exist and focus on hooks plus context sources.
 
 ## Full Propagate vision
 
-Propagate is a self-hosting orchestration CLI. The final system includes:
+Propagate is a staged, self-hosting orchestrator. It will eventually support:
 
 - config sections `version`, `agent`, `includes`, `defaults`, `repositories`, `context_sources`, `executions`, and `propagation`
-- reusable prompt-driven sub-tasks
 - local, task, and global context scopes
-- hooks and named context sources
+- hooks around agent execution
 - git automation
-- signal-triggered propagation
-- multi-repo DAG workflows
+- signal-based triggering
+- multi-repo DAG propagation
 
-The roadmap is:
-
-- Stage 1: config-driven execution
-- Stage 2: local context bag
-- Stage 3: hooks and context sources
-- Stage 4: git automation
-- Stage 5: signals and propagation triggers
-- Stage 6: multi-repo DAG orchestration
+Stage 2 is only about the local context bag and prompt injection. Do not let the tests drag the implementation into later-stage features.
 
 ## Current stage 1 code
 
-This was the exact baseline before stage-2 work began:
+This is the exact pre-stage-2 baseline:
 
 ```python
 from __future__ import annotations

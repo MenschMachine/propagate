@@ -14,6 +14,7 @@ You are reviewing the stage 3 implementation of Propagate. The repository starte
    - sub-task hooks: `before`, `after`, `on_failure`
    - config parsing for hooks and context sources
    - hook-driven loading of context sources into reserved `:`-prefixed context keys
+   - validation-oriented hooks around the agent execution path
 3. Verify the bootstrap chain was advanced:
    - `config/propagate.yaml` should now target building stage 4
    - `config/prompts/design-stage4.md`, `config/prompts/implement-stage4.md`, and `config/prompts/review-stage4.md` should exist and describe git automation
@@ -24,6 +25,7 @@ You are reviewing the stage 3 implementation of Propagate. The repository starte
 - Existing context bag semantics still hold.
 - Hook execution order is correct and deterministic.
 - Hook and context-source failures are clear and non-silent.
+- Validation hooks run only in the intended phases around agent execution.
 - `on_failure` runs only on the intended failure path.
 - Prompt augmentation still uses the local context bag contents actually present at sub-task execution time.
 - The implementation stays within stage 3 scope and does not partially add git or signal behavior.

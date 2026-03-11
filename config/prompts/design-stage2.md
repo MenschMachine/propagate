@@ -1,80 +1,132 @@
 # Stage 2 Design Task
 
-You are working inside the Propagate repository. The current runtime is stage 1. Your job in this sub-task is to design stage 2: add a local context bag to `propagate.py` while preserving all stage 1 behavior.
+You are designing stage 2 of Propagate. The repository is currently at stage 1. Do not implement the code in this sub-task except for tiny edits that are strictly required to write down the design cleanly.
 
-## Deliverables for this design sub-task
-
-1. Write a concise design note at `docs/context-bag-stage-2-design.md`.
-2. The design note must be implementation-ready for the next sub-task.
-3. Do not implement the code yet unless a tiny clarification edit is unavoidable.
-
-## Stage 2 scope
-
-Stage 2 adds exactly these capabilities:
+## What stage 2 must add
 
 - `propagate context set <key> <value>`
 - `propagate context get <key>`
-- Context is stored as files under `.propagate-context/<key>`
-- During `propagate run`, all local context values are appended to the prompt contents before the temporary prompt file is written and passed to the configured agent command
-- The appended section must be deterministic and clearly labeled as `Context`
+- A local file-backed context bag at `.propagate-context/<key>`
+- Automatic context injection during `propagate run`: append all local context values to the prompt content before the temporary prompt file is written and passed to the configured agent command
 
-Stage 2 still does not include hooks, git operations, signals, propagation, `includes`, `defaults`, or guidelines.
+## What stage 2 must not add
 
-## Required design decisions
+- No hooks
+- No git automation
+- No signals or propagation
+- No includes
+- No defaults
+- No guidelines
+- No package restructuring
 
-Your design note must explicitly define:
+## Deliverables for this sub-task
 
-1. CLI shape and argument parsing changes.
-2. Where the context directory lives. Use the invocation working directory so the store is local to the repo being operated on.
-3. How keys are validated. Prevent path traversal and unsafe filenames, allow `:`-prefixed keys to remain representable on disk, and explicitly reserve those keys for future context-source usage because stage 3 hooks will call `propagate context set :source-name`.
-4. How `context set` writes values and what happens on overwrite.
-5. How `context get` reports missing keys. It should fail clearly and write the value to stdout on success.
-6. How `run` loads context values and appends them to the prompt.
-7. A deterministic context rendering format. Sort keys.
-8. Logging and error-handling expectations.
-9. The stage boundary: keep dependencies minimal and preserve existing `run` behavior.
-10. The stage 2 bootstrap chain requirement: stage 2 must also update `config/propagate.yaml` to target stage 3 and create `config/prompts/design-stage3.md`, `config/prompts/implement-stage3.md`, and `config/prompts/review-stage3.md`.
+1. Write an implementation-ready design doc at `docs/context-bag-stage-2-design.md`.
+2. Cover CLI changes, storage format, validation, rendering, logging, error handling, and tests.
+3. Define how stage 2 advances the bootstrap chain to stage 3.
+
+## Required design details
+
+The design doc must explicitly define all of the following:
+
+1. CLI shape:
+   - `propagate run --config <path> [--execution <name>]`
+   - `propagate context set <key> <value>`
+   - `propagate context get <key>`
+2. Context directory location:
+   - Always use `Path.cwd() / ".propagate-context"`.
+   - This is based on the invocation working directory, not the config location.
+3. Key validation:
+   - Reject empty keys.
+   - Reject `/`, `\\`, whitespace, `.` and `..`, and traversal-like names.
+   - Allow a single leading `:` so future context-source keys like `:openapi-spec` remain valid in stage 3.
+   - Keep filenames literal; do not encode keys.
+4. `context set` behavior:
+   - Create the directory if needed.
+   - Overwrite existing values completely.
+   - Write UTF-8 text with no automatic newline.
+   - Use an atomic replace pattern if practical.
+5. `context get` behavior:
+   - Read a single file and write its exact contents to stdout.
+   - Missing keys must fail clearly.
+6. `run` integration:
+   - Load local context fresh for every sub-task.
+   - Sort keys deterministically.
+   - Append a Markdown section labeled exactly `## Context`.
+7. Rendering format:
+
+```markdown
+## Context
+
+### key-one
+value one
+
+### key-two
+value two
+```
+
+8. Logging and errors:
+   - Preserve stage-1 run lifecycle logging.
+   - `context set` may log success.
+   - `context get` should not log the value.
+   - Raise user-facing errors rather than swallowing exceptions.
+9. Tests:
+   - Cover set/get behavior, missing keys, invalid keys, context injection, and deterministic ordering.
+10. Bootstrap output for stage 3:
+   - Stage 2 must update `config/propagate.yaml` to version `"2"`.
+   - Rename the execution to `build-stage3`.
+   - Use the standard six-step chain: design, implement, test, refactor, verify, review.
+   - Produce:
+     - `config/prompts/design-stage3.md`
+     - `config/prompts/implement-stage3.md`
+     - `config/prompts/test-stage3.md`
+     - `config/prompts/refactor-stage3.md`
+     - `config/prompts/verify-stage3.md`
+     - `config/prompts/review-stage3.md`
+   - Stage 3 adds hooks and named context sources that can load values into the local context bag.
 
 ## Full Propagate vision
 
-Propagate is a self-hosting CLI that orchestrates agent work across repositories. The full design eventually includes:
+Propagate is a self-hosting CLI that orchestrates agent work across repositories. The final system is config-driven and LLM-agnostic: the only agent integration is a configured shell command containing `{prompt_file}`. Propagate writes a prompt to a temporary file, substitutes the placeholder, and runs the command in the working directory.
 
-- A YAML config with sections such as `version`, `includes`, `defaults`, `repositories`, `context_sources`, `executions`, and `propagation`
-- Executions composed of sequential sub-tasks, each driven by a prompt file and later also optional hooks and wait conditions
-- A context bag with local, task, and global scopes; stage 2 only introduces the local scope
-- Hooks around agent calls for loading context sources, validation, and operational commands
-- Git automation after sub-tasks
-- Signal-driven triggering from PR events and task completion
-- Cross-repo propagation with DAG fan-out and fan-in
+The full design eventually includes these config sections:
 
-The bootstrapping chain matters:
+- `version`
+- `agent`
+- `includes`
+- `defaults`
+- `repositories`
+- `context_sources`
+- `executions`
+- `propagation`
 
-- Stage 1: config-driven execution, no context bag
+The staged roadmap is:
+
+- Stage 1: config parsing, execution selection, sequential sub-task execution, agent invocation
 - Stage 2: local context bag and prompt injection
 - Stage 3: hooks and context sources
 - Stage 4: git automation
-- Stage 5: signals and propagation triggers
-- Stage 6: multi-repo DAG orchestration
+- Stage 5: signal-triggered propagation
+- Stage 6: multi-repo and DAG orchestration
 
-Each stage must produce the runtime for the next stage plus the config and prompts that allow the next stage to continue the chain.
+Future stages rely on stage 2 making good choices now:
 
-Future-compatibility note for the design:
-
-- Stage 2 should define a key policy that blocks path traversal and filesystem-unsafe names without painting later stages into a corner.
-- In particular, `:`-prefixed keys must remain valid file names in the local store because stage 3 hooks will load context sources via `propagate context set :source-name`.
-- The design should explicitly reserve `:`-prefixed keys for that future context-source workflow instead of banning `:` outright or treating those keys as invalid.
+- Hooks in stage 3 will use the context bag to load named context sources via keys like `:source-name`.
+- Git automation in stage 4 will use context to build commit metadata.
+- Signal handling in stage 5 will inject runtime metadata into the bag.
+- Multi-repo orchestration in stage 6 will extend context scope beyond the local store.
 
 ## Current stage 1 code
 
-The current `propagate.py` is reproduced below and should be treated as the exact starting point for the next sub-task:
+Treat the following as the exact baseline implementation that stage 2 must extend:
 
 ```python
 from __future__ import annotations
 
 import argparse
 import logging
+import shlex
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,7 +139,7 @@ LOGGER = logging.getLogger("propagate")
 
 
 class PropagateError(Exception):
-    """Raised when the CLI encounters a user-facing configuration error."""
+    """Raised when the CLI encounters a user-facing error."""
 
 
 @dataclass(frozen=True)
@@ -176,6 +228,8 @@ def load_config(config_path: Path) -> Config:
     if not isinstance(raw_data, dict):
         raise PropagateError("Config must be a YAML mapping.")
 
+    validate_allowed_keys(raw_data, {"version", "agent", "executions"}, "Config")
+
     version = raw_data.get("version")
     if version != "1":
         raise PropagateError("Config version must be '1' for stage 1.")
@@ -183,17 +237,23 @@ def load_config(config_path: Path) -> Config:
     agent = parse_agent(raw_data.get("agent"))
     executions = parse_executions(raw_data.get("executions"), resolved_config_path.parent)
 
-    return Config(version=version, agent=agent, executions=executions, config_path=resolved_config_path)
+    return Config(
+        version=version,
+        agent=agent,
+        executions=executions,
+        config_path=resolved_config_path,
+    )
 
 
 def parse_agent(agent_data: Any) -> AgentConfig:
     if not isinstance(agent_data, dict):
         raise PropagateError("Config must include an 'agent' mapping.")
 
+    validate_allowed_keys(agent_data, {"command"}, "Config 'agent'")
+
     command = agent_data.get("command")
     if not isinstance(command, str) or not command.strip():
         raise PropagateError("Config 'agent.command' must be a non-empty string.")
-
     if "{prompt_file}" not in command:
         raise PropagateError("Config 'agent.command' must contain the '{prompt_file}' placeholder.")
 
@@ -217,6 +277,8 @@ def parse_execution(name: str, execution_data: Any, config_dir: Path) -> Executi
     if not isinstance(execution_data, dict):
         raise PropagateError(f"Execution '{name}' must be a mapping.")
 
+    validate_allowed_keys(execution_data, {"sub_tasks"}, f"Execution '{name}'")
+
     sub_tasks_data = execution_data.get("sub_tasks")
     if not isinstance(sub_tasks_data, list) or not sub_tasks_data:
         raise PropagateError(f"Execution '{name}' must define a non-empty 'sub_tasks' list.")
@@ -225,6 +287,8 @@ def parse_execution(name: str, execution_data: Any, config_dir: Path) -> Executi
     for index, sub_task_data in enumerate(sub_tasks_data, start=1):
         if not isinstance(sub_task_data, dict):
             raise PropagateError(f"Execution '{name}' sub-task #{index} must be a mapping.")
+
+        validate_allowed_keys(sub_task_data, {"id", "prompt"}, f"Execution '{name}' sub-task #{index}")
 
         task_id = sub_task_data.get("id")
         prompt_value = sub_task_data.get("prompt")
@@ -240,6 +304,13 @@ def parse_execution(name: str, execution_data: Any, config_dir: Path) -> Executi
         sub_tasks.append(SubTaskConfig(task_id=task_id, prompt_path=prompt_path))
 
     return ExecutionConfig(name=name, sub_tasks=sub_tasks)
+
+
+def validate_allowed_keys(data: dict[str, Any], allowed_keys: set[str], location: str) -> None:
+    unknown_keys = sorted(set(data) - allowed_keys)
+    if unknown_keys:
+        joined_keys = ", ".join(unknown_keys)
+        raise PropagateError(f"{location} has unsupported keys: {joined_keys}")
 
 
 def select_execution(config: Config, requested_name: str | None) -> ExecutionConfig:
@@ -263,34 +334,31 @@ def select_execution(config: Config, requested_name: str | None) -> ExecutionCon
 
 def run_execution(execution: ExecutionConfig, agent_command: str, working_dir: Path) -> None:
     for sub_task in execution.sub_tasks:
-        run_sub_task(sub_task, agent_command, working_dir)
+        run_sub_task(execution.name, sub_task, agent_command, working_dir)
 
 
-def run_sub_task(sub_task: SubTaskConfig, agent_command: str, working_dir: Path) -> None:
-    LOGGER.info("Starting sub-task '%s' using prompt %s", sub_task.task_id, sub_task.prompt_path)
-    prompt_contents = read_prompt_file(sub_task.prompt_path)
+def run_sub_task(execution_name: str, sub_task: SubTaskConfig, agent_command: str, working_dir: Path) -> None:
+    prompt_text = read_prompt(sub_task.prompt_path)
+    temp_prompt_path = write_temp_prompt(prompt_text)
 
-    temp_prompt_path: Path | None = None
     try:
-        temp_prompt_path = write_temp_prompt_file(sub_task.task_id, prompt_contents)
-        command = agent_command.replace("{prompt_file}", str(temp_prompt_path))
-        LOGGER.info("Running agent command for sub-task '%s'.", sub_task.task_id)
-        subprocess.run(command, shell=True, cwd=working_dir, check=True)
-        LOGGER.info("Completed sub-task '%s'.", sub_task.task_id)
-    except OSError as error:
-        raise PropagateError(f"Failed to execute agent command for sub-task '{sub_task.task_id}': {error}") from error
-    except subprocess.CalledProcessError as error:
-        raise PropagateError(
-            f"Agent command failed for sub-task '{sub_task.task_id}' with exit code {error.returncode}."
-        ) from error
+        command = build_agent_command(agent_command, temp_prompt_path)
+        LOGGER.info(
+            "Running sub-task '%s' for execution '%s' using prompt '%s'.",
+            sub_task.task_id,
+            execution_name,
+            sub_task.prompt_path,
+        )
+        run_agent_command(command, working_dir, sub_task.task_id)
     finally:
-        if temp_prompt_path is not None:
-            remove_temp_prompt_file(temp_prompt_path)
+        cleanup_temp_prompt(temp_prompt_path)
 
 
-def read_prompt_file(prompt_path: Path) -> str:
+def read_prompt(prompt_path: Path) -> str:
     if not prompt_path.exists():
         raise PropagateError(f"Prompt file does not exist: {prompt_path}")
+    if not prompt_path.is_file():
+        raise PropagateError(f"Prompt path is not a file: {prompt_path}")
 
     try:
         return prompt_path.read_text(encoding="utf-8")
@@ -298,28 +366,42 @@ def read_prompt_file(prompt_path: Path) -> str:
         raise PropagateError(f"Failed to read prompt file {prompt_path}: {error}") from error
 
 
-def write_temp_prompt_file(task_id: str, prompt_contents: str) -> Path:
+def write_temp_prompt(prompt_text: str) -> Path:
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
-            prefix=f"propagate-{task_id}-",
             suffix=".md",
+            prefix="propagate-",
             delete=False,
         ) as handle:
-            handle.write(prompt_contents)
-            return Path(handle.name)
+            handle.write(prompt_text)
     except OSError as error:
-        raise PropagateError(f"Failed to create temporary prompt file for sub-task '{task_id}': {error}") from error
+        raise PropagateError(f"Failed to write temporary prompt file: {error}") from error
+
+    return Path(handle.name)
 
 
-def remove_temp_prompt_file(temp_prompt_path: Path) -> None:
+def build_agent_command(agent_command: str, prompt_file: Path) -> str:
+    return agent_command.replace("{prompt_file}", shlex.quote(str(prompt_file)))
+
+
+def run_agent_command(command: str, working_dir: Path, task_id: str) -> None:
+    try:
+        subprocess.run(command, shell=True, cwd=working_dir, check=True)
+    except subprocess.CalledProcessError as error:
+        raise PropagateError(f"Agent command failed for sub-task '{task_id}' with exit code {error.returncode}.") from error
+    except OSError as error:
+        raise PropagateError(f"Failed to start agent command for sub-task '{task_id}': {error}") from error
+
+
+def cleanup_temp_prompt(temp_prompt_path: Path) -> None:
     try:
         temp_prompt_path.unlink(missing_ok=True)
     except OSError as error:
-        LOGGER.warning("Failed to remove temporary prompt file %s: %s", temp_prompt_path, error)
+        LOGGER.warning("Failed to remove temporary prompt file '%s': %s", temp_prompt_path, error)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
 ```

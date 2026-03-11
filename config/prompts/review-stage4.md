@@ -19,7 +19,7 @@ You are reviewing the stage 4 implementation of Propagate. The repository starte
    - commit-message sourcing from context
 3. Verify the bootstrap chain was advanced:
    - `config/propagate.yaml` should now target building stage 5
-   - the stage 5 prompt trio should exist and focus on signals and propagation triggers
+   - all six stage-5 prompts should exist and focus on signals and propagation triggers
 4. Fix problems directly if you find them.
 
 ## Review checklist

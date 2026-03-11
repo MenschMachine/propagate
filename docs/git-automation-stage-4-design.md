@@ -2,28 +2,36 @@
 
 ## Scope
 
-Stage 4 extends the stage 3 single-repository runtime with optional git automation for successful executions:
+Stage 4 adds optional, repository-local git automation on top of the stage 3 runtime:
 
-- branch creation and selection before sub-tasks run
-- commit creation after all sub-tasks succeed
-- optional push support
+- branch creation and checkout before sub-tasks run
+- one commit after the execution succeeds
+- optional push
 - optional PR creation
 - commit-message sourcing from an existing context source
 
-Stage 4 does not add signals, propagation triggers, includes, defaults, repository registries, multi-repo orchestration, parallel execution, or DAG behavior. The implementation stays in `propagate.py`, uses Python 3.10+, `PyYAML`, logging, type hints, f-strings, and preserves the existing `{prompt_file}` agent handoff.
+Stage 4 keeps the stage 3 execution model intact:
 
-## Config Changes
+- sub-tasks still run sequentially
+- `before`, `after`, and `on_failure` hooks keep their current meaning
+- prompt paths still resolve relative to the config file
+- context still lives in `.propagate-context` under `Path.cwd()`
+- the agent handoff still uses `{prompt_file}`
 
-Bump the schema marker to `version: "4"` and require that exact version in `load_config()`.
+Stage 4 does not add signals, propagation triggers, includes, defaults, repository registries, multi-repo orchestration, DAG execution, retries, or provider abstraction.
 
-Add one optional `git` block under each execution:
+## Config Shape
+
+Bump the config schema to `version: "4"` and require that exact value in `load_config()`.
+
+Add an optional `git` block under each execution:
 
 ```yaml
 version: "4"
 
 context_sources:
   commit-message:
-    command: ./scripts/write-commit-message.sh
+    command: ./scripts/generate-commit-message.sh
 
 executions:
   build-stage5:
@@ -42,150 +50,154 @@ executions:
     sub_tasks:
       - id: design
         prompt: ./prompts/design-stage5.md
-      - id: implementation
+      - id: implement
         prompt: ./prompts/implement-stage5.md
       - id: review
         prompt: ./prompts/review-stage5.md
 ```
 
-Shape rules:
+Validation rules:
 
-- `git` is optional. If omitted, the execution keeps stage 3 behavior exactly.
-- `git` must be a mapping when provided.
-- `git.branch` is required.
-- `git.branch.name` is optional. If omitted, Propagate uses `propagate/<execution-name>`.
-- `git.branch.base` is optional. If omitted, Propagate uses the branch checked out at run start.
-- `git.branch.reuse` is optional and defaults to `true`.
-- `git.commit` is required when `git` is configured.
-- `git.commit.message_source` is required and must name an existing entry in `context_sources` without the leading `:`.
+- `git` is optional. If omitted, the execution behaves exactly as stage 3.
+- `git` must be a mapping.
+- `git.branch` is required when `git` is present.
+- `git.branch.name` is optional. Default: `propagate/<execution-name>`.
+- `git.branch.base` is optional. Default: the branch checked out when the run starts.
+- `git.branch.reuse` is optional. Default: `true`.
+- `git.commit` is required when `git` is present.
+- `git.commit.message_source` is required and must reference an existing `context_sources` entry by name, without a leading `:`.
 - `git.push` is optional. If present, it must be a mapping with required field `remote`.
 - `git.pr` is optional. If present, `git.push` must also be present.
-- `git.pr.base` is optional. If omitted, it defaults to `git.branch.base` if set, otherwise the branch checked out at run start.
-- `git.pr.draft` is optional and defaults to `false`.
+- `git.pr.base` is optional. Default: `git.branch.base` if set, otherwise the branch detected at run start.
+- `git.pr.draft` is optional. Default: `false`.
 
-Stage 4 intentionally does not add git defaults, message templates, labels, reviewers, body templates, provider selection, retries, or fetch policies.
+Stage 4 intentionally does not add message templates, labels, reviewers, assignees, body templates, retries, fetch policies, or global git defaults.
 
-## Git Execution Order
+## Runtime Order
 
-Stage 3 sub-task behavior stays intact. Stage 4 wraps it with execution-level git steps.
+If an execution does not declare `git`, run the existing stage 3 flow unchanged.
 
-If an execution has `git` config, the order is:
+If an execution declares `git`, the execution order becomes:
 
-1. Resolve the target branch configuration.
-2. Verify the invocation working directory is inside a git work tree.
-3. Record the branch checked out at run start.
-4. Fail if the working tree is dirty before any branch switch or sub-task work.
-5. Create or select the target branch.
-6. Run all sub-tasks with the existing stage 3 model:
-   `before` hooks, prompt augmentation, agent command, `after` hooks, and `on_failure`.
-7. If all sub-tasks succeed, inspect the working tree for changes.
-8. If changes exist, run the configured commit-message context source, store its output in `.propagate-context/:<source-name>`, and create a commit.
-9. If `push` is configured, push the branch.
-10. If `pr` is configured, create the PR.
+1. Parse and validate the git config.
+2. Verify `Path.cwd()` is inside a git work tree.
+3. Detect the branch checked out at run start.
+4. Check that the working tree is clean before any git automation or sub-task work.
+5. Resolve and checkout or create the target branch.
+6. Run sub-tasks using the stage 3 model:
+   `before` hooks, prompt augmentation, agent command, `after` hooks, `on_failure` hooks.
+7. If any sub-task fails, stop immediately and skip commit, push, and PR steps.
+8. If all sub-tasks succeed, inspect the working tree for changes.
+9. If changes exist, load the configured commit-message context source and create one commit.
+10. If `push` is configured, push the selected branch.
+11. If `pr` is configured, create a PR.
 
-If a sub-task fails, all post-success git steps are skipped. Stage 4 does not add execution-level recovery hooks.
+Git automation is execution-level, not sub-task-level. Stage 4 creates at most one commit per successful execution.
 
 ## Branch Naming And Reuse
 
-Branch selection is repository-local and local-branch-first.
-
-Naming rules:
+Branch naming rules:
 
 - If `git.branch.name` is set, use it exactly.
-- Otherwise derive `propagate/<execution-name>`.
+- Otherwise use `propagate/<execution-name>`.
 - Validate the final name with `git check-ref-format --branch`.
 
 Base rules:
 
-- If `git.branch.base` is set, use that local branch or ref as the branch-creation start point.
-- Otherwise use the branch that was checked out when the run started.
-- Stage 4 does not fetch or synchronize refs before branch creation.
+- If `git.branch.base` is set, use that ref as the start point for a new branch.
+- Otherwise use the branch detected at run start.
+- Stage 4 does not fetch, pull, or rebase automatically.
 
 Reuse rules:
 
-- If the current branch already matches the target branch, keep it selected.
-- If the target branch exists locally and `reuse: true`, checkout that branch and continue.
-- If the target branch exists locally and `reuse: false`, fail before running sub-tasks.
+- If the current branch already matches the target branch, keep it checked out.
+- If the target branch exists locally and `reuse` is `true`, checkout that branch.
+- If the target branch exists locally and `reuse` is `false`, fail before sub-tasks run.
 - If the target branch does not exist locally, create it from the resolved base ref and checkout it.
-- Remote-only branches are not discovered proactively. Any later push rejection is surfaced as a push failure.
+- Remote-only branches are not discovered in advance. If a later push is rejected, that is a push failure.
 
-The target branch remains checked out after success or failure. Stage 4 does not restore the starting branch automatically.
+The selected branch remains checked out when the run ends. Stage 4 does not restore the starting branch.
 
 ## Commit Message Sourcing
 
-Stage 4 uses the existing context-source mechanism instead of inventing a second message system.
+Stage 4 reuses the existing stage 3 context-source mechanism rather than adding a second message system.
 
 Commit flow:
 
-1. After all sub-tasks succeed, check whether there are tracked or untracked changes.
-2. If there are no changes, log that no commit is needed and skip commit, push, and PR creation.
+1. After all sub-tasks succeed, run a dirty check.
+2. If there are no tracked or untracked changes, log that no commit is needed and stop git automation successfully.
 3. If changes exist, run the context source named by `git.commit.message_source`.
-4. Store its stdout in the existing local context bag under `:<source-name>`.
-5. Read that stored value back and use it as the exact commit message for `git commit -F <temp-file>`.
-
-Message rules:
-
-- The context source runs after sub-task completion so it can inspect the final repo state.
-- The message is taken from stdout exactly as produced.
-- An empty or whitespace-only message is an error.
-- The first line becomes the PR title when PR creation is enabled.
-- Remaining lines, if any, become the PR body.
-
-This keeps commit-message generation aligned with the stage 3 context model while avoiding any new prompt templating feature.
-
-## Dirty Working Tree Policy
-
-Dirty state is checked only for executions that configure `git`.
-
-Before branch setup, Propagate should run the equivalent of `git status --porcelain --untracked-files=all` and fail if any output is present.
+4. Store its stdout in the local context bag under `:<source-name>` using the same write path as stage 3 context-source hooks.
+5. Read that stored value and pass it to `git commit -F <temp-file>`.
 
 Rules:
 
-- Modified tracked files fail the run.
-- Staged but uncommitted changes fail the run.
-- Untracked files fail the run.
-- Propagate does not auto-stash, auto-clean, or auto-commit pre-existing changes.
+- The message source runs after sub-tasks finish so it can inspect the final repo state.
+- The stored value is used exactly as produced; no trimming except validation for empty or whitespace-only output.
+- Empty or whitespace-only output is an error.
+- The first line becomes the PR title when PR creation is enabled.
+- Remaining lines, if present, become the PR body.
 
-This keeps stage 4 commits attributable to the current Propagate run and avoids mixing user work with generated changes.
+This keeps commit metadata inside the same `.propagate-context` model already used elsewhere in the runtime.
+
+## Dirty Working Tree Policy
+
+Dirty-tree validation only applies when an execution has `git` configured.
+
+Before branch setup, run the equivalent of:
+
+```sh
+git status --porcelain --untracked-files=all
+```
+
+If any output is present, fail the execution before running sub-tasks.
+
+This includes:
+
+- modified tracked files
+- staged but uncommitted changes
+- untracked files
+
+Stage 4 does not auto-stash, auto-clean, or auto-commit pre-existing changes.
 
 ## Failure Behavior
 
-### Branch Setup Failures
+Branch setup failures:
 
-Repository checks, dirty-tree failures, invalid branch names, missing base refs, and checkout/create failures stop the execution before any sub-task runs. These surface as `PropagateError`.
+- not a git repository
+- invalid branch name
+- missing base ref
+- checkout failure
+- target branch already exists with `reuse: false`
+- dirty working tree before start
 
-### Commit Failures
+These fail the execution before any sub-task runs and surface as `PropagateError`.
 
-Commit failures stop the execution and return a non-zero exit status.
+Commit failures:
 
-Examples:
-
-- the message source command fails
-- the stored message is empty
+- message-source command exits non-zero
+- stored message is empty
 - `git add -A` fails
 - `git commit` fails
 
-No push or PR step runs after a commit failure. Any file changes remain in the working tree on the selected branch.
+These fail the execution after sub-tasks complete. The working tree stays as-is on the selected branch. Push and PR steps do not run.
 
-### Push Failures
+Push failures:
 
-If commit succeeds but push fails:
+- fail the execution
+- keep the local commit in place
+- skip PR creation
 
-- the execution fails
-- the local commit remains on the selected branch
-- PR creation does not run
+PR creation failures:
 
-### PR Failures
+- fail the execution
+- keep the commit and any successful push in place
+- do not attempt rollback or PR cleanup
 
-If PR creation fails:
+No-change success:
 
-- the execution fails
-- the commit and push remain in place
-- Propagate does not attempt rollback or PR cleanup
-
-### No-Change Success
-
-If all sub-tasks succeed but the working tree is clean afterward, the execution succeeds with a log message and no commit, push, or PR action.
+- if sub-tasks succeed and the working tree is clean afterward, the execution succeeds
+- no commit, push, or PR is attempted
 
 ## PR Creation
 
@@ -193,23 +205,23 @@ PR creation is optional and intentionally narrow in stage 4.
 
 Implementation model:
 
-- Require the GitHub CLI `gh` when `git.pr` is configured.
-- Use the selected branch as the PR head.
-- Use `git.pr.base` as the PR base.
-- Use the commit-message subject as the PR title.
-- Use the commit-message body, if present, as the PR body.
-- Add `--draft` when `git.pr.draft` is `true`.
+- require the GitHub CLI `gh` when `git.pr` is configured
+- use the current branch as the PR head
+- use `git.pr.base` as the PR base
+- use the commit-message subject as the PR title
+- use the remaining commit-message lines as the PR body
+- add `--draft` when `git.pr.draft` is `true`
 
-Stage 4 does not add labels, reviewers, assignees, provider abstraction, or PR body templating.
+Stage 4 does not add labels, reviewers, assignees, provider-neutral APIs, or PR body templating.
 
-## Logging And Error Handling
+## Logging And Errors
 
-Keep logging concise and execution-oriented.
+Use `logging`, not `print()`.
 
-`INFO` logging should cover:
+`INFO` logs should cover:
 
 - git automation enabled for the execution
-- starting branch detection
+- detected starting branch
 - dirty-tree check
 - branch checkout or creation
 - commit-message source execution by source name only
@@ -220,19 +232,19 @@ Keep logging concise and execution-oriented.
 
 Do not log:
 
-- full commit messages
 - prompt contents
 - context values
-- raw git stdout on success
+- commit message contents
+- raw success stdout from git or `gh`
 
-Error expectations:
+Error handling rules:
 
-- Raise `PropagateError` with user-facing messages for configuration and git command failures.
-- Include the execution name and git phase when possible.
-- Include the git subprocess exit code when available.
-- Capture stderr for failing git and `gh` commands and include a concise trimmed excerpt in the error message when it adds useful context.
+- Raise `PropagateError` for invalid config and user-facing git failures.
+- Include the execution name and the failing git phase when possible.
+- Include subprocess exit codes when available.
+- Capture stderr for failed git and `gh` commands and include a short trimmed excerpt when useful.
 
-Representative messages:
+Representative errors:
 
 - `Execution 'build-stage5' cannot start git automation: working tree is dirty.`
 - `Execution 'build-stage5' failed during branch setup: branch 'propagate/build-stage5' already exists and reuse is disabled.`
@@ -242,7 +254,7 @@ Representative messages:
 
 ## Implementation Shape
 
-Keep the change in `propagate.py` with small helpers and new config dataclasses.
+Keep the implementation in `propagate.py` with small helpers and explicit dataclasses.
 
 Suggested additions:
 
@@ -252,7 +264,6 @@ Suggested additions:
 - `GitPrConfig`
 - `GitExecutionConfig`
 - `parse_git_config(...)`
-- `validate_git_references(...)`
 - `prepare_git_execution(...)`
 - `ensure_clean_working_tree(...)`
 - `checkout_or_create_branch(...)`
@@ -262,12 +273,12 @@ Suggested additions:
 - `create_pull_request(...)`
 - `run_git_command(...)`
 
-The key boundary is behavioral:
+The important boundary is behavioral:
 
-- sub-task hooks and prompt handling remain stage 3 logic
-- git automation is execution-level, not sub-task-level
-- commit-message generation reuses context sources and the existing `.propagate-context` bag
-- stage 4 stays single-repository and local to `Path.cwd()`
+- stage 3 hook and prompt handling remains unchanged
+- git automation wraps the execution, not each sub-task
+- commit-message generation reuses context sources and `.propagate-context`
+- everything remains local to the single repository at `Path.cwd()`
 
 ## Stage Boundary
 
@@ -278,7 +289,5 @@ Stage 4 explicitly does not add:
 - repository registries or named repositories
 - multi-repo orchestration
 - DAG scheduling or parallel execution
-- retries, auto-stash, auto-fetch, or auto-rebase
-- provider-neutral PR APIs
-
-If future config examples mention those capabilities, stage 4 should reject them or ignore them explicitly rather than partially implementing them.
+- automatic fetch, pull, stash, rebase, or retry behavior
+- provider abstraction beyond the narrow `gh`-based PR step

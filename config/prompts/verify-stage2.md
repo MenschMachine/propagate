@@ -1,49 +1,26 @@
-# Stage 2 Review Task
+# Stage 2 Verify Task
 
-You are performing the final review for stage 2 of Propagate. Review the implemented repository state against the specification below, fix defects directly, and leave the repo ready for stage 3.
+You are verifying the final stage-2 repository state. Run the tests and any necessary smoke checks, then fix anything that is still wrong.
 
-## Review goals
+## Verification requirements
 
-1. Confirm stage-1 behavior still works:
-   - YAML config parsing
-   - execution selection
-   - sequential sub-task execution
-   - prompt temp-file handling
-   - configured agent command execution
-2. Confirm stage-2 behavior works:
-   - `propagate context set <key> <value>`
-   - `propagate context get <key>`
-   - `.propagate-context/<key>` storage
-   - deterministic context injection into prompts during `run`
-3. Confirm the bootstrap chain advanced correctly:
-   - `config/propagate.yaml` targets `build-stage3`
-   - the six stage-3 prompts exist and describe hooks plus context sources
-4. Fix any issues you find instead of only reporting them.
+1. Run the test suite.
+2. Re-run any important CLI smoke checks if needed.
+3. Confirm the repository is still within stage-2 scope.
+4. Fix failures directly, then rerun verification until green.
 
-## Review checklist
+## What must be true at the end
 
-- Unsafe keys are rejected.
-- Missing context keys fail clearly.
-- `context get` writes values to stdout, not logs.
-- `run` still works if `.propagate-context` does not exist.
-- Context files are loaded in sorted order.
-- Prompt augmentation uses a readable `## Context` section.
-- The code stays within stage-2 scope.
-- Tests exist and pass.
+- `propagate.py` supports `run`, `context set`, and `context get`.
+- Local context is stored in `.propagate-context`.
+- Prompt augmentation happens during `run` using a deterministic `## Context` section.
+- Stage-1 run behavior is preserved when there is no local context.
+- `config/propagate.yaml` targets `build-stage3`.
+- The six stage-3 prompts exist and describe hooks plus context sources.
 
 ## Full Propagate vision
 
-Propagate is a self-hosting orchestration CLI. The final system includes:
-
-- config sections `version`, `agent`, `includes`, `defaults`, `repositories`, `context_sources`, `executions`, and `propagation`
-- reusable prompt-driven sub-tasks
-- local, task, and global context scopes
-- hooks and named context sources
-- git automation
-- signal-triggered propagation
-- multi-repo DAG workflows
-
-The roadmap is:
+Propagate is a staged self-hosting system:
 
 - Stage 1: config-driven execution
 - Stage 2: local context bag
@@ -52,9 +29,11 @@ The roadmap is:
 - Stage 5: signals and propagation triggers
 - Stage 6: multi-repo DAG orchestration
 
+Verification here is only for stage 2. Do not introduce later-stage behavior while trying to verify.
+
 ## Current stage 1 code
 
-This was the exact baseline before stage-2 work began:
+This was the exact starting point before stage-2 implementation:
 
 ```python
 from __future__ import annotations
