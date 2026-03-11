@@ -10,6 +10,7 @@ Leave the repository in a stage 3 state. That includes:
    - sub-task hooks: `before`, `after`, `on_failure`
    - config-driven context sources
    - hook-driven loading of context sources into `.propagate-context` using reserved `:`-prefixed keys
+   - validation-oriented hook support around the agent execution path
 2. Preserve stage 2 behavior for:
    - `propagate run --config <path> [--execution <name>]`
    - `propagate context set <key> <value>`
@@ -31,10 +32,11 @@ Implement hooks and context sources with straightforward stage-scoped behavior:
    - `on_failure`
 2. Allow top-level `context_sources` definitions that describe named commands whose output becomes local context bag entries.
 3. Reserve `:`-prefixed context keys for context-source values.
-4. Load configured context sources via hooks before the agent command runs.
-5. Keep hook execution and context-source loading deterministic and well logged.
-6. Fail clearly on invalid config, hook failure, or context-source failure.
-7. Do not add git behavior yet.
+4. Support validation-style hook flows around the agent command without changing the `{prompt_file}` handoff model.
+5. Load configured context sources via hooks before the agent command runs.
+6. Keep hook execution and context-source loading deterministic and well logged.
+7. Fail clearly on invalid config, hook failure, or context-source failure.
+8. Do not add git behavior yet.
 
 ## Constraints
 

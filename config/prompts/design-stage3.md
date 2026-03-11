@@ -17,6 +17,7 @@ Stage 3 adds:
 - sub-task hooks: `before`, `after`, and `on_failure`
 - context-source definitions in config
 - hook-driven loading of context sources into the local context bag using keys such as `:openapi-spec`
+- validation hooks around the agent call path so command checks can run before and after the agent invocation
 
 Stage 3 still does not include git automation, signals, propagation triggers, includes, defaults, repository orchestration, or DAG execution.
 
@@ -30,10 +31,11 @@ The design note must define:
 4. Failure semantics for hook commands and agent commands.
 5. How context sources map to reserved `:`-prefixed keys in `.propagate-context`.
 6. How stage 3 uses the existing `propagate context set` command rather than inventing a second storage path.
-7. How hook execution keeps prompt-path resolution and stage 2 prompt augmentation behavior intact.
-8. Logging and error handling expectations.
-9. The stage boundary: no git, no signals, no multi-repo work yet.
-10. The bootstrap requirement for stage 4: update `config/propagate.yaml` to target stage 4 and create `config/prompts/design-stage4.md`, `config/prompts/implement-stage4.md`, and `config/prompts/review-stage4.md`.
+7. How validation-oriented hooks fit around the agent call without changing stage 2 prompt rendering semantics.
+8. How hook execution keeps prompt-path resolution and stage 2 prompt augmentation behavior intact.
+9. Logging and error handling expectations.
+10. The stage boundary: no git, no signals, no multi-repo work yet.
+11. The bootstrap requirement for stage 4: update `config/propagate.yaml` to target stage 4 and create `config/prompts/design-stage4.md`, `config/prompts/implement-stage4.md`, and `config/prompts/review-stage4.md`.
 
 ## Full Propagate vision
 
