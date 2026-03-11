@@ -1,14 +1,14 @@
-version: "2"
+version: "3"
 
 agent:
   command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} in this directory and follow its instructions."'
 
 executions:
-  build-stage3:
+  build-stage4:
     sub_tasks:
       - id: design
-        prompt: ./prompts/design-stage3.md
+        prompt: ./prompts/design-stage4.md
       - id: implementation
-        prompt: ./prompts/implement-stage3.md
+        prompt: ./prompts/implement-stage4.md
       - id: review
-        prompt: ./prompts/review-stage3.md
+        prompt: ./prompts/review-stage4.md

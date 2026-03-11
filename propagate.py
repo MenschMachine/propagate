@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -28,9 +29,17 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
+class ContextSourceConfig:
+    command: str
+
+
+@dataclass(frozen=True)
 class SubTaskConfig:
     task_id: str
     prompt_path: Path
+    before: list[str]
+    after: list[str]
+    on_failure: list[str]
 
 
 @dataclass(frozen=True)
@@ -43,8 +52,13 @@ class ExecutionConfig:
 class Config:
     version: str
     agent: AgentConfig
+    context_sources: dict[str, ContextSourceConfig]
     executions: dict[str, ExecutionConfig]
     config_path: Path
+
+
+class SubTaskCommandError(PropagateError):
+    """Raised when a hook or agent command fails during sub-task execution."""
 
 
 def configure_logging() -> None:
@@ -108,7 +122,7 @@ def run_command(config_value: str, execution_name: str | None) -> int:
     execution = select_execution(config, execution_name)
 
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
-    run_execution(execution, config.agent.command, Path.cwd())
+    run_execution(execution, config.agent.command, config.context_sources, Path.cwd())
     LOGGER.info("Execution '%s' completed successfully.", execution.name)
     return 0
 
@@ -146,13 +160,21 @@ def load_config(config_path: Path) -> Config:
         raise PropagateError("Config must be a YAML mapping.")
 
     version = raw_data.get("version")
-    if version != "2":
-        raise PropagateError("Config version must be '2' for stage 2.")
+    if version != "3":
+        raise PropagateError("Config version must be '3' for stage 3.")
 
     agent = parse_agent(raw_data.get("agent"))
+    context_sources = parse_context_sources(raw_data.get("context_sources"))
     executions = parse_executions(raw_data.get("executions"), resolved_config_path.parent)
+    validate_hook_references(executions, context_sources)
 
-    return Config(version=version, agent=agent, executions=executions, config_path=resolved_config_path)
+    return Config(
+        version=version,
+        agent=agent,
+        context_sources=context_sources,
+        executions=executions,
+        config_path=resolved_config_path,
+    )
 
 
 def parse_agent(agent_data: Any) -> AgentConfig:
@@ -167,6 +189,31 @@ def parse_agent(agent_data: Any) -> AgentConfig:
         raise PropagateError("Config 'agent.command' must contain the '{prompt_file}' placeholder.")
 
     return AgentConfig(command=command)
+
+
+def parse_context_sources(context_sources_data: Any) -> dict[str, ContextSourceConfig]:
+    if context_sources_data is None:
+        return {}
+    if not isinstance(context_sources_data, dict) or not context_sources_data:
+        raise PropagateError("Config 'context_sources' must be a non-empty mapping when provided.")
+
+    context_sources: dict[str, ContextSourceConfig] = {}
+    for source_name, source_data in context_sources_data.items():
+        validated_name = validate_context_source_name(source_name)
+        if not isinstance(source_data, dict):
+            raise PropagateError(f"Context source '{validated_name}' must be a mapping.")
+        if set(source_data) != {"command"}:
+            raise PropagateError(
+                f"Context source '{validated_name}' must define only the 'command' field in stage 3."
+            )
+
+        command = source_data.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise PropagateError(f"Context source '{validated_name}' field 'command' must be a non-empty string.")
+
+        context_sources[validated_name] = ContextSourceConfig(command=command)
+
+    return context_sources
 
 
 def parse_executions(executions_data: Any, config_dir: Path) -> dict[str, ExecutionConfig]:
@@ -206,9 +253,73 @@ def parse_execution(name: str, execution_data: Any, config_dir: Path) -> Executi
         if not prompt_path.is_absolute():
             prompt_path = (config_dir / prompt_path).resolve()
 
-        sub_tasks.append(SubTaskConfig(task_id=task_id, prompt_path=prompt_path))
+        sub_tasks.append(
+            SubTaskConfig(
+                task_id=task_id,
+                prompt_path=prompt_path,
+                before=parse_hook_actions(sub_task_data.get("before"), name, task_id, "before"),
+                after=parse_hook_actions(sub_task_data.get("after"), name, task_id, "after"),
+                on_failure=parse_hook_actions(
+                    sub_task_data.get("on_failure"),
+                    name,
+                    task_id,
+                    "on_failure",
+                ),
+            )
+        )
 
     return ExecutionConfig(name=name, sub_tasks=sub_tasks)
+
+
+def parse_hook_actions(actions_data: Any, execution_name: str, task_id: str, phase: str) -> list[str]:
+    if actions_data is None:
+        return []
+    if not isinstance(actions_data, list):
+        raise PropagateError(
+            f"Execution '{execution_name}' sub-task '{task_id}' field '{phase}' must be a list of commands."
+        )
+
+    actions: list[str] = []
+    for index, action_data in enumerate(actions_data, start=1):
+        if not isinstance(action_data, str) or not action_data.strip():
+            raise PropagateError(
+                f"Execution '{execution_name}' sub-task '{task_id}' {phase} hook #{index} must be a non-empty string."
+            )
+        if action_data.startswith(":"):
+            validate_context_key(action_data)
+        actions.append(action_data)
+
+    return actions
+
+
+def validate_context_source_name(source_name: Any) -> str:
+    if not isinstance(source_name, str) or not source_name.strip():
+        raise PropagateError("Context source names must be non-empty strings.")
+    if source_name.startswith(":"):
+        raise PropagateError(f"Context source '{source_name}' must not start with ':'.")
+    return validate_context_key(source_name)
+
+
+def validate_hook_references(
+    executions: dict[str, ExecutionConfig],
+    context_sources: dict[str, ContextSourceConfig],
+) -> None:
+    for execution in executions.values():
+        for sub_task in execution.sub_tasks:
+            for phase, actions in (
+                ("before", sub_task.before),
+                ("after", sub_task.after),
+                ("on_failure", sub_task.on_failure),
+            ):
+                for index, action in enumerate(actions, start=1):
+                    if not action.startswith(":"):
+                        continue
+                    source_name = action[1:]
+                    if source_name not in context_sources:
+                        raise PropagateError(
+                            f"Execution '{execution.name}' sub-task '{sub_task.task_id}' "
+                            f"{phase} hook #{index} references undefined context source '{source_name}'."
+                        )
 
 
 def select_execution(config: Config, requested_name: str | None) -> ExecutionConfig:
@@ -230,35 +341,165 @@ def select_execution(config: Config, requested_name: str | None) -> ExecutionCon
     )
 
 
-def run_execution(execution: ExecutionConfig, agent_command: str, working_dir: Path) -> None:
+def run_execution(
+    execution: ExecutionConfig,
+    agent_command: str,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> None:
     for sub_task in execution.sub_tasks:
-        run_sub_task(sub_task, agent_command, working_dir)
+        run_sub_task(sub_task, agent_command, context_sources, working_dir)
 
 
-def run_sub_task(sub_task: SubTaskConfig, agent_command: str, working_dir: Path) -> None:
+def run_sub_task(
+    sub_task: SubTaskConfig,
+    agent_command: str,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> None:
     LOGGER.info("Starting sub-task '%s' using prompt %s", sub_task.task_id, sub_task.prompt_path)
-    prompt_contents = read_prompt_file(sub_task.prompt_path)
-    context_items = load_local_context(get_context_dir(working_dir))
-    if context_items:
-        LOGGER.info("Loaded %d context value(s) for sub-task '%s'.", len(context_items), sub_task.task_id)
-    prompt_contents = append_context_to_prompt(prompt_contents, context_items)
-
-    temp_prompt_path: Path | None = None
     try:
-        temp_prompt_path = write_temp_prompt_file(sub_task.task_id, prompt_contents)
-        command = agent_command.replace("{prompt_file}", str(temp_prompt_path))
-        LOGGER.info("Running agent command for sub-task '%s'.", sub_task.task_id)
+        run_hook_phase(sub_task.task_id, "before", sub_task.before, context_sources, working_dir)
+
+        prompt_contents = read_prompt_file(sub_task.prompt_path)
+        context_items = load_local_context(get_context_dir(working_dir))
+        if context_items:
+            LOGGER.info("Loaded %d context value(s) for sub-task '%s'.", len(context_items), sub_task.task_id)
+        prompt_contents = append_context_to_prompt(prompt_contents, context_items)
+
+        temp_prompt_path: Path | None = None
+        try:
+            temp_prompt_path = write_temp_prompt_file(sub_task.task_id, prompt_contents)
+            command = agent_command.replace("{prompt_file}", shlex.quote(str(temp_prompt_path)))
+            run_agent_command(sub_task.task_id, command, working_dir)
+        finally:
+            if temp_prompt_path is not None:
+                remove_temp_prompt_file(temp_prompt_path)
+
+        run_hook_phase(sub_task.task_id, "after", sub_task.after, context_sources, working_dir)
+    except SubTaskCommandError as error:
+        on_failure_errors = run_on_failure_hooks(sub_task.task_id, sub_task.on_failure, context_sources, working_dir)
+        message = str(error)
+        if on_failure_errors:
+            message = f"{message} {' '.join(on_failure_errors)}"
+        raise PropagateError(message) from error
+
+    LOGGER.info("Completed sub-task '%s'.", sub_task.task_id)
+
+
+def run_agent_command(task_id: str, command: str, working_dir: Path) -> None:
+    LOGGER.info("Running agent command for sub-task '%s'.", task_id)
+    try:
         subprocess.run(command, shell=True, cwd=working_dir, check=True)
-        LOGGER.info("Completed sub-task '%s'.", sub_task.task_id)
     except OSError as error:
-        raise PropagateError(f"Failed to execute agent command for sub-task '{sub_task.task_id}': {error}") from error
+        raise SubTaskCommandError(f"Failed to execute agent command for sub-task '{task_id}': {error}") from error
     except subprocess.CalledProcessError as error:
-        raise PropagateError(
-            f"Agent command failed for sub-task '{sub_task.task_id}' with exit code {error.returncode}."
+        raise SubTaskCommandError(
+            f"Agent command failed for sub-task '{task_id}' with exit code {error.returncode}."
         ) from error
-    finally:
-        if temp_prompt_path is not None:
-            remove_temp_prompt_file(temp_prompt_path)
+
+
+def run_hook_phase(
+    task_id: str,
+    phase: str,
+    actions: list[str],
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> None:
+    if not actions:
+        return
+
+    LOGGER.info("Starting %s hook phase for sub-task '%s'.", phase, task_id)
+    total_actions = len(actions)
+    for index, action in enumerate(actions, start=1):
+        run_hook_action(task_id, phase, index, total_actions, action, context_sources, working_dir)
+
+
+def run_hook_action(
+    task_id: str,
+    phase: str,
+    index: int,
+    total_actions: int,
+    action: str,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> None:
+    LOGGER.info("Running %s hook %d/%d for sub-task '%s'.", phase, index, total_actions, task_id)
+    if action.startswith(":"):
+        run_context_source(task_id, action[1:], context_sources, working_dir)
+        return
+
+    try:
+        subprocess.run(action, shell=True, cwd=working_dir, check=True)
+    except OSError as error:
+        raise SubTaskCommandError(
+            f"Failed to execute {phase} hook #{index} for sub-task '{task_id}': {error}"
+        ) from error
+    except subprocess.CalledProcessError as error:
+        raise SubTaskCommandError(format_hook_failure_message(phase, index, task_id, error.returncode)) from error
+
+
+def run_context_source(
+    task_id: str,
+    source_name: str,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> None:
+    try:
+        context_source = context_sources[source_name]
+    except KeyError as error:
+        raise PropagateError(f"Sub-task '{task_id}' references undefined context source '{source_name}'.") from error
+
+    LOGGER.info("Loading context source '%s' for sub-task '%s'.", source_name, task_id)
+    try:
+        result = subprocess.run(
+            context_source.command,
+            shell=True,
+            cwd=working_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise SubTaskCommandError(
+            f"Failed to execute context source '{source_name}' for sub-task '{task_id}': {error}"
+        ) from error
+    except subprocess.CalledProcessError as error:
+        raise SubTaskCommandError(
+            f"Context source '{source_name}' failed for sub-task '{task_id}' with exit code {error.returncode}."
+        ) from error
+
+    write_context_value(get_context_dir(working_dir), f":{source_name}", result.stdout)
+
+
+def run_on_failure_hooks(
+    task_id: str,
+    actions: list[str],
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> list[str]:
+    if not actions:
+        return []
+
+    LOGGER.info("Starting on_failure hook phase for sub-task '%s'.", task_id)
+    failures: list[str] = []
+    total_actions = len(actions)
+    for index, action in enumerate(actions, start=1):
+        try:
+            run_hook_action(task_id, "on_failure", index, total_actions, action, context_sources, working_dir)
+        except SubTaskCommandError as error:
+            failures.append(str(error))
+
+    return failures
+
+
+def format_hook_failure_message(phase: str, index: int, task_id: str, return_code: int) -> str:
+    phase_names = {
+        "before": "Before",
+        "after": "After",
+        "on_failure": "on_failure",
+    }
+    return f"{phase_names[phase]} hook #{index} failed for sub-task '{task_id}' with exit code {return_code}."
 
 
 def read_prompt_file(prompt_path: Path) -> str:
