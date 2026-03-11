@@ -9,7 +9,7 @@ context_sources:
 
 
 executions:
-  run:
+  example_config:
     git:
       branch:
         name: propagate/example-config
@@ -20,3 +20,14 @@ executions:
     sub_tasks:
       - id: implement
         prompt: ./prompts/create-example-config.md
+  refactor:
+    git:
+      branch:
+        name: refactor
+        base: main
+        reuse: true
+      commit:
+        message_source: commit_message
+    sub_tasks:
+      - id: refactor
+        prompt: ./prompts/refactor-propagate-py.md
