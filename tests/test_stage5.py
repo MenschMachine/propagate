@@ -131,7 +131,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
 
         config_path = self.write_config(
             {
-                "version": "5",
+                "version": "6",
                 "agent": {
                     "command": self.build_python_command(
                         self.capture_script,
@@ -185,7 +185,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
         self.assertEqual((context_dir / ":signal.files").read_text(encoding="utf-8"), "- propagate.py\n")
         self.assertEqual((context_dir / ":signal.urgent").read_text(encoding="utf-8"), "True")
 
-    def test_propagation_enqueues_follow_on_execution_once_and_skips_completed_cycles(self) -> None:
+    def test_propagation_activates_follow_on_execution_once_when_duplicate_triggers_match(self) -> None:
         config_dir = self.workspace / "config"
         prompt_dir = config_dir / "prompts"
         prompt_dir.mkdir(parents=True)
@@ -194,7 +194,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
 
         config_path = self.write_config(
             {
-                "version": "5",
+                "version": "6",
                 "agent": {
                     "command": self.build_python_command(
                         self.invocation_script,
@@ -222,7 +222,6 @@ class PropagateStage5SignalTests(unittest.TestCase):
                     "triggers": [
                         {"after": "build", "on_signal": "repo-change", "run": "verify"},
                         {"after": "build", "on_signal": "repo-change", "run": "verify"},
-                        {"after": "verify", "run": "build"},
                     ]
                 },
             },
@@ -248,8 +247,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
                 "verify prompt\n\n## Context\n\n### :signal.branch\nmain\n\n### :signal.payload\nbranch: main\n\n### :signal.source\ncli\n\n### :signal.type\nrepo-change\n",
             ],
         )
-        self.assertIn("Skipping enqueue of 'verify' because it is already queued.", result.stderr)
-        self.assertIn("Skipping enqueue of 'build' because it already completed in this run.", result.stderr)
+        self.assertIn("Skipping activation of 'verify' because it is already active.", result.stderr)
 
     def test_signal_validation_fails_before_execution(self) -> None:
         config_dir = self.workspace / "config"
@@ -259,7 +257,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
 
         config_path = self.write_config(
             {
-                "version": "5",
+                "version": "6",
                 "agent": {
                     "command": self.build_python_command(
                         self.capture_script,
@@ -307,7 +305,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
 
         config_path = self.write_config(
             {
-                "version": "5",
+                "version": "6",
                 "agent": {
                     "command": self.build_python_command(
                         self.capture_script,
@@ -355,7 +353,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
 
         config_path = self.write_config(
             {
-                "version": "5",
+                "version": "6",
                 "agent": {
                     "command": self.build_python_command(
                         self.capture_script,

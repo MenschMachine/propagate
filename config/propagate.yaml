@@ -1,4 +1,4 @@
-version: "5"
+version: "6"
 
 agent:
   command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} in this directory and follow its instructions."'

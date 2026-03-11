@@ -164,7 +164,7 @@ class PropagateStage2CLITests(unittest.TestCase):
             ]
         )
         config_data: dict[str, object] = {
-            "version": "5",
+            "version": "6",
             "agent": {"command": command},
             "executions": executions,
         }
@@ -370,7 +370,7 @@ class PropagateStage2CLITests(unittest.TestCase):
         config_path.write_text(
             self.to_yaml(
                 {
-                    "version": "5",
+                    "version": "6",
                     "agent": {"command": command},
                     "executions": {
                         "default": {

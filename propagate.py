@@ -37,6 +37,12 @@ class ContextSourceConfig:
 
 
 @dataclass(frozen=True)
+class RepositoryConfig:
+    name: str
+    path: Path
+
+
+@dataclass(frozen=True)
 class SignalFieldConfig:
     field_type: str
     required: bool
@@ -92,6 +98,8 @@ class SubTaskConfig:
 @dataclass(frozen=True)
 class ExecutionConfig:
     name: str
+    repository: str | None
+    depends_on: list[str]
     signals: list[str]
     sub_tasks: list[SubTaskConfig]
     git: GitConfig | None
@@ -108,6 +116,7 @@ class PropagationTriggerConfig:
 class Config:
     version: str
     agent: AgentConfig
+    repositories: dict[str, RepositoryConfig]
     context_sources: dict[str, ContextSourceConfig]
     signals: dict[str, SignalConfig]
     propagation_triggers: list[PropagationTriggerConfig]
@@ -126,14 +135,15 @@ class ActiveSignal:
 class RuntimeContext:
     agent_command: str
     context_sources: dict[str, ContextSourceConfig]
+    invocation_dir: Path
     working_dir: Path
     active_signal: ActiveSignal | None
+    initialized_signal_context_dirs: set[Path]
 
 
 @dataclass
-class ExecutionQueueState:
-    queue: list[str]
-    queued_names: set[str]
+class ExecutionScheduleState:
+    active_names: set[str]
     completed_names: set[str]
 
 
@@ -141,6 +151,19 @@ class ExecutionQueueState:
 class PreparedGitExecution:
     starting_branch: str
     selected_branch: str
+
+
+@dataclass(frozen=True)
+class ExecutionGraph:
+    execution_order: tuple[str, ...]
+    triggers_by_after: dict[str, tuple[PropagationTriggerConfig, ...]]
+
+
+@dataclass(frozen=True)
+class ExecutionRouting:
+    working_dir: Path
+    location_display: str
+    repository_name: str | None
 
 
 def configure_logging() -> None:
@@ -236,12 +259,13 @@ def run_command(
     runtime_context = RuntimeContext(
         agent_command=config.agent.command,
         context_sources=config.context_sources,
+        invocation_dir=Path.cwd(),
         working_dir=Path.cwd(),
         active_signal=active_signal,
+        initialized_signal_context_dirs=set(),
     )
 
-    prepare_signal_context(runtime_context)
-    run_execution_queue(config, initial_execution.name, runtime_context)
+    run_execution_schedule(config, initial_execution.name, runtime_context)
     return 0
 
 
@@ -263,20 +287,22 @@ def load_config(config_path: Path) -> Config:
 
     validate_allowed_keys(
         raw_data,
-        {"version", "agent", "context_sources", "signals", "executions", "propagation"},
+        {"version", "agent", "repositories", "context_sources", "signals", "executions", "propagation"},
         "Config",
     )
 
     version = raw_data.get("version")
-    if version != "5":
-        raise PropagateError("Config version must be '5' for stage 5.")
+    if version != "6":
+        raise PropagateError("Config version must be '6' for stage 6.")
 
     agent = parse_agent(raw_data.get("agent"))
+    repositories = parse_repositories(raw_data.get("repositories"), resolved_config_path.parent)
     context_sources = parse_context_sources(raw_data.get("context_sources"))
     signals = parse_signal_configs(raw_data.get("signals"))
     executions = parse_executions(
         raw_data.get("executions"),
         resolved_config_path.parent,
+        set(repositories),
         set(context_sources),
         set(signals),
     )
@@ -285,10 +311,12 @@ def load_config(config_path: Path) -> Config:
         set(executions),
         set(signals),
     )
+    validate_execution_graph_is_acyclic(executions, propagation_triggers)
 
     return Config(
         version=version,
         agent=agent,
+        repositories=repositories,
         context_sources=context_sources,
         signals=signals,
         propagation_triggers=propagation_triggers,
@@ -310,6 +338,37 @@ def parse_agent(agent_data: Any) -> AgentConfig:
         raise PropagateError("Config 'agent.command' must contain the '{prompt_file}' placeholder.")
 
     return AgentConfig(command=command)
+
+
+def parse_repositories(repositories_data: Any, config_dir: Path) -> dict[str, RepositoryConfig]:
+    if repositories_data is None:
+        return {}
+    if not isinstance(repositories_data, dict) or not repositories_data:
+        raise PropagateError("Config 'repositories' must be a non-empty mapping when provided.")
+
+    repositories: dict[str, RepositoryConfig] = {}
+    for repository_name, repository_data in repositories_data.items():
+        validated_name = validate_context_source_name(repository_name)
+        repositories[validated_name] = parse_repository(validated_name, repository_data, config_dir)
+
+    return repositories
+
+
+def parse_repository(repository_name: str, repository_data: Any, config_dir: Path) -> RepositoryConfig:
+    if not isinstance(repository_data, dict):
+        raise PropagateError(f"Repository '{repository_name}' must be a mapping.")
+
+    validate_allowed_keys(repository_data, {"path"}, f"Repository '{repository_name}'")
+    path_value = repository_data.get("path")
+    if not isinstance(path_value, str) or not path_value.strip():
+        raise PropagateError(f"Repository '{repository_name}' must include a non-empty 'path'.")
+
+    repository_path = Path(path_value).expanduser()
+    if not repository_path.is_absolute():
+        repository_path = config_dir / repository_path
+    repository_path = repository_path.resolve()
+
+    return RepositoryConfig(name=repository_name, path=repository_path)
 
 
 def parse_context_sources(context_sources_data: Any) -> dict[str, ContextSourceConfig]:
@@ -403,12 +462,14 @@ def validate_context_source_name(source_name: Any) -> str:
 def parse_executions(
     executions_data: Any,
     config_dir: Path,
+    repository_names: set[str],
     context_source_names: set[str],
     signal_names: set[str],
 ) -> dict[str, ExecutionConfig]:
     if not isinstance(executions_data, dict) or not executions_data:
         raise PropagateError("Config must include at least one execution in 'executions'.")
 
+    execution_names = set(executions_data)
     executions: dict[str, ExecutionConfig] = {}
     for execution_name, execution_data in executions_data.items():
         if not isinstance(execution_name, str) or not execution_name.strip():
@@ -417,6 +478,8 @@ def parse_executions(
             execution_name,
             execution_data,
             config_dir,
+            repository_names,
+            execution_names,
             context_source_names,
             signal_names,
         )
@@ -428,13 +491,19 @@ def parse_execution(
     name: str,
     execution_data: Any,
     config_dir: Path,
+    repository_names: set[str],
+    execution_names: set[str],
     context_source_names: set[str],
     signal_names: set[str],
 ) -> ExecutionConfig:
     if not isinstance(execution_data, dict):
         raise PropagateError(f"Execution '{name}' must be a mapping.")
 
-    validate_allowed_keys(execution_data, {"sub_tasks", "git", "signals"}, f"Execution '{name}'")
+    validate_allowed_keys(
+        execution_data,
+        {"repository", "depends_on", "sub_tasks", "git", "signals"},
+        f"Execution '{name}'",
+    )
 
     sub_tasks_data = execution_data.get("sub_tasks")
     if not isinstance(sub_tasks_data, list) or not sub_tasks_data:
@@ -447,10 +516,59 @@ def parse_execution(
 
     return ExecutionConfig(
         name=name,
+        repository=parse_execution_repository(name, execution_data.get("repository"), repository_names),
+        depends_on=parse_execution_dependencies(name, execution_data.get("depends_on"), execution_names),
         signals=parse_execution_signals(name, execution_data.get("signals"), signal_names),
         sub_tasks=sub_tasks,
         git=parse_git_config(name, execution_data.get("git"), context_source_names),
     )
+
+
+def parse_execution_repository(
+    execution_name: str,
+    repository_value: Any,
+    repository_names: set[str],
+) -> str | None:
+    if repository_value is None:
+        return None
+    if not isinstance(repository_value, str) or not repository_value.strip():
+        raise PropagateError(f"Execution '{execution_name}' repository must be a non-empty string when provided.")
+    if repository_value not in repository_names:
+        raise PropagateError(f"Execution '{execution_name}' references unknown repository '{repository_value}'.")
+    return repository_value
+
+
+def parse_execution_dependencies(
+    execution_name: str,
+    depends_on_data: Any,
+    execution_names: set[str],
+) -> list[str]:
+    if depends_on_data is None:
+        return []
+    if not isinstance(depends_on_data, list) or not depends_on_data:
+        raise PropagateError(f"Execution '{execution_name}' depends_on must be a non-empty list when provided.")
+
+    dependencies: list[str] = []
+    seen_dependencies: set[str] = set()
+    for dependency_name in depends_on_data:
+        if not isinstance(dependency_name, str) or not dependency_name.strip():
+            raise PropagateError(
+                f"Execution '{execution_name}' depends_on entries must be non-empty strings."
+            )
+        if dependency_name == execution_name:
+            raise PropagateError(f"Execution '{execution_name}' cannot depend on itself.")
+        if dependency_name not in execution_names:
+            raise PropagateError(
+                f"Execution '{execution_name}' depends_on references unknown execution '{dependency_name}'."
+            )
+        if dependency_name in seen_dependencies:
+            raise PropagateError(
+                f"Execution '{execution_name}' depends_on declares duplicate execution '{dependency_name}'."
+            )
+        seen_dependencies.add(dependency_name)
+        dependencies.append(dependency_name)
+
+    return dependencies
 
 
 def parse_execution_signals(
@@ -528,6 +646,76 @@ def parse_propagation_trigger(
             raise PropagateError(f"{location}.on_signal references unknown signal '{on_signal}'.")
 
     return PropagationTriggerConfig(after=after, run=run, on_signal=on_signal)
+
+
+def validate_execution_graph_is_acyclic(
+    executions: dict[str, ExecutionConfig],
+    propagation_triggers: list[PropagationTriggerConfig],
+) -> None:
+    adjacency = build_execution_graph_adjacency(executions, propagation_triggers)
+    visit_state = {name: "unvisited" for name in executions}
+    stack: list[str] = []
+
+    for execution_name in executions:
+        if visit_state[execution_name] != "unvisited":
+            continue
+        visit_execution_graph(execution_name, adjacency, visit_state, stack)
+
+
+def build_execution_graph_adjacency(
+    executions: dict[str, ExecutionConfig],
+    propagation_triggers: list[PropagationTriggerConfig],
+) -> dict[str, tuple[str, ...]]:
+    adjacency = {name: [] for name in executions}
+
+    for execution in executions.values():
+        for dependency_name in execution.depends_on:
+            adjacency[dependency_name].append(execution.name)
+    for trigger in propagation_triggers:
+        adjacency[trigger.after].append(trigger.run)
+
+    return {name: tuple(neighbors) for name, neighbors in adjacency.items()}
+
+
+def build_execution_graph(config: Config) -> ExecutionGraph:
+    return ExecutionGraph(
+        execution_order=tuple(config.executions),
+        triggers_by_after=index_propagation_triggers(config),
+    )
+
+
+def index_propagation_triggers(
+    config: Config,
+) -> dict[str, tuple[PropagationTriggerConfig, ...]]:
+    triggers_by_after = {name: [] for name in config.executions}
+    for trigger in config.propagation_triggers:
+        triggers_by_after[trigger.after].append(trigger)
+    return {name: tuple(triggers) for name, triggers in triggers_by_after.items()}
+
+
+def visit_execution_graph(
+    execution_name: str,
+    adjacency: dict[str, tuple[str, ...]],
+    visit_state: dict[str, str],
+    stack: list[str],
+) -> None:
+    visit_state[execution_name] = "visiting"
+    stack.append(execution_name)
+
+    for next_execution_name in adjacency[execution_name]:
+        next_state = visit_state[next_execution_name]
+        if next_state == "done":
+            continue
+        if next_state == "visiting":
+            cycle_start = stack.index(next_execution_name)
+            cycle_path = stack[cycle_start:] + [next_execution_name]
+            raise PropagateError(
+                f"Execution graph contains a cycle: {' -> '.join(cycle_path)}."
+            )
+        visit_execution_graph(next_execution_name, adjacency, visit_state, stack)
+
+    stack.pop()
+    visit_state[execution_name] = "done"
 
 
 def parse_git_config(
@@ -913,18 +1101,21 @@ def ensure_execution_accepts_signal(execution: ExecutionConfig, active_signal: A
     )
 
 
-def prepare_signal_context(runtime_context: RuntimeContext) -> None:
-    context_dir = get_context_dir(runtime_context.working_dir)
-    LOGGER.info("Clearing ':signal' context namespace in '%s'.", context_dir)
-    clear_signal_context_namespace(context_dir)
-    if runtime_context.active_signal is None:
+def prepare_signal_context_for_working_dir(runtime_context: RuntimeContext) -> None:
+    if runtime_context.working_dir in runtime_context.initialized_signal_context_dirs:
         return
 
-    LOGGER.info(
-        "Populating ':signal' context namespace for signal '%s'.",
-        runtime_context.active_signal.signal_type,
-    )
-    store_active_signal_context(context_dir, runtime_context.active_signal)
+    context_dir = get_context_dir(runtime_context.working_dir)
+    LOGGER.info("Initializing ':signal' context namespace in '%s'.", context_dir)
+    clear_signal_context_namespace(context_dir)
+    if runtime_context.active_signal is not None:
+        LOGGER.info(
+            "Populating ':signal' context namespace for signal '%s'.",
+            runtime_context.active_signal.signal_type,
+        )
+        store_active_signal_context(context_dir, runtime_context.active_signal)
+
+    runtime_context.initialized_signal_context_dirs.add(runtime_context.working_dir)
 
 
 def clear_signal_context_namespace(context_dir: Path) -> None:
@@ -974,81 +1165,225 @@ def serialize_signal_context_value(value: Any) -> str:
     return str(value)
 
 
-def run_execution_queue(config: Config, initial_execution_name: str, runtime_context: RuntimeContext) -> None:
-    queue_state = create_execution_queue_state(initial_execution_name)
+def run_execution_schedule(config: Config, initial_execution_name: str, runtime_context: RuntimeContext) -> None:
+    execution_graph = build_execution_graph(config)
+    schedule_state = ExecutionScheduleState(active_names=set(), completed_names=set())
+    LOGGER.info("Starting execution schedule with initial execution '%s'.", initial_execution_name)
+    activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
 
-    LOGGER.info("Starting execution queue with initial execution '%s'.", initial_execution_name)
-    while queue_state.queue:
-        execution_name = dequeue_execution_name(queue_state)
-        execution = config.executions.get(execution_name)
-        if execution is None:
-            raise PropagateError(f"Execution '{execution_name}' was enqueued by propagation but is not defined.")
+    while True:
+        execution_name = select_next_runnable_execution(config, execution_graph, schedule_state)
+        if execution_name is None:
+            if schedule_state.completed_names == schedule_state.active_names:
+                return
+            remaining_names = remaining_active_execution_names(execution_graph.execution_order, schedule_state)
+            raise PropagateError(
+                "No runnable executions remain for active run plan: "
+                + ", ".join(remaining_names)
+            )
 
-        LOGGER.info("Starting queued execution '%s'.", execution.name)
-        run_configured_execution(execution, runtime_context)
-        queue_state.completed_names.add(execution.name)
-        enqueue_matching_triggers(config, execution.name, runtime_context.active_signal, queue_state)
+        execution = config.executions[execution_name]
+        execution_runtime_context = prepare_execution_runtime_context(config, execution, runtime_context)
+        try:
+            run_configured_execution(execution, execution_runtime_context)
+        except PropagateError as error:
+            raise wrap_execution_runtime_error(execution, error) from error
+        schedule_state.completed_names.add(execution.name)
+        activate_matching_triggers(
+            config,
+            execution_graph,
+            execution.name,
+            runtime_context.active_signal,
+            schedule_state.active_names,
+            schedule_state.completed_names,
+        )
 
 
-def create_execution_queue_state(initial_execution_name: str) -> ExecutionQueueState:
-    return ExecutionQueueState(
-        queue=[initial_execution_name],
-        queued_names={initial_execution_name},
-        completed_names=set(),
-    )
-
-
-def dequeue_execution_name(queue_state: ExecutionQueueState) -> str:
-    execution_name = queue_state.queue.pop(0)
-    queue_state.queued_names.remove(execution_name)
-    return execution_name
-
-
-def enqueue_matching_triggers(
+def activate_matching_triggers(
     config: Config,
+    execution_graph: ExecutionGraph,
     completed_execution_name: str,
     active_signal: ActiveSignal | None,
-    queue_state: ExecutionQueueState,
+    active_execution_names: set[str],
+    completed_execution_names: set[str],
 ) -> None:
     LOGGER.info("Evaluating propagation triggers after execution '%s'.", completed_execution_name)
     active_signal_type = None if active_signal is None else active_signal.signal_type
 
-    for trigger in config.propagation_triggers:
-        if trigger.after != completed_execution_name:
-            continue
+    for trigger in execution_graph.triggers_by_after[completed_execution_name]:
         if trigger.on_signal is not None and trigger.on_signal != active_signal_type:
             continue
 
-        LOGGER.info(
-            "Matched propagation trigger after '%s': enqueue '%s'.",
-            trigger.after,
-            trigger.run,
-        )
-        enqueue_result = enqueue_execution_name_if_needed(trigger.run, queue_state)
-        if enqueue_result == "completed":
+        if trigger.run in completed_execution_names:
             LOGGER.info(
-                "Skipping enqueue of '%s' because it already completed in this run.",
+                "Skipping activation of '%s' because it already completed in this run.",
                 trigger.run,
             )
             continue
-        if enqueue_result == "queued":
+        if trigger.run in active_execution_names:
             LOGGER.info(
-                "Skipping enqueue of '%s' because it is already queued.",
+                "Skipping activation of '%s' because it is already active.",
                 trigger.run,
             )
+            continue
+
+        LOGGER.info(
+            "Matched propagation trigger after '%s': activate '%s'.",
+            trigger.after,
+            trigger.run,
+        )
+        activate_execution_with_dependencies(config, trigger.run, active_execution_names)
 
 
-def enqueue_execution_name_if_needed(
+def activate_execution_with_dependencies(
+    config: Config,
     execution_name: str,
-    queue_state: ExecutionQueueState,
-) -> str:
-    if execution_name in queue_state.completed_names:
-        return "completed"
-    if execution_name in queue_state.queued_names:
-        return "queued"
-    queue_state.queue.append(execution_name)
-    queue_state.queued_names.add(execution_name)
-    return "enqueued"
+    active_execution_names: set[str],
+) -> None:
+    execution = config.executions[execution_name]
+    for dependency_name in execution.depends_on:
+        if dependency_name not in active_execution_names:
+            LOGGER.info(
+                "Activating dependency '%s' for execution '%s'.",
+                dependency_name,
+                execution_name,
+            )
+        activate_execution_with_dependencies(config, dependency_name, active_execution_names)
+
+    if execution_name in active_execution_names:
+        return
+
+    LOGGER.info("Activating execution '%s'.", execution_name)
+    active_execution_names.add(execution_name)
+
+
+def select_next_runnable_execution(
+    config: Config,
+    execution_graph: ExecutionGraph,
+    schedule_state: ExecutionScheduleState,
+) -> str | None:
+    runnable_names = [
+        execution_name
+        for execution_name in execution_graph.execution_order
+        if execution_is_runnable(config.executions[execution_name], schedule_state)
+    ]
+    if not runnable_names:
+        return None
+    if len(runnable_names) > 1:
+        LOGGER.info(
+            "Multiple runnable executions available (%s); selecting '%s' by config order.",
+            ", ".join(runnable_names),
+            runnable_names[0],
+        )
+    return runnable_names[0]
+
+
+def remaining_active_execution_names(
+    execution_order: tuple[str, ...],
+    schedule_state: ExecutionScheduleState,
+) -> list[str]:
+    return [
+        execution_name
+        for execution_name in execution_order
+        if execution_name in schedule_state.active_names
+        and execution_name not in schedule_state.completed_names
+    ]
+
+
+def execution_is_runnable(
+    execution: ExecutionConfig,
+    schedule_state: ExecutionScheduleState,
+) -> bool:
+    if execution.name not in schedule_state.active_names:
+        return False
+    if execution.name in schedule_state.completed_names:
+        return False
+    return all(
+        dependency_name in schedule_state.completed_names
+        for dependency_name in execution.depends_on
+    )
+
+
+def prepare_execution_runtime_context(
+    config: Config,
+    execution: ExecutionConfig,
+    runtime_context: RuntimeContext,
+) -> RuntimeContext:
+    routing = resolve_execution_routing(execution, config, runtime_context.invocation_dir)
+    log_execution_routing(execution, routing)
+    ensure_execution_working_dir(execution, routing)
+    execution_runtime_context = RuntimeContext(
+        agent_command=runtime_context.agent_command,
+        context_sources=runtime_context.context_sources,
+        invocation_dir=runtime_context.invocation_dir,
+        working_dir=routing.working_dir,
+        active_signal=runtime_context.active_signal,
+        initialized_signal_context_dirs=runtime_context.initialized_signal_context_dirs,
+    )
+    prepare_signal_context_for_working_dir(execution_runtime_context)
+    return execution_runtime_context
+
+
+def resolve_execution_routing(
+    execution: ExecutionConfig,
+    config: Config,
+    invocation_dir: Path,
+) -> ExecutionRouting:
+    if execution.repository is None:
+        return ExecutionRouting(
+            working_dir=invocation_dir,
+            location_display=execution_location_display(execution),
+            repository_name=None,
+        )
+    return ExecutionRouting(
+        working_dir=config.repositories[execution.repository].path,
+        location_display=execution_location_display(execution),
+        repository_name=execution.repository,
+    )
+
+
+def log_execution_routing(execution: ExecutionConfig, routing: ExecutionRouting) -> None:
+    if routing.repository_name is None:
+        LOGGER.info(
+            "Routing execution '%s' to invocation working directory '%s'.",
+            execution.name,
+            routing.working_dir,
+        )
+        return
+    LOGGER.info(
+        "Routing execution '%s' to repository '%s' at '%s'.",
+        execution.name,
+        routing.repository_name,
+        routing.working_dir,
+    )
+
+
+def ensure_execution_working_dir(execution: ExecutionConfig, routing: ExecutionRouting) -> None:
+    if not routing.working_dir.exists():
+        raise PropagateError(
+            "Execution "
+            f"'{execution.name}' cannot start {routing.location_display}: "
+            f"working directory does not exist: {routing.working_dir}"
+        )
+    if not routing.working_dir.is_dir():
+        raise PropagateError(
+            "Execution "
+            f"'{execution.name}' cannot start {routing.location_display}: "
+            f"working directory is not a directory: {routing.working_dir}"
+        )
+
+
+def execution_location_display(execution: ExecutionConfig) -> str:
+    if execution.repository is None:
+        return "in the invocation working directory"
+    return f"in repository '{execution.repository}'"
+
+
+def wrap_execution_runtime_error(execution: ExecutionConfig, error: PropagateError) -> PropagateError:
+    return PropagateError(
+        f"Execution '{execution.name}' failed while running {execution_location_display(execution)}: "
+        f"{normalize_error_message(str(error))}."
+    )
 
 
 def run_configured_execution(execution: ExecutionConfig, runtime_context: RuntimeContext) -> None:

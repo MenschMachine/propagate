@@ -185,7 +185,7 @@ class PropagateStage4GitTests(unittest.TestCase):
             agent_content,
         )
         config_data: dict[str, object] = {
-            "version": "5",
+            "version": "6",
             "agent": {"command": command},
             "executions": {
                 "default": {
