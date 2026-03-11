@@ -217,6 +217,7 @@ The important boundary is behavioral, not structural:
 - prompt-path resolution stays in config parsing
 - prompt augmentation still reads the local bag right before the agent call
 - context-source output lands in the same bag read by stage 2
+- validation hooks wrap the existing agent call path without changing how prompts are read, augmented, or handed off
 
 ## Stage boundary
 
@@ -229,7 +230,7 @@ Stage 3 explicitly does not add:
 - task-scoped or global context
 - retries, timeouts, or parallel execution
 
-If a future config reference mentions those capabilities, stage 3 should ignore them rather than partially implementing them.
+Unsupported config keys outside the stage 3 additions should continue to fail validation clearly rather than being partially implemented.
 
 ## Bootstrap output for stage 4
 
