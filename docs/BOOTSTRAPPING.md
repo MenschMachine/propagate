@@ -28,18 +28,46 @@ This means stage 0's bootstrapping prompt must describe not just "build me a CLI
 
 Earlier stages have less capability, so their configs and prompts are simpler. Stage 1 has no context bag, so the stage 2 prompts must carry context inline. Stage 2 has a context bag, so the stage 3 prompts can be leaner. Stage 3 has hooks, so the stage 4 config can use them. The configs get richer as the tool gets richer.
 
+### Bootstrapping sub-task chain
+
+The standard sub-task chain for building code in the bootstrapping process is:
+
+1. **design** — read the spec, produce a design doc
+2. **implement** — write the code
+3. **test** — write tests and run them, fix failures until they pass
+4. **refactor** — clean up the implementation with passing tests as a safety net
+5. **verify** — run the tests again to confirm refactoring didn't break anything
+6. **review** — review the final code against the design and the spec
+
+Stage 0 uses a simpler chain (design → implement → review) because stage 1 is trivial. From stage 2 onward, every stage uses the full 6-step chain.
+
+### Agent-agnostic
+
+Propagate is LLM-agnostic. The agent is a shell command specified in config:
+
+```yaml
+agent:
+  command: codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} in this directory and follow its instructions."
+```
+
+Propagate writes the prompt to a temp file, substitutes `{prompt_file}`, and runs it. This applies at every stage — stage 0's bootstrap script pipes a prompt to an agent command, and every subsequent stage uses the `agent.command` from config.
+
 ### Stage 0: The script
 
-Using the protype pdfdancer-propagate for that.
+Hand-written. ~20 lines. Reads a prompt file, passes it to an agent command, the agent writes files to disk.
+
+```
+./bootstrap.sh prompt.md
+```
 
 The prompt contains everything inline — the full Propagate design spec, the task description. There is no external context, no config, no structure. It's a dumb pipe: file in, agent, files out.
 
 Stage 0's job is to produce stage 1. The bootstrapping prompt asks the agent to build the first real `propagate` CLI — and to produce the config and prompts that stage 1 will use to build stage 2.
 
 **Produces:**
-- `propagate` CLI (stage 1 runtime — config parsing, sub-task sequencing, agent call)
-- `config/propagate.yaml` (stage 1 config — one execution with sub-tasks for building stage 2)
-- `config/prompts/stage2-*.md` (prompts that describe the context bag, with all context inline since stage 1 has no context bag)
+- `propagate.py` (stage 1 runtime — config parsing, sub-task sequencing, agent call)
+- `config/propagate.yaml` (stage 1 config — one execution with the full 6-step sub-task chain for building stage 2)
+- `config/prompts/` (design, implement, test, refactor, verify, review prompts — all with context inline since stage 1 has no context bag)
 
 **Removes:** nothing (this is the hand-written seed)
 
@@ -49,14 +77,14 @@ Stage 0's job is to produce stage 1. The bootstrapping prompt asks the agent to 
 
 Reads a YAML config file, finds the execution, finds the sub-tasks in order, reads each sub-task's prompt file, passes each one to the configured agent command sequentially.
 
-The prompt files still carry all context inline — you hand-write them with whatever the agent needs to know. But the structure is now config-driven. Multiple sub-tasks run in sequence. You can have design → implement → review as three separate prompts that execute one after another.
+The prompt files still carry all context inline — you hand-write them with whatever the agent needs to know. But the structure is now config-driven. Multiple sub-tasks run in sequence. The standard bootstrapping chain is: design → implement → test → refactor → verify → review.
 
 No context bag, no hooks, no git, no signals.
 
 **Produces:**
-- Updated `propagate` CLI (stage 2 runtime — adds context bag and `propagate context set/get`)
-- Updated `config/propagate.yaml` (stage 2 config — uses context bag for the first time)
-- `config/prompts/stage3-*.md` (prompts that describe hooks and context sources — still carry context inline since stage 2 has no hooks to load it automatically)
+- Updated `propagate.py` (stage 2 runtime — adds context bag and `propagate context set/get`)
+- Updated `config/propagate.yaml` (stage 2 config — uses context bag for the first time, full 6-step chain)
+- Updated prompts (describe hooks and context sources — context values now come from the bag instead of inline)
 
 **Removes:** hardcoded paths, single-shot execution.
 
@@ -71,10 +99,10 @@ Values are populated manually before running `propagate --config`. No hooks yet,
 No hooks, no git, no signals.
 
 **Produces:**
-- Updated `propagate` CLI (stage 3 runtime — adds hooks, `on_failure`, context source `:name` loading)
+- Updated `propagate.py` (stage 3 runtime — adds hooks, `on_failure`, context source `:name` loading)
 - Updated `config/propagate.yaml` (stage 3 config — uses hooks to load context sources and validate output)
 - `config/context-sources.yaml` (first context sources — can now exist because stage 3 has hooks to load them)
-- `config/prompts/stage4-*.md` (prompts are now leaner — hooks handle context loading, prompts focus on the task)
+- Updated prompts (leaner — hooks handle context loading, prompts focus on the task)
 
 **Removes:** pasting context into prompt files.
 
@@ -89,9 +117,9 @@ The runtime is now: for each sub-task, run before hook → call agent → run af
 No git, no signals.
 
 **Produces:**
-- Updated `propagate` CLI (stage 4 runtime — adds git operations, branch/commit/push/PR)
+- Updated `propagate.py` (stage 4 runtime — adds git operations, branch/commit/push/PR)
 - Updated `config/propagate.yaml` (stage 4 config — includes `git:` block with branch prefix and message source)
-- Updated prompts for stage 5 (git is now automatic, prompts no longer mention manual commit steps)
+- Updated prompts (git is now automatic, prompts no longer mention manual commit steps)
 
 **Removes:** manually populating context, manually validating output.
 
@@ -106,9 +134,9 @@ The core rule: if the execution already has a PR (because one triggered it), wor
 No signals — you still trigger runs manually.
 
 **Produces:**
-- Updated `propagate` CLI (stage 5 runtime — adds signal detection, propagation block, `wait_for`)
+- Updated `propagate.py` (stage 5 runtime — adds signal detection, propagation block, `wait_for`)
 - Updated `config/propagate.yaml` (stage 5 config — includes `propagation:` block with signal triggers)
-- Updated prompts for stage 6 (can now assume autonomous triggering)
+- Updated prompts (can now assume autonomous triggering)
 
 **Removes:** manually committing and pushing.
 
@@ -131,7 +159,7 @@ Cross-repo orchestration. A merged PR in one repo triggers SDK updates across th
 Global context (`--global`) for values shared across the entire propagation run.
 
 **Produces:**
-- The final `propagate` CLI (feature complete)
+- The final `propagate.py` (feature complete)
 - The final `config/` directory (the real, maintained Propagate-for-Propagate config)
 - The final prompts and guidelines (the living reference that evolves with the tool)
 
@@ -139,15 +167,15 @@ Global context (`--global`) for values shared across the entire propagation run.
 
 ## Summary
 
-| Stage | Produced by | Adds | Output includes | Removes (manual step) |
-|-------|-------------|------|----------------|-----------------------|
-| 0 | Hand-written | Script: prompt → LLM → files | Stage 1 code + config + prompts | — |
-| 1 | Stage 0 | Config parsing, sub-task sequencing | Stage 2 code + config + prompts (context inline) | Hardcoded paths, single-shot |
-| 2 | Stage 1 | Context bag | Stage 3 code + config + prompts (context via bag) | Pasting context into prompts |
-| 3 | Stage 2 | Hooks, context sources | Stage 4 code + config + context-sources.yaml | Manually loading context, manually validating |
-| 4 | Stage 3 | Git operations | Stage 5 code + config with git block | Manually committing and pushing |
-| 5 | Stage 4 | Signals, wait_for, propagation triggers | Stage 6 code + config with propagation block | Manually triggering runs |
-| 6 | Stage 5 | Multi-repo, DAG, global context | Final runtime + final config (self-maintaining) | Single-repo limitation |
+| Stage | Produced by | Adds | Sub-task chain | Removes (manual step) |
+|-------|-------------|------|---------------|-----------------------|
+| 0 | Hand-written | Script: prompt → agent → files | design → implement → review | — |
+| 1 | Stage 0 | Config parsing, sub-task sequencing, agent command | design → implement → test → refactor → verify → review | Hardcoded paths, single-shot |
+| 2 | Stage 1 | Context bag | (full chain, context via bag) | Pasting context into prompts |
+| 3 | Stage 2 | Hooks, context sources | (full chain, hooks run tests) | Manually loading context, manually validating |
+| 4 | Stage 3 | Git operations | (full chain, auto commit+push) | Manually committing and pushing |
+| 5 | Stage 4 | Signals, wait_for, propagation triggers | (full chain, auto triggered) | Manually triggering runs |
+| 6 | Stage 5 | Multi-repo, DAG, global context | (full chain, cross-repo) | Single-repo limitation |
 
 ## What makes this interesting
 
