@@ -1,0 +1,14 @@
+type: repo-change
+payload:
+  branch: main
+  files:
+    - propagate.py
+    - docs/CONFIG_REFERENCE.md
+  urgent: false
+  stats:
+    changed_files: 2
+    docs_only: false
+  release: 6
+  note:
+    owner: docs
+    summary: Keep the stage-6 example bundle aligned with the runtime.
