@@ -1,7 +1,7 @@
 Updated the two requested fixes.
 
-`[config/prompts/design-stage2.md](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/config/prompts/design-stage2.md)` now preserves future compatibility for `:`-prefixed context keys and explicitly calls out the stage-3 `propagate context set :source-name` requirement, instead of leaving the design free to ban `:` entirely.
+[`config/prompts/design-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/config/prompts/design-stage2.md#L29) now makes the constraint explicit: `:`-prefixed context keys must remain representable on disk and are reserved for the stage-3 `propagate context set :source-name` workflow, rather than merely “future compatible.” The same requirement is reinforced in the future-compatibility note at [`config/prompts/design-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/config/prompts/design-stage2.md#L63).
 
-`[.last-message.txt](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/.last-message.txt)` was removed from the tracked tree, and `[.gitignore](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/.gitignore)` now ignores it going forward.
+[` .last-message.txt`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/.last-message.txt) was removed from the tracked tree, so it will disappear from the patch instead of remaining as a modified tracked file. [` .gitignore`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/.gitignore#L3) already ignored it, so no further ignore change was needed.
 
-I did not run tests; this change only touched prompt text and repo hygiene.
+I did not run tests; this was a prompt-text and repo-hygiene change only.

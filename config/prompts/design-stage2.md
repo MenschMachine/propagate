@@ -26,7 +26,7 @@ Your design note must explicitly define:
 
 1. CLI shape and argument parsing changes.
 2. Where the context directory lives. Use the invocation working directory so the store is local to the repo being operated on.
-3. How keys are validated. Prevent path traversal and unsafe filenames while preserving future compatibility for reserved `:`-prefixed keys that stage 3 will use with `propagate context set :source-name`.
+3. How keys are validated. Prevent path traversal and unsafe filenames, allow `:`-prefixed keys to remain representable on disk, and explicitly reserve those keys for future context-source usage because stage 3 hooks will call `propagate context set :source-name`.
 4. How `context set` writes values and what happens on overwrite.
 5. How `context get` reports missing keys. It should fail clearly and write the value to stdout on success.
 6. How `run` loads context values and appends them to the prompt.
@@ -61,8 +61,8 @@ Each stage must produce the runtime for the next stage plus the config and promp
 Future-compatibility note for the design:
 
 - Stage 2 should define a key policy that blocks path traversal and filesystem-unsafe names without painting later stages into a corner.
-- In particular, `:`-prefixed keys must remain representable because stage 3 hooks will load context sources via `propagate context set :source-name`.
-- If stage 2 reserves `:`-prefixed keys for future use, the design should say so explicitly rather than banning `:` outright.
+- In particular, `:`-prefixed keys must remain valid file names in the local store because stage 3 hooks will load context sources via `propagate context set :source-name`.
+- The design should explicitly reserve `:`-prefixed keys for that future context-source workflow instead of banning `:` outright or treating those keys as invalid.
 
 ## Current stage 1 code
 
