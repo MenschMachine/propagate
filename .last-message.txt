@@ -1,0 +1,3 @@
+Appended the requested `## Implementation in propagate` section to [bootstrap-stage-1.md](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-pL1E4k/docs/capabilities/bootstrap-stage-1.md). It documents the actual repo-specific implementation in `propagate.py`, the stage 2 bootstrap config/prompts under `config/`, and the minimal `PyYAML` dependency.
+
+Verified the edit only appends new content and does not rewrite the existing capability text.
