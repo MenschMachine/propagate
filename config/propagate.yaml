@@ -4,34 +4,18 @@ agent:
   command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} in this directory and follow its instructions."'
 
 context_sources:
-  stage6-commit-message:
-    command: 'printf "%s\n\n%s\n" "Build stage 6 runtime" "Advance Propagate to multi-repo orchestration and DAG execution."'
+  commit_message:
+    command: 'gommit -A -f -n -I'
 
-signals:
-  stage5-ready:
-    payload: {}
 
 executions:
-  build-stage6:
-    signals:
-      - stage5-ready
     git:
       branch:
-        name: propagate/build-stage6
+        name: propagate/example-config
         base: main
         reuse: true
       commit:
-        message_source: stage6-commit-message
+        message_source: commit_message
     sub_tasks:
-      - id: design
-        prompt: ./prompts/design-stage6.md
       - id: implement
-        prompt: ./prompts/implement-stage6.md
-      - id: review
-        prompt: ./prompts/review-stage6.md
-      - id: test
-        prompt: ./prompts/test-stage6.md
-      - id: refactor
-        prompt: ./prompts/refactor-stage6.md
-      - id: verify
-        prompt: ./prompts/verify-stage6.md
+        prompt: ./prompts/create-example-config.md
