@@ -151,3 +151,11 @@ config/prompts/design-stage2.md     # Design prompt for stage 2
 config/prompts/implement-stage2.md  # Implementation prompt for stage 2
 config/prompts/review-stage2.md     # Review prompt for stage 2
 ```
+
+## Implementation in propagate
+
+This repo implements stage 1 in a single-file runtime at `propagate.py`. The CLI exposes `propagate run --config <path> [--execution <name>]` via `argparse`, parses YAML with `PyYAML`, validates the minimal stage 1 schema, resolves prompt paths relative to the config file, and runs sub-tasks sequentially in the current working directory so each agent step sees the filesystem changes from the previous one.
+
+Agent execution is configured entirely through `agent.command` in `config/propagate.yaml`. For each sub-task, `propagate.py` reads the prompt file, writes it to a temporary markdown file, substitutes `{prompt_file}` into the configured shell command, executes that command with `subprocess.run(..., shell=True, check=True)`, and then removes the temporary file. Repo-specific error handling is implemented with a `PropagateError` exception plus structured logging instead of `print()`.
+
+The stage 1 bootstrap chain is also checked into this repo: `config/propagate.yaml` defines a single `build-stage2` execution, and `config/prompts/design-stage2.md`, `config/prompts/implement-stage2.md`, and `config/prompts/review-stage2.md` seed the next stage with the full inline context needed to add the context bag. External dependencies stay minimal; `requirements.txt` pins `PyYAML>=6.0,<7.0`.
