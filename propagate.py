@@ -17,6 +17,8 @@ import yaml
 LOGGER = logging.getLogger("propagate")
 CONTEXT_KEY_PATTERN = re.compile(r"^:?[A-Za-z0-9][A-Za-z0-9._-]*$")
 CONTEXT_SOURCE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+SIGNAL_NAMESPACE_PREFIX = ":signal"
+SUPPORTED_SIGNAL_FIELD_TYPES = {"string", "number", "boolean", "list", "mapping", "any"}
 
 
 class PropagateError(Exception):
@@ -32,6 +34,18 @@ class AgentConfig:
 class ContextSourceConfig:
     name: str
     command: str
+
+
+@dataclass(frozen=True)
+class SignalFieldConfig:
+    field_type: str
+    required: bool
+
+
+@dataclass(frozen=True)
+class SignalConfig:
+    name: str
+    payload: dict[str, SignalFieldConfig]
 
 
 @dataclass(frozen=True)
@@ -78,8 +92,16 @@ class SubTaskConfig:
 @dataclass(frozen=True)
 class ExecutionConfig:
     name: str
+    signals: list[str]
     sub_tasks: list[SubTaskConfig]
     git: GitConfig | None
+
+
+@dataclass(frozen=True)
+class PropagationTriggerConfig:
+    after: str
+    run: str
+    on_signal: str | None
 
 
 @dataclass(frozen=True)
@@ -87,8 +109,17 @@ class Config:
     version: str
     agent: AgentConfig
     context_sources: dict[str, ContextSourceConfig]
+    signals: dict[str, SignalConfig]
+    propagation_triggers: list[PropagationTriggerConfig]
     executions: dict[str, ExecutionConfig]
     config_path: Path
+
+
+@dataclass(frozen=True)
+class ActiveSignal:
+    signal_type: str
+    payload: dict[str, Any]
+    source: str
 
 
 @dataclass(frozen=True)
@@ -96,6 +127,20 @@ class RuntimeContext:
     agent_command: str
     context_sources: dict[str, ContextSourceConfig]
     working_dir: Path
+    active_signal: ActiveSignal | None
+
+
+@dataclass
+class ExecutionQueueState:
+    queue: list[str]
+    queued_names: set[str]
+    completed_names: set[str]
+
+
+@dataclass(frozen=True)
+class PreparedGitExecution:
+    starting_branch: str
+    selected_branch: str
 
 
 def configure_logging() -> None:
@@ -109,6 +154,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run an execution from a config file.")
     run_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     run_parser.add_argument("--execution", help="Execution name to run.")
+    run_parser.add_argument("--signal", help="Signal name to activate for this run.")
+    run_parser.add_argument(
+        "--signal-payload",
+        help="Signal payload as a YAML or JSON mapping. Requires --signal.",
+    )
+    run_parser.add_argument(
+        "--signal-file",
+        help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.",
+    )
 
     context_parser = subparsers.add_parser("context", help="Manage local context values.")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
@@ -146,7 +200,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "run":
-        return run_command(args.config, args.execution)
+        return run_command(
+            args.config,
+            args.execution,
+            args.signal,
+            args.signal_payload,
+            args.signal_file,
+        )
     if args.command == "context":
         return dispatch_context_command(args, working_dir)
     return None
@@ -160,22 +220,28 @@ def dispatch_context_command(args: argparse.Namespace, working_dir: Path) -> int
     return None
 
 
-def run_command(config_value: str, execution_name: str | None) -> int:
+def run_command(
+    config_value: str,
+    execution_name: str | None,
+    signal_name: str | None,
+    signal_payload: str | None,
+    signal_file: str | None,
+) -> int:
     config_path = Path(config_value).expanduser()
     config = load_config(config_path)
-    execution = select_execution(config, execution_name)
+    active_signal = parse_active_signal(signal_name, signal_payload, signal_file, config.signals)
+    log_active_signal(active_signal)
+
+    initial_execution = select_initial_execution(config, execution_name, active_signal)
     runtime_context = RuntimeContext(
         agent_command=config.agent.command,
         context_sources=config.context_sources,
         working_dir=Path.cwd(),
+        active_signal=active_signal,
     )
 
-    LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
-    if execution.git is None:
-        run_execution(execution, runtime_context)
-    else:
-        run_execution_with_git(execution, runtime_context)
-    LOGGER.info("Execution '%s' completed successfully.", execution.name)
+    prepare_signal_context(runtime_context)
+    run_execution_queue(config, initial_execution.name, runtime_context)
     return 0
 
 
@@ -195,24 +261,37 @@ def load_config(config_path: Path) -> Config:
     if not isinstance(raw_data, dict):
         raise PropagateError("Config must be a YAML mapping.")
 
-    validate_allowed_keys(raw_data, {"version", "agent", "context_sources", "executions"}, "Config")
+    validate_allowed_keys(
+        raw_data,
+        {"version", "agent", "context_sources", "signals", "executions", "propagation"},
+        "Config",
+    )
 
     version = raw_data.get("version")
-    if version != "4":
-        raise PropagateError("Config version must be '4' for stage 4.")
+    if version != "5":
+        raise PropagateError("Config version must be '5' for stage 5.")
 
     agent = parse_agent(raw_data.get("agent"))
     context_sources = parse_context_sources(raw_data.get("context_sources"))
+    signals = parse_signal_configs(raw_data.get("signals"))
     executions = parse_executions(
         raw_data.get("executions"),
         resolved_config_path.parent,
         set(context_sources),
+        set(signals),
+    )
+    propagation_triggers = parse_propagation_triggers(
+        raw_data.get("propagation"),
+        set(executions),
+        set(signals),
     )
 
     return Config(
         version=version,
         agent=agent,
         context_sources=context_sources,
+        signals=signals,
+        propagation_triggers=propagation_triggers,
         executions=executions,
         config_path=resolved_config_path,
     )
@@ -259,6 +338,62 @@ def parse_context_source(source_name: Any, source_data: Any) -> ContextSourceCon
     return ContextSourceConfig(name=validated_name, command=command)
 
 
+def parse_signal_configs(signals_data: Any) -> dict[str, SignalConfig]:
+    if signals_data is None:
+        return {}
+    if not isinstance(signals_data, dict) or not signals_data:
+        raise PropagateError("Config 'signals' must be a non-empty mapping when provided.")
+
+    signals: dict[str, SignalConfig] = {}
+    for signal_name, signal_data in signals_data.items():
+        validated_name = validate_context_source_name(signal_name)
+        signals[validated_name] = parse_signal_config(validated_name, signal_data)
+
+    return signals
+
+
+def parse_signal_config(signal_name: str, signal_data: Any) -> SignalConfig:
+    if not isinstance(signal_data, dict):
+        raise PropagateError(f"Signal '{signal_name}' must be a mapping.")
+
+    validate_allowed_keys(signal_data, {"payload"}, f"Signal '{signal_name}'")
+    payload_data = signal_data.get("payload")
+    if not isinstance(payload_data, dict):
+        raise PropagateError(f"Signal '{signal_name}' must define a 'payload' mapping.")
+
+    payload: dict[str, SignalFieldConfig] = {}
+    for field_name, field_data in payload_data.items():
+        validated_field_name = validate_signal_field_name(field_name)
+        payload[validated_field_name] = parse_signal_field_config(signal_name, validated_field_name, field_data)
+
+    return SignalConfig(name=signal_name, payload=payload)
+
+
+def validate_signal_field_name(field_name: Any) -> str:
+    validated_name = validate_context_key(field_name)
+    if validated_name.startswith(":"):
+        raise PropagateError(f"Invalid signal payload field name '{field_name}'.")
+    return validated_name
+
+
+def parse_signal_field_config(signal_name: str, field_name: str, field_data: Any) -> SignalFieldConfig:
+    location = f"Signal '{signal_name}' payload field '{field_name}'"
+    if not isinstance(field_data, dict):
+        raise PropagateError(f"{location} must be a mapping.")
+
+    validate_allowed_keys(field_data, {"type", "required"}, location)
+    field_type = field_data.get("type", "string")
+    if not isinstance(field_type, str) or field_type not in SUPPORTED_SIGNAL_FIELD_TYPES:
+        supported_types = ", ".join(sorted(SUPPORTED_SIGNAL_FIELD_TYPES))
+        raise PropagateError(f"{location}.type must be one of: {supported_types}.")
+
+    required = field_data.get("required", False)
+    if not isinstance(required, bool):
+        raise PropagateError(f"{location}.required must be a boolean when provided.")
+
+    return SignalFieldConfig(field_type=field_type, required=required)
+
+
 def validate_context_source_name(source_name: Any) -> str:
     if not isinstance(source_name, str) or not CONTEXT_SOURCE_NAME_PATTERN.fullmatch(source_name):
         raise PropagateError(f"Invalid context source name '{source_name}'.")
@@ -269,6 +404,7 @@ def parse_executions(
     executions_data: Any,
     config_dir: Path,
     context_source_names: set[str],
+    signal_names: set[str],
 ) -> dict[str, ExecutionConfig]:
     if not isinstance(executions_data, dict) or not executions_data:
         raise PropagateError("Config must include at least one execution in 'executions'.")
@@ -282,6 +418,7 @@ def parse_executions(
             execution_data,
             config_dir,
             context_source_names,
+            signal_names,
         )
 
     return executions
@@ -292,11 +429,12 @@ def parse_execution(
     execution_data: Any,
     config_dir: Path,
     context_source_names: set[str],
+    signal_names: set[str],
 ) -> ExecutionConfig:
     if not isinstance(execution_data, dict):
         raise PropagateError(f"Execution '{name}' must be a mapping.")
 
-    validate_allowed_keys(execution_data, {"sub_tasks", "git"}, f"Execution '{name}'")
+    validate_allowed_keys(execution_data, {"sub_tasks", "git", "signals"}, f"Execution '{name}'")
 
     sub_tasks_data = execution_data.get("sub_tasks")
     if not isinstance(sub_tasks_data, list) or not sub_tasks_data:
@@ -309,9 +447,87 @@ def parse_execution(
 
     return ExecutionConfig(
         name=name,
+        signals=parse_execution_signals(name, execution_data.get("signals"), signal_names),
         sub_tasks=sub_tasks,
         git=parse_git_config(name, execution_data.get("git"), context_source_names),
     )
+
+
+def parse_execution_signals(
+    execution_name: str,
+    signals_data: Any,
+    signal_names: set[str],
+) -> list[str]:
+    if signals_data is None:
+        return []
+    if not isinstance(signals_data, list) or not signals_data:
+        raise PropagateError(f"Execution '{execution_name}' signals must be a non-empty list when provided.")
+
+    resolved_signals: list[str] = []
+    seen_signals: set[str] = set()
+    for signal_name in signals_data:
+        validated_name = validate_context_source_name(signal_name)
+        if validated_name not in signal_names:
+            raise PropagateError(f"Execution '{execution_name}' references unknown signal '{validated_name}'.")
+        if validated_name in seen_signals:
+            raise PropagateError(f"Execution '{execution_name}' declares duplicate signal '{validated_name}'.")
+        seen_signals.add(validated_name)
+        resolved_signals.append(validated_name)
+
+    return resolved_signals
+
+
+def parse_propagation_triggers(
+    propagation_data: Any,
+    execution_names: set[str],
+    signal_names: set[str],
+) -> list[PropagationTriggerConfig]:
+    if propagation_data is None:
+        return []
+    if not isinstance(propagation_data, dict):
+        raise PropagateError("Config 'propagation' must be a mapping when provided.")
+
+    validate_allowed_keys(propagation_data, {"triggers"}, "Config 'propagation'")
+    triggers_data = propagation_data.get("triggers")
+    if not isinstance(triggers_data, list) or not triggers_data:
+        raise PropagateError("Config 'propagation.triggers' must be a non-empty list.")
+
+    return [
+        parse_propagation_trigger(index, trigger_data, execution_names, signal_names)
+        for index, trigger_data in enumerate(triggers_data, start=1)
+    ]
+
+
+def parse_propagation_trigger(
+    index: int,
+    trigger_data: Any,
+    execution_names: set[str],
+    signal_names: set[str],
+) -> PropagationTriggerConfig:
+    location = f"Propagation trigger #{index}"
+    if not isinstance(trigger_data, dict):
+        raise PropagateError(f"{location} must be a mapping.")
+
+    validate_allowed_keys(trigger_data, {"after", "run", "on_signal"}, location)
+    after = trigger_data.get("after")
+    run = trigger_data.get("run")
+    on_signal = trigger_data.get("on_signal")
+
+    if not isinstance(after, str) or not after.strip():
+        raise PropagateError(f"{location}.after must be a non-empty string.")
+    if after not in execution_names:
+        raise PropagateError(f"{location}.after references unknown execution '{after}'.")
+    if not isinstance(run, str) or not run.strip():
+        raise PropagateError(f"{location}.run must be a non-empty string.")
+    if run not in execution_names:
+        raise PropagateError(f"{location}.run references unknown execution '{run}'.")
+    if on_signal is not None:
+        if not isinstance(on_signal, str) or not on_signal.strip():
+            raise PropagateError(f"{location}.on_signal must be a non-empty string when provided.")
+        if on_signal not in signal_names:
+            raise PropagateError(f"{location}.on_signal references unknown signal '{on_signal}'.")
+
+    return PropagationTriggerConfig(after=after, run=run, on_signal=on_signal)
 
 
 def parse_git_config(
@@ -499,6 +715,173 @@ def validate_allowed_keys(data: dict[str, Any], allowed_keys: set[str], location
         raise PropagateError(f"{location} has unsupported keys: {joined_keys}")
 
 
+def parse_active_signal(
+    signal_name: str | None,
+    signal_payload: str | None,
+    signal_file: str | None,
+    signal_configs: dict[str, SignalConfig],
+) -> ActiveSignal | None:
+    if signal_file is not None and (signal_name is not None or signal_payload is not None):
+        raise PropagateError("--signal-file cannot be combined with --signal or --signal-payload.")
+    if signal_payload is not None and signal_name is None:
+        raise PropagateError("--signal-payload requires --signal.")
+    if signal_name is None and signal_file is None:
+        return None
+
+    if signal_file is not None:
+        resolved_signal_path = Path(signal_file).expanduser().resolve()
+        signal_type, payload = load_signal_file(resolved_signal_path)
+        source = str(resolved_signal_path)
+    else:
+        signal_type = validate_context_source_name(signal_name)
+        payload = parse_signal_payload_mapping(
+            signal_payload if signal_payload is not None else "{}",
+            f"Signal '{signal_type}' payload",
+        )
+        source = "cli"
+
+    try:
+        signal_config = signal_configs[signal_type]
+    except KeyError as error:
+        raise PropagateError(f"Signal '{signal_type}' is not defined in config.") from error
+
+    validate_signal_payload(signal_config, payload)
+    return ActiveSignal(signal_type=signal_type, payload=payload, source=source)
+
+
+def load_signal_file(signal_path: Path) -> tuple[str, dict[str, Any]]:
+    if not signal_path.exists():
+        raise PropagateError(f"Signal file does not exist: {signal_path}")
+
+    try:
+        with signal_path.open("r", encoding="utf-8") as handle:
+            raw_data = yaml.safe_load(handle)
+    except OSError as error:
+        raise PropagateError(f"Failed to read signal file {signal_path}: {error}") from error
+    except yaml.YAMLError as error:
+        raise PropagateError(f"Failed to parse signal file {signal_path}: {error}") from error
+
+    if not isinstance(raw_data, dict):
+        raise PropagateError(f"Signal file '{signal_path}' must define a mapping with key 'type'.")
+
+    validate_allowed_keys(raw_data, {"type", "payload"}, f"Signal file '{signal_path}'")
+    signal_type = raw_data.get("type")
+    if not isinstance(signal_type, str) or not signal_type.strip():
+        raise PropagateError(f"Signal file '{signal_path}' must define a mapping with key 'type'.")
+
+    payload = raw_data.get("payload", {})
+    if not isinstance(payload, dict):
+        raise PropagateError(f"Signal file '{signal_path}' payload must be a mapping.")
+
+    return validate_context_source_name(signal_type), payload
+
+
+def parse_signal_payload_mapping(payload_text: str, location: str) -> dict[str, Any]:
+    try:
+        parsed_payload = yaml.safe_load(payload_text)
+    except yaml.YAMLError as error:
+        raise PropagateError(f"Failed to parse {location}: {error}") from error
+
+    if not isinstance(parsed_payload, dict):
+        raise PropagateError(f"{location} must be a mapping.")
+    return parsed_payload
+
+
+def validate_signal_payload(signal_config: SignalConfig, payload: dict[str, Any]) -> None:
+    unknown_fields = sorted(set(payload) - set(signal_config.payload))
+    if unknown_fields:
+        raise PropagateError(
+            f"Signal '{signal_config.name}' payload includes unknown field '{unknown_fields[0]}'."
+        )
+
+    for field_name, field_config in signal_config.payload.items():
+        if field_config.required and field_name not in payload:
+            raise PropagateError(
+                f"Signal '{signal_config.name}' payload is missing required field '{field_name}'."
+            )
+
+    for field_name, value in payload.items():
+        field_config = signal_config.payload[field_name]
+        if signal_value_matches_type(value, field_config.field_type):
+            continue
+        raise PropagateError(
+            f"Signal '{signal_config.name}' payload field '{field_name}' must be "
+            f"{describe_signal_field_type(field_config.field_type)}."
+        )
+
+
+def signal_value_matches_type(value: Any, field_type: str) -> bool:
+    if field_type == "string":
+        return isinstance(value, str)
+    if field_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if field_type == "boolean":
+        return isinstance(value, bool)
+    if field_type == "list":
+        return isinstance(value, list)
+    if field_type == "mapping":
+        return isinstance(value, dict)
+    return True
+
+
+def describe_signal_field_type(field_type: str) -> str:
+    if field_type == "string":
+        return "a string"
+    if field_type == "number":
+        return "a number"
+    if field_type == "boolean":
+        return "a boolean"
+    if field_type == "list":
+        return "a list"
+    if field_type == "mapping":
+        return "a mapping"
+    return "a valid value"
+
+
+def log_active_signal(active_signal: ActiveSignal | None) -> None:
+    if active_signal is None:
+        LOGGER.info("No signal supplied for this run.")
+        return
+    LOGGER.info(
+        "Signal supplied for this run: type='%s', source='%s'.",
+        active_signal.signal_type,
+        active_signal.source,
+    )
+
+
+def select_initial_execution(
+    config: Config,
+    requested_name: str | None,
+    active_signal: ActiveSignal | None,
+) -> ExecutionConfig:
+    if requested_name:
+        execution = select_execution(config, requested_name)
+        ensure_execution_accepts_signal(execution, active_signal)
+        return execution
+
+    if active_signal is not None:
+        matching_executions = [
+            execution
+            for execution in config.executions.values()
+            if active_signal.signal_type in execution.signals
+        ]
+        if not matching_executions:
+            raise PropagateError(f"No execution accepts signal '{active_signal.signal_type}'.")
+        if len(matching_executions) > 1:
+            raise PropagateError(
+                f"Multiple executions accept signal '{active_signal.signal_type}'; specify --execution."
+            )
+        execution = matching_executions[0]
+        LOGGER.info(
+            "Auto-selected execution '%s' for signal '%s'.",
+            execution.name,
+            active_signal.signal_type,
+        )
+        return execution
+
+    return select_execution(config, None)
+
+
 def select_execution(config: Config, requested_name: str | None) -> ExecutionConfig:
     if requested_name:
         try:
@@ -518,6 +901,165 @@ def select_execution(config: Config, requested_name: str | None) -> ExecutionCon
     )
 
 
+def ensure_execution_accepts_signal(execution: ExecutionConfig, active_signal: ActiveSignal | None) -> None:
+    if active_signal is None or not execution.signals:
+        return
+    if active_signal.signal_type in execution.signals:
+        return
+    allowed_signals = ", ".join(execution.signals)
+    raise PropagateError(
+        f"Execution '{execution.name}' does not accept signal '{active_signal.signal_type}'. "
+        f"Allowed signals: {allowed_signals}."
+    )
+
+
+def prepare_signal_context(runtime_context: RuntimeContext) -> None:
+    context_dir = get_context_dir(runtime_context.working_dir)
+    LOGGER.info("Clearing ':signal' context namespace in '%s'.", context_dir)
+    clear_signal_context_namespace(context_dir)
+    if runtime_context.active_signal is None:
+        return
+
+    LOGGER.info(
+        "Populating ':signal' context namespace for signal '%s'.",
+        runtime_context.active_signal.signal_type,
+    )
+    store_active_signal_context(context_dir, runtime_context.active_signal)
+
+
+def clear_signal_context_namespace(context_dir: Path) -> None:
+    if not context_dir.exists():
+        return
+    require_context_dir(context_dir)
+
+    try:
+        entries = list(context_dir.iterdir())
+    except OSError as error:
+        raise PropagateError(f"Failed to read context directory {context_dir}: {error}") from error
+
+    for entry in entries:
+        if entry.name != SIGNAL_NAMESPACE_PREFIX and not entry.name.startswith(f"{SIGNAL_NAMESPACE_PREFIX}."):
+            continue
+        if not entry.is_file():
+            raise PropagateError(f"Context entry '{entry.name}' is not a file in {context_dir}.")
+        try:
+            entry.unlink()
+        except OSError as error:
+            raise PropagateError(
+                f"Failed to clear signal context key '{entry.name}' in {context_dir}: {error}"
+            ) from error
+
+
+def store_active_signal_context(context_dir: Path, active_signal: ActiveSignal) -> None:
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":signal.type", active_signal.signal_type)
+    write_context_value(context_dir, ":signal.source", active_signal.source)
+    write_context_value(
+        context_dir,
+        ":signal.payload",
+        yaml.safe_dump(active_signal.payload, sort_keys=True),
+    )
+
+    for field_name, field_value in active_signal.payload.items():
+        write_context_value(
+            context_dir,
+            f":signal.{field_name}",
+            serialize_signal_context_value(field_value),
+        )
+
+
+def serialize_signal_context_value(value: Any) -> str:
+    if isinstance(value, (list, dict)):
+        return yaml.safe_dump(value, sort_keys=True)
+    return str(value)
+
+
+def run_execution_queue(config: Config, initial_execution_name: str, runtime_context: RuntimeContext) -> None:
+    queue_state = create_execution_queue_state(initial_execution_name)
+
+    LOGGER.info("Starting execution queue with initial execution '%s'.", initial_execution_name)
+    while queue_state.queue:
+        execution_name = dequeue_execution_name(queue_state)
+        execution = config.executions.get(execution_name)
+        if execution is None:
+            raise PropagateError(f"Execution '{execution_name}' was enqueued by propagation but is not defined.")
+
+        LOGGER.info("Starting queued execution '%s'.", execution.name)
+        run_configured_execution(execution, runtime_context)
+        queue_state.completed_names.add(execution.name)
+        enqueue_matching_triggers(config, execution.name, runtime_context.active_signal, queue_state)
+
+
+def create_execution_queue_state(initial_execution_name: str) -> ExecutionQueueState:
+    return ExecutionQueueState(
+        queue=[initial_execution_name],
+        queued_names={initial_execution_name},
+        completed_names=set(),
+    )
+
+
+def dequeue_execution_name(queue_state: ExecutionQueueState) -> str:
+    execution_name = queue_state.queue.pop(0)
+    queue_state.queued_names.remove(execution_name)
+    return execution_name
+
+
+def enqueue_matching_triggers(
+    config: Config,
+    completed_execution_name: str,
+    active_signal: ActiveSignal | None,
+    queue_state: ExecutionQueueState,
+) -> None:
+    LOGGER.info("Evaluating propagation triggers after execution '%s'.", completed_execution_name)
+    active_signal_type = None if active_signal is None else active_signal.signal_type
+
+    for trigger in config.propagation_triggers:
+        if trigger.after != completed_execution_name:
+            continue
+        if trigger.on_signal is not None and trigger.on_signal != active_signal_type:
+            continue
+
+        LOGGER.info(
+            "Matched propagation trigger after '%s': enqueue '%s'.",
+            trigger.after,
+            trigger.run,
+        )
+        enqueue_result = enqueue_execution_name_if_needed(trigger.run, queue_state)
+        if enqueue_result == "completed":
+            LOGGER.info(
+                "Skipping enqueue of '%s' because it already completed in this run.",
+                trigger.run,
+            )
+            continue
+        if enqueue_result == "queued":
+            LOGGER.info(
+                "Skipping enqueue of '%s' because it is already queued.",
+                trigger.run,
+            )
+
+
+def enqueue_execution_name_if_needed(
+    execution_name: str,
+    queue_state: ExecutionQueueState,
+) -> str:
+    if execution_name in queue_state.completed_names:
+        return "completed"
+    if execution_name in queue_state.queued_names:
+        return "queued"
+    queue_state.queue.append(execution_name)
+    queue_state.queued_names.add(execution_name)
+    return "enqueued"
+
+
+def run_configured_execution(execution: ExecutionConfig, runtime_context: RuntimeContext) -> None:
+    LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
+    if execution.git is None:
+        run_execution(execution, runtime_context)
+    else:
+        run_execution_with_git(execution, runtime_context)
+    LOGGER.info("Execution '%s' completed successfully.", execution.name)
+
+
 def run_execution_with_git(execution: ExecutionConfig, runtime_context: RuntimeContext) -> None:
     git_config = execution.git
     if git_config is None:
@@ -525,33 +1067,67 @@ def run_execution_with_git(execution: ExecutionConfig, runtime_context: RuntimeC
         return
 
     LOGGER.info("Git automation enabled for execution '%s'.", execution.name)
-    try:
-        ensure_git_repository(runtime_context.working_dir)
-        starting_branch = get_current_branch(runtime_context.working_dir)
-        LOGGER.info("Detected starting branch '%s'.", starting_branch)
-        ensure_clean_working_tree(runtime_context.working_dir)
-    except PropagateError as error:
-        raise cannot_start_execution_git_automation(execution.name, error) from error
+    prepared_execution = prepare_git_execution(execution.name, git_config.branch, runtime_context.working_dir)
+    run_execution(execution, runtime_context)
+    publish_git_execution_changes(execution, git_config, runtime_context, prepared_execution)
 
+
+def prepare_git_execution(
+    execution_name: str,
+    branch_config: GitBranchConfig,
+    working_dir: Path,
+) -> PreparedGitExecution:
+    starting_branch = prepare_git_execution_start(execution_name, working_dir)
+    selected_branch = prepare_git_execution_branch(
+        execution_name,
+        branch_config,
+        starting_branch,
+        working_dir,
+    )
+    return PreparedGitExecution(starting_branch=starting_branch, selected_branch=selected_branch)
+
+
+def prepare_git_execution_start(execution_name: str, working_dir: Path) -> str:
+    try:
+        ensure_git_repository(working_dir)
+        starting_branch = get_current_branch(working_dir)
+        LOGGER.info("Detected starting branch '%s'.", starting_branch)
+        ensure_clean_working_tree(working_dir)
+    except PropagateError as error:
+        raise cannot_start_execution_git_automation(execution_name, error) from error
+    return starting_branch
+
+
+def prepare_git_execution_branch(
+    execution_name: str,
+    branch_config: GitBranchConfig,
+    starting_branch: str,
+    working_dir: Path,
+) -> str:
     try:
         target_branch = resolve_execution_branch_name(
-            git_config.branch,
-            execution.name,
-            runtime_context.working_dir,
+            branch_config,
+            execution_name,
+            working_dir,
         )
-        base_ref = git_config.branch.base or starting_branch
-        selected_branch = prepare_execution_branch(
+        base_ref = branch_config.base or starting_branch
+        return prepare_execution_branch(
             target_branch,
             base_ref,
-            git_config.branch.reuse,
+            branch_config.reuse,
             starting_branch,
-            runtime_context.working_dir,
+            working_dir,
         )
     except PropagateError as error:
-        raise wrap_execution_git_phase_error(execution.name, "branch setup", error) from error
+        raise wrap_execution_git_phase_error(execution_name, "branch setup", error) from error
 
-    run_execution(execution, runtime_context)
 
+def publish_git_execution_changes(
+    execution: ExecutionConfig,
+    git_config: GitConfig,
+    runtime_context: RuntimeContext,
+    prepared_execution: PreparedGitExecution,
+) -> None:
     if not working_tree_has_changes(runtime_context.working_dir):
         LOGGER.info(
             "No repository changes detected after execution '%s'; skipping commit, push, and PR steps.",
@@ -559,34 +1135,76 @@ def run_execution_with_git(execution: ExecutionConfig, runtime_context: RuntimeC
         )
         return
 
+    commit_message = load_execution_commit_message(execution.name, git_config.commit, runtime_context)
+    create_execution_git_commit(execution.name, commit_message, runtime_context.working_dir)
+    push_execution_git_branch(
+        execution.name,
+        git_config.push,
+        prepared_execution.selected_branch,
+        runtime_context.working_dir,
+    )
+    create_execution_git_pr(
+        execution.name,
+        git_config,
+        prepared_execution,
+        commit_message,
+        runtime_context.working_dir,
+    )
+
+
+def load_execution_commit_message(
+    execution_name: str,
+    commit_config: GitCommitConfig,
+    runtime_context: RuntimeContext,
+) -> str:
     try:
-        commit_message = load_commit_message(git_config.commit, runtime_context, execution.name)
+        return load_commit_message(commit_config, runtime_context, execution_name)
     except PropagateError as error:
-        raise wrap_execution_git_phase_error(execution.name, "commit-message generation", error) from error
+        raise wrap_execution_git_phase_error(execution_name, "commit-message generation", error) from error
 
+
+def create_execution_git_commit(execution_name: str, commit_message: str, working_dir: Path) -> None:
     try:
-        create_execution_commit(commit_message, runtime_context.working_dir)
+        create_execution_commit(commit_message, working_dir)
     except PropagateError as error:
-        raise wrap_execution_git_phase_error(execution.name, "commit creation", error) from error
+        raise wrap_execution_git_phase_error(execution_name, "commit creation", error) from error
 
-    if git_config.push is not None:
-        try:
-            push_branch(git_config.push, selected_branch, runtime_context.working_dir)
-        except PropagateError as error:
-            raise wrap_execution_git_phase_error(execution.name, "push", error) from error
 
-    if git_config.pr is not None:
-        pr_base = git_config.pr.base or git_config.branch.base or starting_branch
-        try:
-            create_pull_request(
-                git_config.pr,
-                pr_base,
-                selected_branch,
-                commit_message,
-                runtime_context.working_dir,
-            )
-        except PropagateError as error:
-            raise wrap_execution_git_phase_error(execution.name, "PR creation", error) from error
+def push_execution_git_branch(
+    execution_name: str,
+    push_config: GitPushConfig | None,
+    selected_branch: str,
+    working_dir: Path,
+) -> None:
+    if push_config is None:
+        return
+    try:
+        push_branch(push_config, selected_branch, working_dir)
+    except PropagateError as error:
+        raise wrap_execution_git_phase_error(execution_name, "push", error) from error
+
+
+def create_execution_git_pr(
+    execution_name: str,
+    git_config: GitConfig,
+    prepared_execution: PreparedGitExecution,
+    commit_message: str,
+    working_dir: Path,
+) -> None:
+    if git_config.pr is None:
+        return
+
+    pr_base = git_config.pr.base or git_config.branch.base or prepared_execution.starting_branch
+    try:
+        create_pull_request(
+            git_config.pr,
+            pr_base,
+            prepared_execution.selected_branch,
+            commit_message,
+            working_dir,
+        )
+    except PropagateError as error:
+        raise wrap_execution_git_phase_error(execution_name, "PR creation", error) from error
 
 
 def cannot_start_execution_git_automation(execution_name: str, error: PropagateError) -> PropagateError:
@@ -770,8 +1388,8 @@ def run_execution_context_source(
     working_dir: Path,
     execution_name: str,
 ) -> str:
-    output = capture_context_source_output(
-        context_source.command,
+    return capture_and_store_context_source_output(
+        context_source,
         working_dir,
         failure_message=(
             f"Context source '{context_source.name}' failed for execution '{execution_name}' with exit code "
@@ -781,8 +1399,6 @@ def run_execution_context_source(
             f"Failed to start context source '{context_source.name}' for execution '{execution_name}': {{error}}"
         ),
     )
-    store_context_source_output(context_source.name, output, working_dir)
-    return output
 
 
 def create_execution_commit(commit_message: str, working_dir: Path) -> None:
@@ -878,7 +1494,7 @@ def run_sub_task(
         sub_task.prompt_path,
     )
 
-    run_before_hooks(sub_task, runtime_context)
+    run_sub_task_hook_phase(sub_task, "before", sub_task.before, runtime_context)
 
     temp_prompt_path = prepare_sub_task_prompt(sub_task, runtime_context.working_dir)
     try:
@@ -886,17 +1502,22 @@ def run_sub_task(
     finally:
         cleanup_temp_file(temp_prompt_path, "temporary prompt file")
 
-    run_after_hooks(sub_task, runtime_context)
+    run_sub_task_hook_phase(sub_task, "after", sub_task.after, runtime_context)
 
     LOGGER.info("Completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution_name)
 
 
-def run_before_hooks(sub_task: SubTaskConfig, runtime_context: RuntimeContext) -> None:
+def run_sub_task_hook_phase(
+    sub_task: SubTaskConfig,
+    phase: str,
+    actions: list[str],
+    runtime_context: RuntimeContext,
+) -> None:
     try:
         run_hook_phase(
             sub_task.task_id,
-            "before",
-            sub_task.before,
+            phase,
+            actions,
             runtime_context.context_sources,
             runtime_context.working_dir,
         )
@@ -913,19 +1534,6 @@ def run_sub_task_agent(sub_task: SubTaskConfig, temp_prompt_path: Path, runtime_
     command = build_agent_command(runtime_context.agent_command, temp_prompt_path)
     try:
         run_agent_command(command, runtime_context.working_dir, sub_task.task_id)
-    except PropagateError as error:
-        handle_sub_task_failure(sub_task, runtime_context.context_sources, runtime_context.working_dir, error)
-
-
-def run_after_hooks(sub_task: SubTaskConfig, runtime_context: RuntimeContext) -> None:
-    try:
-        run_hook_phase(
-            sub_task.task_id,
-            "after",
-            sub_task.after,
-            runtime_context.context_sources,
-            runtime_context.working_dir,
-        )
     except PropagateError as error:
         handle_sub_task_failure(sub_task, runtime_context.context_sources, runtime_context.working_dir, error)
 
@@ -980,8 +1588,8 @@ def run_hook_phase(
 
 
 def run_context_source(context_source: ContextSourceConfig, working_dir: Path, task_id: str) -> None:
-    output = capture_context_source_output(
-        context_source.command,
+    capture_and_store_context_source_output(
+        context_source,
         working_dir,
         failure_message=(
             f"Context source '{context_source.name}' failed for sub-task '{task_id}' with exit code {{exit_code}}."
@@ -990,7 +1598,23 @@ def run_context_source(context_source: ContextSourceConfig, working_dir: Path, t
             f"Failed to start context source '{context_source.name}' for sub-task '{task_id}': {{error}}"
         ),
     )
+
+
+def capture_and_store_context_source_output(
+    context_source: ContextSourceConfig,
+    working_dir: Path,
+    *,
+    failure_message: str,
+    start_failure_message: str,
+) -> str:
+    output = capture_context_source_output(
+        context_source.command,
+        working_dir,
+        failure_message=failure_message,
+        start_failure_message=start_failure_message,
+    )
     store_context_source_output(context_source.name, output, working_dir)
+    return output
 
 
 def capture_context_source_output(

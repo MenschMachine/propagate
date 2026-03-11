@@ -106,7 +106,7 @@ The core rule: if the execution already has a PR (because one triggered it), wor
 No signals — you still trigger runs manually.
 
 **Produces:**
-- Updated `propagate` CLI (stage 5 runtime — adds signal detection, propagation block, `wait_for`)
+- Updated `propagate` CLI (stage 5 runtime — adds signal detection and repository-local propagation triggers)
 - Updated `config/propagate.yaml` (stage 5 config — includes `propagation:` block with signal triggers)
 - Updated prompts for stage 6 (can now assume autonomous triggering)
 
@@ -116,9 +116,7 @@ No signals — you still trigger runs manually.
 
 PR events trigger executions automatically. The `propagation` block is read. Labels, merges, and PR creation are watched.
 
-`wait_for` gates on sub-tasks work — the execution pauses until a signal fires (like `design_approved` label added by a human).
-
-Propagate now runs autonomously on a single repo. A PR with the right label triggers the right execution. This is where Propagate starts developing itself.
+Propagate now runs autonomously on a single repo. A signal with the right type triggers the right execution, and successful executions can enqueue deterministic follow-on executions in the same repository. This is where Propagate starts developing itself.
 
 **Removes:** manually triggering runs.
 
@@ -146,7 +144,7 @@ Global context (`--global`) for values shared across the entire propagation run.
 | 2 | Stage 1 | Context bag | Stage 3 code + config + prompts (context via bag) | Pasting context into prompts |
 | 3 | Stage 2 | Hooks, context sources | Stage 4 code + config + context-sources.yaml | Manually loading context, manually validating |
 | 4 | Stage 3 | Git operations | Stage 5 code + config with git block | Manually committing and pushing |
-| 5 | Stage 4 | Signals, wait_for, propagation triggers | Stage 6 code + config with propagation block | Manually triggering runs |
+| 5 | Stage 4 | Signals, repository-local propagation triggers | Stage 6 code + config with propagation block | Manually triggering runs |
 | 6 | Stage 5 | Multi-repo, DAG, global context | Final runtime + final config (self-maintaining) | Single-repo limitation |
 
 ## What makes this interesting

@@ -1,31 +1,37 @@
-version: "4"
+version: "5"
 
 agent:
   command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} in this directory and follow its instructions."'
 
 context_sources:
-  stage5-commit-message:
-    command: 'printf "%s\n\n%s\n" "Build stage 5 runtime" "Advance Propagate to signals and propagation triggers."'
+  stage6-commit-message:
+    command: 'printf "%s\n\n%s\n" "Build stage 6 runtime" "Advance Propagate to multi-repo orchestration and DAG execution."'
+
+signals:
+  stage5-ready:
+    payload: {}
 
 executions:
-  build-stage5:
+  build-stage6:
+    signals:
+      - stage5-ready
     git:
       branch:
-        name: propagate/build-stage5
+        name: propagate/build-stage6
         base: main
         reuse: true
       commit:
-        message_source: stage5-commit-message
+        message_source: stage6-commit-message
     sub_tasks:
       - id: design
-        prompt: ./prompts/design-stage5.md
+        prompt: ./prompts/design-stage6.md
       - id: implement
-        prompt: ./prompts/implement-stage5.md
+        prompt: ./prompts/implement-stage6.md
       - id: review
-        prompt: ./prompts/review-stage5.md
+        prompt: ./prompts/review-stage6.md
       - id: test
-        prompt: ./prompts/test-stage5.md
+        prompt: ./prompts/test-stage6.md
       - id: refactor
-        prompt: ./prompts/refactor-stage5.md
+        prompt: ./prompts/refactor-stage6.md
       - id: verify
-        prompt: ./prompts/verify-stage5.md
+        prompt: ./prompts/verify-stage6.md
