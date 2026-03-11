@@ -1,25 +1,20 @@
-version: "4"
+version: "1"
 
 agent:
   command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} in this directory and follow its instructions."'
 
-context_sources:
-  commit-message:
-    command: "printf 'Build stage 5 runtime\n\nAdvance Propagate to signals and propagation triggers.\n'"
-
 executions:
-  build-stage5:
-    git:
-      branch:
-        name: propagate/build-stage5
-        base: main
-        reuse: true
-      commit:
-        message_source: commit-message
+  build-stage2:
     sub_tasks:
       - id: design
-        prompt: ./prompts/design-stage5.md
-      - id: implementation
-        prompt: ./prompts/implement-stage5.md
+        prompt: ./prompts/design-stage2.md
+      - id: implement
+        prompt: ./prompts/implement-stage2.md
+      - id: test
+        prompt: ./prompts/test-stage2.md
+      - id: refactor
+        prompt: ./prompts/refactor-stage2.md
+      - id: verify
+        prompt: ./prompts/verify-stage2.md
       - id: review
-        prompt: ./prompts/review-stage5.md
+        prompt: ./prompts/review-stage2.md

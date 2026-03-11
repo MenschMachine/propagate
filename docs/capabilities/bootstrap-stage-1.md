@@ -1,4 +1,4 @@
-# Bootstrapping Propagate — Stage 0 Prompt
+# Bootstrapping Propagate — Stage 1
 
 You are building Propagate, a CLI tool that orchestrates AI agent tasks across repositories. This is the bootstrapping prompt — the very first step in a self-hosting build chain where each stage produces the next.
 
@@ -61,8 +61,14 @@ executions:
     sub_tasks:
       - id: design
         prompt: ./prompts/design.md
-      - id: implementation
+      - id: implement
         prompt: ./prompts/implement.md
+      - id: test
+        prompt: ./prompts/test.md
+      - id: refactor
+        prompt: ./prompts/refactor.md
+      - id: verify
+        prompt: ./prompts/verify.md
       - id: review
         prompt: ./prompts/review.md
 ```
@@ -98,12 +104,16 @@ Write this as a single Python file: `propagate.py`. It should be runnable as `py
 
 ## Also produce: config and prompts for stage 2
 
-Stage 1's purpose is to build stage 2. So in addition to the `propagate.py` code, also produce:
+Stage 1's purpose is to build stage 2. So in addition to the `propagate.py` code, also produce the config and prompts that, when run with stage 1, will build stage 2.
 
-1. `config/propagate.yaml` — a stage 1 config that, when run with your CLI, will produce stage 2
-2. `config/prompts/design-stage2.md` — a prompt for the design sub-task
-3. `config/prompts/implement-stage2.md` — a prompt for the implementation sub-task
-4. `config/prompts/review-stage2.md` — a prompt for the review sub-task
+The sub-task chain for building code is: design → implement → test → refactor → verify → review. This is the standard bootstrapping chain used from stage 2 onward:
+
+1. **design** — read the spec, produce a design doc describing the approach, data structures, edge cases
+2. **implement** — write the code
+3. **test** — write tests and run them, fix failures until they pass
+4. **refactor** — clean up the implementation with passing tests as a safety net
+5. **verify** — run the tests again to confirm refactoring didn't break anything
+6. **review** — review the final code against the design and the spec
 
 ### What stage 2 adds
 
@@ -116,21 +126,33 @@ Stage 2 adds the context bag to `propagate.py`. Specifically:
 - The agent sees all context values automatically — they're part of the prompt it receives
 - No `--task` or `--global` scoping yet — that comes in stage 6
 
+### Stage 2 prompts
+
 The stage 2 prompts must carry all context inline (since stage 1 has no context bag). This means each prompt must contain:
 
 - The full Propagate design vision (what the tool will eventually become)
 - The current state of `propagate.py` (stage 1 code — the agent will be modifying this file)
-- The specific task for that sub-task (design the context bag, implement it, review the implementation)
+- The specific task for that sub-task
 
-Since stage 1 prompts must be self-contained, the design prompt should describe the context bag in detail: how it's stored, how the CLI subcommands work, how values are injected into the agent prompt, and how this connects to the larger vision (hooks in stage 3 will use the context bag to load context sources via `propagate context set :source-name`).
+Since stage 1 prompts must be self-contained, each prompt should describe in detail what needs to happen. The design prompt should describe the context bag: how it's stored, how the CLI subcommands work, how values are injected into the agent prompt, and how this connects to the larger vision (hooks in stage 3 will use the context bag to load context sources via `propagate context set :source-name`).
+
+The test prompt should tell the agent to write tests for the context bag: setting/getting values, the `.propagate-context/` directory structure, context injection into prompts. The agent must run the tests and fix any failures.
+
+The refactor prompt should tell the agent to clean up the codebase with tests as a safety net.
+
+The verify prompt should tell the agent to run all tests and confirm they pass. If anything fails, fix it.
+
+The review prompt should tell the agent to review the code against the design and the bootstrapping spec.
 
 ## The full vision (for reference)
 
 The complete Propagate config format — what stage 6 looks like — is summarized below. You don't need to implement any of this now, but the stage 2 prompts should reference this vision so the chain continues:
 
-**Config sections:** version, includes, defaults, repositories, context_sources, executions, propagation
+**Config sections:** version, agent, includes, defaults, repositories, context_sources, executions, propagation
 
-**Context:** A key-value bag with three scopes (local, task, global). Auto-populated from trigger signals (pr_number, pr_title, etc.). Written by hooks via `propagate context set`. The agent sees all global + local context automatically. Context sources are named shell commands loaded via `propagate context set :name`.
+**Agent:** A shell command configured in YAML. Propagate writes the prompt to a temp file, substitutes `{prompt_file}`, and runs it. LLM-agnostic.
+
+**Context:** A key-value bag with three scopes (local, task, global). Auto-populated from trigger signals (pr_number, pr_title, etc.). Written by hooks via `propagate context set`. The agent sees all global + local context automatically. Upstream task context must be pulled into local explicitly. Context sources are named shell commands loaded via `propagate context set :name`.
 
 **Executions:** Task definitions with sub-tasks. Each sub-task has a prompt, optional hooks (before/after/on_failure), and optional `wait_for` gates. Guidelines are markdown files listed on the execution.
 
@@ -146,16 +168,17 @@ Produce these files:
 
 ```
 propagate.py                        # The stage 1 CLI
-config/propagate.yaml               # Config for building stage 2
-config/prompts/design-stage2.md     # Design prompt for stage 2
-config/prompts/implement-stage2.md  # Implementation prompt for stage 2
-config/prompts/review-stage2.md     # Review prompt for stage 2
+config/propagate.yaml               # Config for building stage 2 (6 sub-tasks)
+config/prompts/design-stage2.md     # Design the context bag
+config/prompts/implement-stage2.md  # Implement it
+config/prompts/test-stage2.md       # Write and run tests
+config/prompts/refactor-stage2.md   # Refactor with tests as safety net
+config/prompts/verify-stage2.md     # Run tests again, confirm green
+config/prompts/review-stage2.md     # Review against design and spec
 ```
 
 ## Implementation in propagate
 
-This repo implements stage 1 in a single-file runtime at `propagate.py`. The CLI exposes `propagate run --config <path> [--execution <name>]` via `argparse`, parses YAML with `PyYAML`, validates the minimal stage 1 schema, resolves prompt paths relative to the config file, and runs sub-tasks sequentially in the current working directory so each agent step sees the filesystem changes from the previous one.
+In this repo, stage 1 is implemented by simplifying [`propagate.py`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/propagate.py) back to the minimal bootstrap runtime. The CLI only supports `propagate run --config <path> [--execution <name>]`, validates that the config only contains `version`, `agent`, and `executions`, resolves prompt paths relative to the config file, writes each prompt to a temporary Markdown file, shell-quotes `{prompt_file}` into `agent.command`, and runs sub-tasks sequentially in the invocation working directory. Repo-specific cleanup in this stage also removes later-stage features such as context commands, hooks, context sources, git automation, and propagation logic so the runtime matches the stage 1 contract exactly.
 
-Agent execution is configured entirely through `agent.command` in `config/propagate.yaml`. For each sub-task, `propagate.py` reads the prompt file, writes it to a temporary markdown file, substitutes `{prompt_file}` into the configured shell command, executes that command with `subprocess.run(..., shell=True, check=True)`, and then removes the temporary file. Repo-specific error handling is implemented with a `PropagateError` exception plus structured logging instead of `print()`.
-
-The stage 1 bootstrap chain is also checked into this repo: `config/propagate.yaml` defines a single `build-stage2` execution, and `config/prompts/design-stage2.md`, `config/prompts/implement-stage2.md`, and `config/prompts/review-stage2.md` seed the next stage with the full inline context needed to add the context bag. External dependencies stay minimal; `requirements.txt` pins `PyYAML>=6.0,<7.0`.
+The bootstrap output for the next step lives in [`config/propagate.yaml`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/config/propagate.yaml) and the stage 2 prompt set under [`config/prompts/design-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/config/prompts/design-stage2.md), [`config/prompts/implement-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/config/prompts/implement-stage2.md), [`config/prompts/test-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/config/prompts/test-stage2.md), [`config/prompts/refactor-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/config/prompts/refactor-stage2.md), [`config/prompts/verify-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/config/prompts/verify-stage2.md), and [`config/prompts/review-stage2.md`](/private/var/folders/cr/4kbt5vt168zbpw3tt9h9lpvc0000gn/T/propagate-propagate-8a1nsY/config/prompts/review-stage2.md). This config is pinned to `version: "1"`, defines a single `build-stage2` execution, and uses the standard six-step design/implement/test/refactor/verify/review chain so the stage 1 runtime can build the stage 2 context-bag implementation from self-contained prompts.

@@ -1,49 +1,28 @@
-# Stage 2 Review Task
+# Stage 2 Refactor Task
 
-You are performing the final review for stage 2 of Propagate. Review the implemented repository state against the specification below, fix defects directly, and leave the repo ready for stage 3.
+You are refactoring the stage-2 Propagate implementation after tests have been added. Use the passing tests as a safety net and improve the code without changing stage boundaries.
 
-## Review goals
+## Refactor goals
 
-1. Confirm stage-1 behavior still works:
-   - YAML config parsing
-   - execution selection
-   - sequential sub-task execution
-   - prompt temp-file handling
-   - configured agent command execution
-2. Confirm stage-2 behavior works:
-   - `propagate context set <key> <value>`
-   - `propagate context get <key>`
-   - `.propagate-context/<key>` storage
-   - deterministic context injection into prompts during `run`
-3. Confirm the bootstrap chain advanced correctly:
-   - `config/propagate.yaml` targets `build-stage3`
-   - the six stage-3 prompts exist and describe hooks plus context sources
-4. Fix any issues you find instead of only reporting them.
+- Clarify the structure of `propagate.py`.
+- Remove duplication where it meaningfully improves readability.
+- Keep error handling explicit and user-facing.
+- Preserve deterministic prompt rendering and context loading behavior.
+- Keep the implementation in a single file.
+- Do not add hooks, git, signals, includes, defaults, or package restructuring.
 
-## Review checklist
+## Required follow-through
 
-- Unsafe keys are rejected.
-- Missing context keys fail clearly.
-- `context get` writes values to stdout, not logs.
-- `run` still works if `.propagate-context` does not exist.
-- Context files are loaded in sorted order.
-- Prompt augmentation uses a readable `## Context` section.
-- The code stays within stage-2 scope.
-- Tests exist and pass.
+1. Run the tests before refactoring if needed so you know the current state.
+2. Refactor conservatively.
+3. Run the tests again after refactoring.
+4. Keep the stage-3 bootstrap outputs coherent:
+   - `config/propagate.yaml` should target `build-stage3`
+   - the six stage-3 prompts should still exist and describe hooks/context sources
 
 ## Full Propagate vision
 
-Propagate is a self-hosting orchestration CLI. The final system includes:
-
-- config sections `version`, `agent`, `includes`, `defaults`, `repositories`, `context_sources`, `executions`, and `propagation`
-- reusable prompt-driven sub-tasks
-- local, task, and global context scopes
-- hooks and named context sources
-- git automation
-- signal-triggered propagation
-- multi-repo DAG workflows
-
-The roadmap is:
+Propagate evolves by stages:
 
 - Stage 1: config-driven execution
 - Stage 2: local context bag
@@ -52,9 +31,11 @@ The roadmap is:
 - Stage 5: signals and propagation triggers
 - Stage 6: multi-repo DAG orchestration
 
+Stage 2 should stay narrow. Refactor for quality, not scope expansion.
+
 ## Current stage 1 code
 
-This was the exact baseline before stage-2 work began:
+This was the exact baseline before the stage-2 changes:
 
 ```python
 from __future__ import annotations
