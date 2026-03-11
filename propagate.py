@@ -4,6 +4,7 @@ import argparse
 import logging
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,38 @@ class ContextSourceConfig:
 
 
 @dataclass(frozen=True)
+class GitBranchConfig:
+    name: str | None
+    base: str | None
+    reuse: bool
+
+
+@dataclass(frozen=True)
+class GitCommitConfig:
+    message_source: str | None
+    message_key: str | None
+
+
+@dataclass(frozen=True)
+class GitPushConfig:
+    remote: str
+
+
+@dataclass(frozen=True)
+class GitPrConfig:
+    base: str | None
+    draft: bool
+
+
+@dataclass(frozen=True)
+class GitConfig:
+    branch: GitBranchConfig
+    commit: GitCommitConfig
+    push: GitPushConfig | None
+    pr: GitPrConfig | None
+
+
+@dataclass(frozen=True)
 class SubTaskConfig:
     task_id: str
     prompt_path: Path
@@ -46,6 +79,7 @@ class SubTaskConfig:
 class ExecutionConfig:
     name: str
     sub_tasks: list[SubTaskConfig]
+    git: GitConfig | None
 
 
 @dataclass(frozen=True)
@@ -160,13 +194,13 @@ def load_config(config_path: Path) -> Config:
         raise PropagateError("Config must be a YAML mapping.")
 
     version = raw_data.get("version")
-    if version != "3":
-        raise PropagateError("Config version must be '3' for stage 3.")
+    if version != "4":
+        raise PropagateError("Config version must be '4' for stage 4.")
 
     agent = parse_agent(raw_data.get("agent"))
     context_sources = parse_context_sources(raw_data.get("context_sources"))
     executions = parse_executions(raw_data.get("executions"), resolved_config_path.parent)
-    validate_hook_references(executions, context_sources)
+    validate_context_references(executions, context_sources)
 
     return Config(
         version=version,
@@ -204,7 +238,7 @@ def parse_context_sources(context_sources_data: Any) -> dict[str, ContextSourceC
             raise PropagateError(f"Context source '{validated_name}' must be a mapping.")
         if set(source_data) != {"command"}:
             raise PropagateError(
-                f"Context source '{validated_name}' must define only the 'command' field in stage 3."
+                f"Context source '{validated_name}' must define only the 'command' field in stage 4."
             )
 
         command = source_data.get("command")
@@ -268,7 +302,8 @@ def parse_execution(name: str, execution_data: Any, config_dir: Path) -> Executi
             )
         )
 
-    return ExecutionConfig(name=name, sub_tasks=sub_tasks)
+    git_config = parse_git_config(name, execution_data.get("git"))
+    return ExecutionConfig(name=name, sub_tasks=sub_tasks, git=git_config)
 
 
 def parse_hook_actions(actions_data: Any, execution_name: str, task_id: str, phase: str) -> list[str]:
@@ -292,6 +327,126 @@ def parse_hook_actions(actions_data: Any, execution_name: str, task_id: str, pha
     return actions
 
 
+def parse_git_config(execution_name: str, git_data: Any) -> GitConfig | None:
+    if git_data is None:
+        return None
+    if not isinstance(git_data, dict):
+        raise PropagateError(f"Execution '{execution_name}' field 'git' must be a mapping.")
+
+    allowed_fields = {"branch", "commit", "push", "pr"}
+    unknown_fields = sorted(set(git_data) - allowed_fields)
+    if unknown_fields:
+        raise PropagateError(
+            f"Execution '{execution_name}' field 'git' has unsupported keys: {', '.join(unknown_fields)}."
+        )
+
+    branch = parse_git_branch_config(execution_name, git_data.get("branch"))
+    commit = parse_git_commit_config(execution_name, git_data.get("commit"))
+    push = parse_git_push_config(execution_name, git_data.get("push"))
+    pr = parse_git_pr_config(execution_name, git_data.get("pr"))
+    if pr is not None and push is None:
+        raise PropagateError(f"Execution '{execution_name}' field 'git.pr' requires 'git.push'.")
+
+    return GitConfig(branch=branch, commit=commit, push=push, pr=pr)
+
+
+def parse_git_branch_config(execution_name: str, branch_data: Any) -> GitBranchConfig:
+    if not isinstance(branch_data, dict):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.branch' must be a mapping.")
+
+    allowed_fields = {"name", "base", "reuse"}
+    unknown_fields = sorted(set(branch_data) - allowed_fields)
+    if unknown_fields:
+        raise PropagateError(
+            f"Execution '{execution_name}' field 'git.branch' has unsupported keys: {', '.join(unknown_fields)}."
+        )
+
+    name = branch_data.get("name")
+    base = branch_data.get("base")
+    reuse = branch_data.get("reuse", True)
+
+    if name is not None and (not isinstance(name, str) or not name.strip()):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.branch.name' must be a non-empty string.")
+    if base is not None and (not isinstance(base, str) or not base.strip()):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.branch.base' must be a non-empty string.")
+    if not isinstance(reuse, bool):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.branch.reuse' must be a boolean.")
+
+    return GitBranchConfig(name=name, base=base, reuse=reuse)
+
+
+def parse_git_commit_config(execution_name: str, commit_data: Any) -> GitCommitConfig:
+    if not isinstance(commit_data, dict):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.commit' must be a mapping.")
+
+    allowed_fields = {"message_source", "message_key"}
+    unknown_fields = sorted(set(commit_data) - allowed_fields)
+    if unknown_fields:
+        raise PropagateError(
+            f"Execution '{execution_name}' field 'git.commit' has unsupported keys: {', '.join(unknown_fields)}."
+        )
+
+    message_source = commit_data.get("message_source")
+    message_key = commit_data.get("message_key")
+    if (message_source is None and message_key is None) or (message_source is not None and message_key is not None):
+        raise PropagateError(
+            f"Execution '{execution_name}' field 'git.commit' must define exactly one of "
+            "'message_source' or 'message_key'."
+        )
+
+    if message_source is not None:
+        message_source = validate_context_source_name(message_source)
+    if message_key is not None:
+        if not isinstance(message_key, str) or not message_key.strip():
+            raise PropagateError(f"Execution '{execution_name}' field 'git.commit.message_key' must be a string.")
+        message_key = validate_context_key(message_key)
+        if not message_key.startswith(":"):
+            raise PropagateError(
+                f"Execution '{execution_name}' field 'git.commit.message_key' must use a reserved ':' key."
+            )
+
+    return GitCommitConfig(message_source=message_source, message_key=message_key)
+
+
+def parse_git_push_config(execution_name: str, push_data: Any) -> GitPushConfig | None:
+    if push_data is None:
+        return None
+    if not isinstance(push_data, dict):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.push' must be a mapping.")
+
+    if set(push_data) != {"remote"}:
+        raise PropagateError(f"Execution '{execution_name}' field 'git.push' must define only 'remote'.")
+
+    remote = push_data.get("remote")
+    if not isinstance(remote, str) or not remote.strip():
+        raise PropagateError(f"Execution '{execution_name}' field 'git.push.remote' must be a non-empty string.")
+
+    return GitPushConfig(remote=remote)
+
+
+def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None:
+    if pr_data is None:
+        return None
+    if not isinstance(pr_data, dict):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.pr' must be a mapping.")
+
+    allowed_fields = {"base", "draft"}
+    unknown_fields = sorted(set(pr_data) - allowed_fields)
+    if unknown_fields:
+        raise PropagateError(
+            f"Execution '{execution_name}' field 'git.pr' has unsupported keys: {', '.join(unknown_fields)}."
+        )
+
+    base = pr_data.get("base")
+    draft = pr_data.get("draft", False)
+    if base is not None and (not isinstance(base, str) or not base.strip()):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.pr.base' must be a non-empty string.")
+    if not isinstance(draft, bool):
+        raise PropagateError(f"Execution '{execution_name}' field 'git.pr.draft' must be a boolean.")
+
+    return GitPrConfig(base=base, draft=draft)
+
+
 def validate_context_source_name(source_name: Any) -> str:
     if not isinstance(source_name, str) or not source_name.strip():
         raise PropagateError("Context source names must be non-empty strings.")
@@ -300,7 +455,7 @@ def validate_context_source_name(source_name: Any) -> str:
     return validate_context_key(source_name)
 
 
-def validate_hook_references(
+def validate_context_references(
     executions: dict[str, ExecutionConfig],
     context_sources: dict[str, ContextSourceConfig],
 ) -> None:
@@ -320,6 +475,16 @@ def validate_hook_references(
                             f"Execution '{execution.name}' sub-task '{sub_task.task_id}' "
                             f"{phase} hook #{index} references undefined context source '{source_name}'."
                         )
+
+        if execution.git is None or execution.git.commit.message_source is None:
+            continue
+
+        source_name = execution.git.commit.message_source
+        if source_name not in context_sources:
+            raise PropagateError(
+                f"Execution '{execution.name}' field 'git.commit.message_source' "
+                f"references undefined context source '{source_name}'."
+            )
 
 
 def select_execution(config: Config, requested_name: str | None) -> ExecutionConfig:
@@ -347,8 +512,61 @@ def run_execution(
     context_sources: dict[str, ContextSourceConfig],
     working_dir: Path,
 ) -> None:
+    if execution.git is None:
+        run_sub_tasks(execution, agent_command, context_sources, working_dir)
+        return
+
+    run_git_automated_execution(execution, agent_command, context_sources, working_dir)
+
+
+def run_sub_tasks(
+    execution: ExecutionConfig,
+    agent_command: str,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> None:
     for sub_task in execution.sub_tasks:
         run_sub_task(sub_task, agent_command, context_sources, working_dir)
+
+
+def run_git_automated_execution(
+    execution: ExecutionConfig,
+    agent_command: str,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> None:
+    if execution.git is None:
+        raise PropagateError(f"Execution '{execution.name}' is missing git configuration.")
+
+    git_config = execution.git
+    LOGGER.info("Git automation enabled for execution '%s'.", execution.name)
+    verify_git_repository(execution.name, working_dir)
+
+    starting_branch = get_current_branch_name(execution.name, working_dir)
+    LOGGER.info("Execution '%s' started on branch '%s'.", execution.name, starting_branch)
+
+    ensure_clean_working_tree(execution.name, working_dir)
+
+    target_branch = git_config.branch.name or f"propagate/{execution.name}"
+    validate_git_branch_name(execution.name, target_branch, working_dir)
+    target_base = git_config.branch.base or starting_branch
+    checkout_execution_branch(execution.name, git_config.branch, target_branch, target_base, starting_branch, working_dir)
+
+    run_sub_tasks(execution, agent_command, context_sources, working_dir)
+
+    if not working_tree_has_changes(working_dir):
+        LOGGER.info("Execution '%s' produced no changes; skipping commit, push, and PR steps.", execution.name)
+        return
+
+    commit_message = resolve_commit_message(execution, context_sources, working_dir)
+    create_git_commit(execution.name, commit_message, working_dir)
+
+    if git_config.push is not None:
+        push_git_branch(execution.name, git_config.push.remote, target_branch, working_dir)
+
+    if git_config.pr is not None:
+        pr_base = git_config.pr.base or git_config.branch.base or starting_branch
+        create_pull_request(execution.name, git_config.pr, target_branch, pr_base, commit_message, working_dir)
 
 
 def run_sub_task(
@@ -500,6 +718,313 @@ def format_hook_failure_message(phase: str, index: int, task_id: str, return_cod
         "on_failure": "on_failure",
     }
     return f"{phase_names[phase]} hook #{index} failed for sub-task '{task_id}' with exit code {return_code}."
+
+
+def verify_git_repository(execution_name: str, working_dir: Path) -> None:
+    run_process(
+        ["git", "rev-parse", "--show-toplevel"],
+        working_dir,
+        f"Execution '{execution_name}' cannot start git automation: current directory is not a git work tree",
+    )
+
+
+def get_current_branch_name(execution_name: str, working_dir: Path) -> str:
+    result = run_process(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        working_dir,
+        f"Execution '{execution_name}' failed to determine the starting branch",
+    )
+    branch_name = result.stdout.strip()
+    if not branch_name:
+        raise PropagateError(f"Execution '{execution_name}' failed to determine the starting branch.")
+    return branch_name
+
+
+def ensure_clean_working_tree(execution_name: str, working_dir: Path) -> None:
+    LOGGER.info("Checking for a clean working tree for execution '%s'.", execution_name)
+    result = get_repository_changes(
+        working_dir,
+        f"Execution '{execution_name}' failed during dirty-tree check",
+    )
+    if result.stdout.strip():
+        raise PropagateError(f"Execution '{execution_name}' cannot start git automation: working tree is dirty.")
+
+
+def validate_git_branch_name(execution_name: str, branch_name: str, working_dir: Path) -> None:
+    run_process(
+        ["git", "check-ref-format", "--branch", branch_name],
+        working_dir,
+        f"Execution '{execution_name}' failed during branch setup: branch '{branch_name}' is invalid",
+    )
+
+
+def checkout_execution_branch(
+    execution_name: str,
+    branch_config: GitBranchConfig,
+    target_branch: str,
+    base_ref: str,
+    starting_branch: str,
+    working_dir: Path,
+) -> None:
+    if starting_branch == target_branch:
+        LOGGER.info("Execution '%s' is already on branch '%s'.", execution_name, target_branch)
+        return
+
+    branch_exists = git_local_branch_exists(target_branch, working_dir)
+    if branch_exists:
+        if not branch_config.reuse:
+            raise PropagateError(
+                f"Execution '{execution_name}' failed during branch setup: "
+                f"branch '{target_branch}' already exists and reuse is disabled."
+            )
+        LOGGER.info("Checking out existing branch '%s' for execution '%s'.", target_branch, execution_name)
+        run_process(
+            ["git", "checkout", target_branch],
+            working_dir,
+            f"Execution '{execution_name}' failed during branch setup",
+        )
+        return
+
+    ensure_git_ref_exists(execution_name, base_ref, working_dir)
+    LOGGER.info("Creating branch '%s' from '%s' for execution '%s'.", target_branch, base_ref, execution_name)
+    run_process(
+        ["git", "checkout", "-b", target_branch, base_ref],
+        working_dir,
+        f"Execution '{execution_name}' failed during branch setup",
+    )
+
+
+def git_local_branch_exists(branch_name: str, working_dir: Path) -> bool:
+    try:
+        subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"],
+            cwd=working_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError:
+        return False
+    except OSError as error:
+        raise PropagateError(f"Failed to inspect local branch '{branch_name}': {error}") from error
+    return True
+
+
+def ensure_git_ref_exists(execution_name: str, ref_name: str, working_dir: Path) -> None:
+    run_process(
+        ["git", "rev-parse", "--verify", f"{ref_name}^{{commit}}"],
+        working_dir,
+        f"Execution '{execution_name}' failed during branch setup: base ref '{ref_name}' was not found",
+    )
+
+
+def working_tree_has_changes(working_dir: Path) -> bool:
+    result = get_repository_changes(working_dir, "Failed to inspect working tree changes")
+    return bool(result.stdout.strip())
+
+
+def resolve_commit_message(
+    execution: ExecutionConfig,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> str:
+    if execution.git is None:
+        raise PropagateError(f"Execution '{execution.name}' is missing git configuration.")
+
+    commit_config = execution.git.commit
+    context_dir = get_context_dir(working_dir)
+    message_key = commit_config.message_key
+
+    if commit_config.message_source is not None:
+        source_name = commit_config.message_source
+        LOGGER.info("Running commit-message context source '%s' for execution '%s'.", source_name, execution.name)
+        message = run_execution_context_source(execution.name, source_name, context_sources, working_dir)
+        message_key = f":{source_name}"
+        write_context_value(context_dir, message_key, message)
+
+    if message_key is None:
+        raise PropagateError(f"Execution '{execution.name}' could not resolve a commit-message key.")
+
+    commit_message = read_context_value(context_dir, message_key)
+    if not commit_message.strip():
+        raise PropagateError(f"Execution '{execution.name}' failed during commit creation: commit message is empty.")
+    return commit_message
+
+
+def run_execution_context_source(
+    execution_name: str,
+    source_name: str,
+    context_sources: dict[str, ContextSourceConfig],
+    working_dir: Path,
+) -> str:
+    try:
+        context_source = context_sources[source_name]
+    except KeyError as error:
+        raise PropagateError(
+            f"Execution '{execution_name}' field 'git.commit.message_source' references undefined context source "
+            f"'{source_name}'."
+        ) from error
+
+    try:
+        result = subprocess.run(
+            context_source.command,
+            shell=True,
+            cwd=working_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise PropagateError(
+            f"Execution '{execution_name}' failed during commit-message generation from context source "
+            f"'{source_name}': {error}"
+        ) from error
+    except subprocess.CalledProcessError as error:
+        message = (
+            f"Execution '{execution_name}' failed during commit-message generation from context source "
+            f"'{source_name}' with exit code {error.returncode}."
+        )
+        error_excerpt = format_stderr_excerpt(error.stderr)
+        if error_excerpt:
+            message = f"{message} {error_excerpt}"
+        raise PropagateError(message) from error
+
+    return result.stdout
+
+
+def create_git_commit(execution_name: str, commit_message: str, working_dir: Path) -> None:
+    LOGGER.info("Creating git commit for execution '%s'.", execution_name)
+    run_process(
+        ["git", "add", "-A", "--", ".", ":(exclude).propagate-context"],
+        working_dir,
+        f"Execution '{execution_name}' failed during commit creation",
+    )
+
+    commit_message_file: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=f"propagate-{execution_name}-commit-",
+            suffix=".txt",
+            delete=False,
+        ) as handle:
+            handle.write(commit_message)
+            commit_message_file = Path(handle.name)
+
+        run_process(
+            ["git", "commit", "-F", str(commit_message_file)],
+            working_dir,
+            f"Execution '{execution_name}' failed during commit creation",
+        )
+    finally:
+        if commit_message_file is not None:
+            remove_temp_prompt_file(commit_message_file)
+
+
+def push_git_branch(execution_name: str, remote: str, branch_name: str, working_dir: Path) -> None:
+    LOGGER.info("Pushing branch '%s' to remote '%s' for execution '%s'.", branch_name, remote, execution_name)
+    run_process(
+        ["git", "push", "--set-upstream", remote, branch_name],
+        working_dir,
+        f"Execution '{execution_name}' failed during push to remote '{remote}'",
+    )
+
+
+def create_pull_request(
+    execution_name: str,
+    pr_config: GitPrConfig,
+    branch_name: str,
+    base_branch: str,
+    commit_message: str,
+    working_dir: Path,
+) -> None:
+    if shutil.which("gh") is None:
+        raise PropagateError(
+            f"Execution '{execution_name}' failed during PR creation: GitHub CLI 'gh' is not installed."
+        )
+
+    title, body = split_commit_message(commit_message, execution_name)
+    LOGGER.info("Creating pull request from '%s' into '%s' for execution '%s'.", branch_name, base_branch, execution_name)
+
+    command = [
+        "gh",
+        "pr",
+        "create",
+        "--base",
+        base_branch,
+        "--head",
+        branch_name,
+        "--title",
+        title,
+        "--body",
+        body,
+    ]
+    if pr_config.draft:
+        command.append("--draft")
+
+    run_process(
+        command,
+        working_dir,
+        f"Execution '{execution_name}' failed during PR creation",
+    )
+
+
+def split_commit_message(commit_message: str, execution_name: str) -> tuple[str, str]:
+    lines = commit_message.splitlines()
+    if not lines or not lines[0].strip():
+        raise PropagateError(
+            f"Execution '{execution_name}' failed during PR creation: commit message subject is empty."
+        )
+    title = lines[0]
+    body = "\n".join(lines[1:]).strip()
+    return title, body
+
+
+def run_process(
+    command: Sequence[str],
+    working_dir: Path,
+    failure_message: str,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            cwd=working_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise PropagateError(f"{failure_message}: {error}") from error
+    except subprocess.CalledProcessError as error:
+        message = f"{failure_message} with exit code {error.returncode}."
+        error_excerpt = format_stderr_excerpt(error.stderr)
+        if error_excerpt:
+            message = f"{message} {error_excerpt}"
+        raise PropagateError(message) from error
+
+
+def get_repository_changes(
+    working_dir: Path,
+    failure_message: str,
+) -> subprocess.CompletedProcess[str]:
+    return run_process(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", ".", ":(exclude).propagate-context"],
+        working_dir,
+        failure_message,
+    )
+
+
+def format_stderr_excerpt(stderr: str | None) -> str:
+    if stderr is None:
+        return ""
+
+    condensed = " ".join(stderr.strip().split())
+    if not condensed:
+        return ""
+    if len(condensed) > 240:
+        condensed = f"{condensed[:237]}..."
+    return f"stderr: {condensed}"
 
 
 def read_prompt_file(prompt_path: Path) -> str:
