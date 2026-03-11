@@ -33,7 +33,7 @@ The design note must define:
 6. Failure behavior for invalid signals, missing trigger targets, and malformed payloads.
 7. Logging and error handling expectations.
 8. The stage boundary: no multi-repo execution and no full DAG scheduler yet.
-9. The bootstrap requirement for stage 6: update `config/propagate.yaml` to target stage 6 and create the next prompt trio.
+9. The bootstrap requirement for stage 6: update `config/propagate.yaml` to target stage 6 and create all six stage-6 prompts (design, implement, review, test, refactor, verify).
 
 ## Constraints
 

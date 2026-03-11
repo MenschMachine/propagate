@@ -17,7 +17,7 @@ You are verifying the completed stage 3 state of Propagate. The repository shoul
    - agent execution from the invocation working directory
 3. Bootstrap output is advanced to stage 4:
    - `config/propagate.yaml` targets `build-stage4`
-   - `config/prompts/design-stage4.md`, `config/prompts/implement-stage4.md`, and `config/prompts/review-stage4.md` exist
+   - `config/prompts/design-stage4.md`, `config/prompts/implement-stage4.md`, `config/prompts/review-stage4.md`, `config/prompts/test-stage4.md`, `config/prompts/refactor-stage4.md`, and `config/prompts/verify-stage4.md` exist
 
 ## Scope guard
 

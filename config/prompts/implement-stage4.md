@@ -17,7 +17,7 @@ Leave the repository in a stage 4 state. That includes:
    - prompt augmentation from `.propagate-context`
 3. Keep the implementation in a single file and keep dependencies minimal.
 4. Update `config/propagate.yaml` so stage 4 targets stage 5.
-5. Create the next design, implementation, and review prompts for stage 5.
+5. Create all six stage-5 prompts: design, implement, review, test, refactor, and verify.
 
 ## Stage 4 requirements
 

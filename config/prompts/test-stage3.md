@@ -30,5 +30,5 @@ You are testing the stage 3 implementation of Propagate. The runtime should exte
 Leave the repository targeting stage 4 after testing:
 
 - `config/propagate.yaml` should target `build-stage4`
-- `config/prompts/design-stage4.md`, `config/prompts/implement-stage4.md`, and `config/prompts/review-stage4.md` should exist
+- `config/prompts/design-stage4.md`, `config/prompts/implement-stage4.md`, `config/prompts/review-stage4.md`, `config/prompts/test-stage4.md`, `config/prompts/refactor-stage4.md`, and `config/prompts/verify-stage4.md` should exist
 - those prompts should describe stage-4 git automation only

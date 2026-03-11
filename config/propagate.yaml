@@ -23,3 +23,9 @@ executions:
         prompt: ./prompts/implement-stage5.md
       - id: review
         prompt: ./prompts/review-stage5.md
+      - id: test
+        prompt: ./prompts/test-stage5.md
+      - id: refactor
+        prompt: ./prompts/refactor-stage5.md
+      - id: verify
+        prompt: ./prompts/verify-stage5.md

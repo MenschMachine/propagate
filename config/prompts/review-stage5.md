@@ -19,7 +19,7 @@ You are reviewing the stage 5 implementation of Propagate. The repository starte
    - clear failures for invalid signal or trigger input
 3. Verify the bootstrap chain was advanced:
    - `config/propagate.yaml` should now target building stage 6
-   - the stage 6 prompt trio should exist and focus on multi-repo and DAG orchestration
+   - all six stage-6 prompts should exist and focus on multi-repo and DAG orchestration
 4. Fix problems directly if you find them.
 
 ## Review checklist
