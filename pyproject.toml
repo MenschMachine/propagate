@@ -1,0 +1,14 @@
+[project]
+name = "propagate"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+propagate = "propagate_app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["propagate_app*"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
