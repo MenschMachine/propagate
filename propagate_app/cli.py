@@ -126,7 +126,7 @@ def run_command(
 def _run_resume(config_path: Path) -> int:
     try:
         run_state = load_run_state(config_path)
-        config = load_config(config_path, existing_clones=run_state.cloned_repos)
+        config = load_config(config_path)
         active_signal = run_state.active_signal
         log_active_signal(active_signal)
         initialized_dirs = set(run_state.initialized_signal_context_dirs)
@@ -162,16 +162,12 @@ def _run_fresh(
     active_signal = parse_active_signal(signal_name, signal_payload, signal_file, config.signals)
     log_active_signal(active_signal)
     initial_execution = select_initial_execution(config, execution_name, active_signal)
-    cloned_repos: dict[str, Path] = {}
-    for name, repo in config.repositories.items():
-        if repo.url is not None and repo.path is not None:
-            cloned_repos[name] = repo.path
     run_state = RunState(
         config_path=config.config_path,
         initial_execution=initial_execution.name,
         schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
         active_signal=active_signal,
-        cloned_repos=cloned_repos,
+        cloned_repos={},
         initialized_signal_context_dirs=set(),
     )
     initialized_dirs: set[Path] = set()

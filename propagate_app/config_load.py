@@ -10,11 +10,10 @@ from .config_signals import parse_signal_configs
 from .errors import PropagateError
 from .graph import parse_propagation_triggers, validate_execution_graph_is_acyclic
 from .models import Config
-from .repo_clone import clone_url_repositories
 from .validation import validate_allowed_keys
 
 
-def load_config(config_path: Path, existing_clones: dict[str, Path] | None = None) -> Config:
+def load_config(config_path: Path) -> Config:
     if not config_path.exists():
         raise PropagateError(f"Config file does not exist: {config_path}")
     resolved_config_path = config_path.resolve()
@@ -58,4 +57,4 @@ def load_config(config_path: Path, existing_clones: dict[str, Path] | None = Non
         executions=executions,
         config_path=resolved_config_path,
     )
-    return clone_url_repositories(config, existing_clones=existing_clones)
+    return config

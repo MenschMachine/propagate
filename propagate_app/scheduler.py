@@ -1,9 +1,12 @@
+from dataclasses import replace
+
 from .constants import LOGGER
 from .context_store import clear_execution_context, get_context_root
 from .errors import PropagateError
 from .execution_flow import run_configured_execution
 from .graph import build_execution_graph
 from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionScheduleState, RunState, RuntimeContext
+from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
 from .run_state import clear_run_state, save_run_state
 
@@ -39,6 +42,7 @@ def run_execution_schedule(
             remaining_names = remaining_active_execution_names(execution_graph.execution_order, schedule_state)
             raise PropagateError("No runnable executions remain for active run plan: " + ", ".join(remaining_names))
         execution = config.executions[execution_name]
+        config = _ensure_repo_cloned(config, execution.repository, run_state)
         context_root = get_context_root(config.config_path)
         clear_execution_context(context_root, execution.name)
         execution_runtime_context = prepare_execution_runtime_context(config, execution, runtime_context)
@@ -64,6 +68,19 @@ def run_execution_schedule(
         )
         if run_state is not None:
             _sync_and_save(run_state, schedule_state, runtime_context)
+
+
+def _ensure_repo_cloned(config: Config, repo_name: str, run_state: RunState | None) -> Config:
+    repo = config.repositories[repo_name]
+    if repo.url is None or repo.path is not None:
+        return config
+    existing_path = run_state.cloned_repos.get(repo_name) if run_state is not None else None
+    cloned_path = clone_single_repository(repo_name, repo, existing_path)
+    if run_state is not None:
+        run_state.cloned_repos[repo_name] = cloned_path
+        save_run_state(run_state)
+    updated_repos = {**config.repositories, repo_name: replace(repo, path=cloned_path)}
+    return replace(config, repositories=updated_repos)
 
 
 def _sync_and_save(run_state: RunState, schedule_state: ExecutionScheduleState, runtime_context: RuntimeContext) -> None:
