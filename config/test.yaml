@@ -36,7 +36,7 @@ executions:
           - propagate context set :date "$(date -u)" --local
           - propagate context dump
       - id: implementation
-        #prompt: ./prompts/test/plan-backend.md
+        prompt: ./prompts/test/do-nothing.md
         before:
           - echo implementing...
           - sleep 3
