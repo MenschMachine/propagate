@@ -62,3 +62,8 @@ YAML with `version: "6"` required. Key sections: `agent`, `repositories`, `conte
 - Models are dataclasses in `models.py`
 - Context keys must match: `^:?[A-Za-z0-9][A-Za-z0-9._-]*$`
 - Config parsing is split across `config_agent.py`, `config_git.py`, `config_signals.py`, `config_executions.py`
+
+## Developer Guidelines
+
+- Always write failing tests first
+- One test file per feature or bugfix

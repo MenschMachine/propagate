@@ -28,18 +28,21 @@ def run_execution_sub_tasks(execution: ExecutionConfig, runtime_context: Runtime
 
 
 def run_sub_task(execution_name: str, sub_task: SubTaskConfig, runtime_context: RuntimeContext) -> None:
-    LOGGER.info("Running sub-task '%s' for execution '%s' using prompt '%s'.", sub_task.task_id, execution_name, sub_task.prompt_path)
+    LOGGER.info("Running sub-task '%s' for execution '%s'.", sub_task.task_id, execution_name)
     task_runtime_context = replace(runtime_context, task_id=sub_task.task_id)
     run_sub_task_hook_phase(sub_task, "before", sub_task.before, task_runtime_context)
-    temp_prompt_path = write_temp_text(
-        build_sub_task_prompt(sub_task.prompt_path, sub_task.task_id, task_runtime_context),
-        prefix="propagate-",
-        suffix=".md",
-    )
-    try:
-        run_sub_task_agent(sub_task, temp_prompt_path, task_runtime_context)
-    finally:
-        cleanup_temp_file(temp_prompt_path, "temporary prompt file")
+    if sub_task.prompt_path is not None:
+        temp_prompt_path = write_temp_text(
+            build_sub_task_prompt(sub_task.prompt_path, sub_task.task_id, task_runtime_context),
+            prefix="propagate-",
+            suffix=".md",
+        )
+        try:
+            run_sub_task_agent(sub_task, temp_prompt_path, task_runtime_context)
+        finally:
+            cleanup_temp_file(temp_prompt_path, "temporary prompt file")
+    else:
+        LOGGER.debug("Sub-task '%s' has no prompt, skipping agent invocation.", sub_task.task_id)
     run_sub_task_hook_phase(sub_task, "after", sub_task.after, task_runtime_context)
     LOGGER.info("Completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution_name)
 

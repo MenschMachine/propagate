@@ -71,7 +71,7 @@ class GitConfig:
 @dataclass(frozen=True)
 class SubTaskConfig:
     task_id: str
-    prompt_path: Path
+    prompt_path: Path | None
     before: list[str]
     after: list[str]
     on_failure: list[str]

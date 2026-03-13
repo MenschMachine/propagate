@@ -130,11 +130,12 @@ def parse_sub_task(
     prompt_value = sub_task_data.get("prompt")
     if not isinstance(task_id, str) or not task_id.strip():
         raise PropagateError(f"Execution '{name}' sub-task #{index} must include a non-empty 'id'.")
-    if not isinstance(prompt_value, str) or not prompt_value.strip():
-        raise PropagateError(f"Execution '{name}' sub-task '{task_id}' must include a non-empty 'prompt'.")
+    if prompt_value is not None and (not isinstance(prompt_value, str) or not prompt_value.strip()):
+        raise PropagateError(f"Execution '{name}' sub-task '{task_id}' 'prompt' must be a non-empty string when provided.")
+    prompt_path = resolve_prompt_path(prompt_value, config_dir) if prompt_value else None
     return SubTaskConfig(
         task_id=task_id,
-        prompt_path=resolve_prompt_path(prompt_value, config_dir),
+        prompt_path=prompt_path,
         before=parse_hook_actions(sub_task_data.get("before"), location, "before", context_source_names),
         after=parse_hook_actions(sub_task_data.get("after"), location, "after", context_source_names),
         on_failure=parse_hook_actions(sub_task_data.get("on_failure"), location, "on_failure", context_source_names),

@@ -19,9 +19,16 @@ executions:
     repository: test-propagation-backend
     sub_tasks:
       - id: plan
-        prompt: ./prompts/test/plan-backend.md
+        #prompt: ./prompts/test/plan-backend.md
         before:
           - :pwd
           - :commit_message
+          - propagate context set :date "$(date -u)" --local
+          - propagate context dump
+      - id: implementation
+        #prompt: ./prompts/test/plan-backend.md
+        before:
+          - :pwd
+          - :date
           - propagate context set whoami $(whoami)
           - propagate context dump
