@@ -24,7 +24,7 @@ class Stage6ExampleBundleTests(unittest.TestCase):
         config = load_config(config_path)
 
         self.assertEqual(config.version, "6")
-        self.assertEqual(tuple(config.repositories), ("core-api", "docs-site"))
+        self.assertEqual(tuple(config.repositories), ("workspace", "core-api", "docs-site"))
         self.assertEqual(tuple(config.signals), ("repo-change",))
         self.assertEqual(
             tuple(config.executions),

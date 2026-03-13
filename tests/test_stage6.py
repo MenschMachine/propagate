@@ -236,6 +236,8 @@ class PropagateStage6DagTests(unittest.TestCase):
         )
 
     def test_cycle_detection_uses_combined_dependency_and_trigger_graph(self) -> None:
+        repo_dir = self.workspace / "repo"
+        repo_dir.mkdir()
         (self.prompt_dir / "a.md").write_text("a\n", encoding="utf-8")
         (self.prompt_dir / "b.md").write_text("b\n", encoding="utf-8")
         config_path = self.write_config(
@@ -248,12 +250,17 @@ class PropagateStage6DagTests(unittest.TestCase):
                         str(self.invocation_log),
                     )
                 },
+                "repositories": {
+                    "repo": {"path": "../repo"},
+                },
                 "executions": {
                     "a": {
+                        "repository": "repo",
                         "depends_on": ["b"],
                         "sub_tasks": [{"id": "a", "prompt": "./prompts/a.md"}],
                     },
                     "b": {
+                        "repository": "repo",
                         "sub_tasks": [{"id": "b", "prompt": "./prompts/b.md"}],
                     },
                 },
@@ -312,8 +319,12 @@ class PropagateStage6DagTests(unittest.TestCase):
                         str(self.invocation_log),
                     )
                 },
+                "repositories": {
+                    "docs": {"path": "../docs"},
+                },
                 "executions": {
                     "update-docs": {
+                        "repository": "docs",
                         "depends_on": ["prepare-docs-context"],
                         "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
                     }
@@ -360,9 +371,7 @@ class PropagateStage6DagTests(unittest.TestCase):
         self.assertIn("Execution 'update-docs' cannot start in repository 'docs': working directory does not exist:", result.stderr)
         self.assertFalse(self.invocation_log.exists())
 
-    def test_execution_without_repository_uses_invocation_working_directory(self) -> None:
-        repo_dir = self.workspace / "docs"
-        repo_dir.mkdir()
+    def test_execution_without_repository_fails_during_config_load(self) -> None:
         (self.prompt_dir / "local.md").write_text("local task\n", encoding="utf-8")
         config_path = self.write_config(
             {
@@ -377,42 +386,19 @@ class PropagateStage6DagTests(unittest.TestCase):
                 "repositories": {
                     "docs": {"path": "../docs"},
                 },
-                "signals": {
-                    "repo-change": {
-                        "payload": {
-                            "branch": {"type": "string", "required": True},
-                        }
-                    }
-                },
                 "executions": {
                     "local-task": {
-                        "signals": ["repo-change"],
                         "sub_tasks": [{"id": "local", "prompt": "./prompts/local.md"}],
                     }
                 },
             }
         )
 
-        result = self.run_cli(
-            "run",
-            "--config",
-            str(config_path),
-            "--signal",
-            "repo-change",
-            "--signal-payload",
-            '{"branch":"main"}',
-            cwd=self.workspace,
-        )
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "local-task", cwd=self.workspace)
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        invocations = json.loads(self.invocation_log.read_text(encoding="utf-8"))
-        self.assertEqual(len(invocations), 1)
-        self.assertEqual(Path(invocations[0]["cwd"]).resolve(), self.workspace.resolve())
-        self.assertFalse((repo_dir / ".propagate-context" / ":signal.type").exists())
-        self.assertEqual(
-            (self.workspace / ".propagate-context" / ":signal.type").read_text(encoding="utf-8"),
-            "repo-change",
-        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Execution 'local-task' must declare a 'repository'.", result.stderr)
+        self.assertFalse(self.invocation_log.exists())
 
     def test_repository_working_directory_must_be_a_directory(self) -> None:
         docs_file = self.workspace / "docs-file"
@@ -450,20 +436,22 @@ class PropagateStage6DagTests(unittest.TestCase):
         self.assertFalse(self.invocation_log.exists())
 
     def test_signal_context_is_scoped_and_cleared_per_working_directory_during_dag_run(self) -> None:
+        local_dir = self.workspace / "local"
         core_dir = self.workspace / "core"
         docs_dir = self.workspace / "docs"
+        local_dir.mkdir()
         core_dir.mkdir()
         docs_dir.mkdir()
 
-        root_context_dir = self.workspace / ".propagate-context"
+        local_context_dir = local_dir / ".propagate-context"
         core_context_dir = core_dir / ".propagate-context"
         docs_context_dir = docs_dir / ".propagate-context"
-        root_context_dir.mkdir()
+        local_context_dir.mkdir()
         core_context_dir.mkdir()
         docs_context_dir.mkdir()
 
         for context_dir, stale_value in (
-            (root_context_dir, "stale-root"),
+            (local_context_dir, "stale-local"),
             (core_context_dir, "stale-core"),
             (docs_context_dir, "stale-docs"),
         ):
@@ -485,6 +473,7 @@ class PropagateStage6DagTests(unittest.TestCase):
                     )
                 },
                 "repositories": {
+                    "local": {"path": "../local"},
                     "core": {"path": "../core"},
                     "docs": {"path": "../docs"},
                 },
@@ -497,6 +486,7 @@ class PropagateStage6DagTests(unittest.TestCase):
                 },
                 "executions": {
                     "start-local": {
+                        "repository": "local",
                         "signals": ["repo-change"],
                         "sub_tasks": [{"id": "start", "prompt": "./prompts/start.md"}],
                     },
@@ -534,7 +524,7 @@ class PropagateStage6DagTests(unittest.TestCase):
         self.assertEqual(
             [(Path(item["cwd"]).resolve(), item["prompt"].splitlines()[0]) for item in invocations],
             [
-                (self.workspace.resolve(), "start prompt"),
+                (local_dir.resolve(), "start prompt"),
                 (core_dir.resolve(), "build core"),
                 (docs_dir.resolve(), "update docs"),
             ],
@@ -543,7 +533,7 @@ class PropagateStage6DagTests(unittest.TestCase):
             self.assertIn("### :signal.branch\nmain\n", invocation["prompt"])
             self.assertIn("### :signal.type\nrepo-change\n", invocation["prompt"])
 
-        for context_dir in (root_context_dir, core_context_dir, docs_context_dir):
+        for context_dir in (local_context_dir, core_context_dir, docs_context_dir):
             self.assertEqual((context_dir / ":signal.type").read_text(encoding="utf-8"), "repo-change")
             self.assertEqual((context_dir / ":signal.branch").read_text(encoding="utf-8"), "main")
             self.assertFalse((context_dir / ":signal.legacy").exists())

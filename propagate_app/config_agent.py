@@ -22,9 +22,9 @@ def parse_agent(agent_data: Any) -> AgentConfig:
 
 def parse_repositories(repositories_data: Any, config_dir: Path) -> dict[str, RepositoryConfig]:
     if repositories_data is None:
-        return {}
+        raise PropagateError("Config is missing required 'repositories' mapping.")
     if not isinstance(repositories_data, dict) or not repositories_data:
-        raise PropagateError("Config 'repositories' must be a non-empty mapping when provided.")
+        raise PropagateError("Config 'repositories' must be a non-empty mapping.")
     return {
         validate_context_source_name(repository_name): parse_repository(
             validate_context_source_name(repository_name),

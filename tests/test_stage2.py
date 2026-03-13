@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from conftest import inject_test_repository
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
 CLI_PYTHON = REPO_ROOT / "venv" / "bin" / "python"
@@ -163,10 +165,12 @@ class PropagateStage2CLITests(unittest.TestCase):
                 shlex.quote(str(self.capture_output)),
             ]
         )
+        repositories, patched_executions = inject_test_repository(executions, self.workspace)
         config_data: dict[str, object] = {
             "version": "6",
             "agent": {"command": command},
-            "executions": executions,
+            "repositories": repositories,
+            "executions": patched_executions,
         }
         if context_sources is not None:
             config_data["context_sources"] = context_sources
@@ -372,8 +376,10 @@ class PropagateStage2CLITests(unittest.TestCase):
                 {
                     "version": "6",
                     "agent": {"command": command},
+                    "repositories": {"workspace": {"path": str(self.workspace)}},
                     "executions": {
                         "default": {
+                            "repository": "workspace",
                             "sub_tasks": [
                                 {"id": "first", "prompt": "./prompts/first.md"},
                                 {"id": "second", "prompt": "./prompts/second.md"},

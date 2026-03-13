@@ -3,6 +3,10 @@ version: "6"
 agent:
   command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} and follow its instructions."'
 
+repositories:
+  propagate:
+    path: ..
+
 context_sources:
   commit_message:
     command: 'gommit -A -n -I'
@@ -10,6 +14,7 @@ context_sources:
 
 executions:
   example_config:
+    repository: propagate
     git:
       branch:
         name: propagate/example-config
@@ -21,6 +26,7 @@ executions:
       - id: implement
         prompt: ./prompts/create-example-config.md
   refactor:
+    repository: propagate
     git:
       branch:
         name: refactor

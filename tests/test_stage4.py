@@ -187,8 +187,10 @@ class PropagateStage4GitTests(unittest.TestCase):
         config_data: dict[str, object] = {
             "version": "6",
             "agent": {"command": command},
+            "repositories": {"repo": {"path": str(self.repo)}},
             "executions": {
                 "default": {
+                    "repository": "repo",
                     "git": git_config,
                     "sub_tasks": [
                         {

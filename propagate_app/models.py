@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +78,7 @@ class SubTaskConfig:
 @dataclass(frozen=True)
 class ExecutionConfig:
     name: str
-    repository: str | None
+    repository: str
     depends_on: list[str]
     signals: list[str]
     sub_tasks: list[SubTaskConfig]
@@ -115,10 +115,9 @@ class ActiveSignal:
 class RuntimeContext:
     agent_command: str
     context_sources: dict[str, ContextSourceConfig]
-    invocation_dir: Path
-    working_dir: Path
     active_signal: ActiveSignal | None
     initialized_signal_context_dirs: set[Path]
+    working_dir: Path = field(default_factory=Path)
 
 
 @dataclass
@@ -143,4 +142,4 @@ class ExecutionGraph:
 class ExecutionRouting:
     working_dir: Path
     location_display: str
-    repository_name: str | None
+    repository_name: str

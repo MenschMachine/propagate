@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from conftest import inject_test_repository
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
@@ -120,6 +122,11 @@ class PropagateStage5SignalTests(unittest.TestCase):
         prompt_dir = config_root / "prompts"
         prompt_dir.mkdir(parents=True, exist_ok=True)
         config_path = config_root / "propagate.yaml"
+        if "repositories" not in config_data:
+            executions = config_data.get("executions")
+            if isinstance(executions, dict):
+                repositories, patched_executions = inject_test_repository(executions, self.workspace)
+                config_data = {**config_data, "repositories": repositories, "executions": patched_executions}
         config_path.write_text(self.to_yaml(config_data), encoding="utf-8")
         return config_path
 

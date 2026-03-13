@@ -83,8 +83,6 @@ def run_command(
         RuntimeContext(
             agent_command=config.agent.command,
             context_sources=config.context_sources,
-            invocation_dir=Path.cwd(),
-            working_dir=Path.cwd(),
             active_signal=active_signal,
             initialized_signal_context_dirs=set(),
         ),

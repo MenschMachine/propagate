@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from .constants import LOGGER
 from .errors import PropagateError
 from .models import Config, ExecutionConfig, ExecutionRouting, RuntimeContext
@@ -11,13 +9,12 @@ def prepare_execution_runtime_context(
     execution: ExecutionConfig,
     runtime_context: RuntimeContext,
 ) -> RuntimeContext:
-    routing = resolve_execution_routing(execution, config, runtime_context.invocation_dir)
+    routing = resolve_execution_routing(execution, config)
     log_execution_routing(execution, routing)
     ensure_execution_working_dir(execution, routing)
     execution_runtime_context = RuntimeContext(
         agent_command=runtime_context.agent_command,
         context_sources=runtime_context.context_sources,
-        invocation_dir=runtime_context.invocation_dir,
         working_dir=routing.working_dir,
         active_signal=runtime_context.active_signal,
         initialized_signal_context_dirs=runtime_context.initialized_signal_context_dirs,
@@ -26,13 +23,7 @@ def prepare_execution_runtime_context(
     return execution_runtime_context
 
 
-def resolve_execution_routing(execution: ExecutionConfig, config: Config, invocation_dir: Path) -> ExecutionRouting:
-    if execution.repository is None:
-        return ExecutionRouting(
-            working_dir=invocation_dir,
-            location_display=execution_location_display(execution),
-            repository_name=None,
-        )
+def resolve_execution_routing(execution: ExecutionConfig, config: Config) -> ExecutionRouting:
     return ExecutionRouting(
         working_dir=config.repositories[execution.repository].path,
         location_display=execution_location_display(execution),
@@ -41,9 +32,6 @@ def resolve_execution_routing(execution: ExecutionConfig, config: Config, invoca
 
 
 def log_execution_routing(execution: ExecutionConfig, routing: ExecutionRouting) -> None:
-    if routing.repository_name is None:
-        LOGGER.info("Routing execution '%s' to invocation working directory '%s'.", execution.name, routing.working_dir)
-        return
     LOGGER.info(
         "Routing execution '%s' to repository '%s' at '%s'.",
         execution.name,
@@ -64,8 +52,6 @@ def ensure_execution_working_dir(execution: ExecutionConfig, routing: ExecutionR
 
 
 def execution_location_display(execution: ExecutionConfig) -> str:
-    if execution.repository is None:
-        return "in the invocation working directory"
     return f"in repository '{execution.repository}'"
 
 

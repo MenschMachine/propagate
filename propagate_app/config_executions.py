@@ -61,11 +61,11 @@ def parse_execution(
     )
 
 
-def parse_execution_repository(execution_name: str, repository_value: Any, repository_names: set[str]) -> str | None:
+def parse_execution_repository(execution_name: str, repository_value: Any, repository_names: set[str]) -> str:
     if repository_value is None:
-        return None
+        raise PropagateError(f"Execution '{execution_name}' must declare a 'repository'.")
     if not isinstance(repository_value, str) or not repository_value.strip():
-        raise PropagateError(f"Execution '{execution_name}' repository must be a non-empty string when provided.")
+        raise PropagateError(f"Execution '{execution_name}' repository must be a non-empty string.")
     if repository_value not in repository_names:
         raise PropagateError(f"Execution '{execution_name}' references unknown repository '{repository_value}'.")
     return repository_value

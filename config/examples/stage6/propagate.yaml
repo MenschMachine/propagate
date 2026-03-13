@@ -11,6 +11,9 @@ agent:
 
 # Repositories are named working directories that executions can route into.
 repositories:
+  # This repository stands in for the local workspace where triage runs.
+  workspace:
+    path: ./repos/workspace
   # This repository stands in for the codebase that emitted the triggering change.
   core-api:
     # Paths are resolved relative to this config file.
@@ -91,6 +94,8 @@ signals:
 executions:
   # triage-change is the only execution that explicitly accepts the repo-change signal.
   triage-change:
+    # repository routes this execution into the local workspace directory.
+    repository: workspace
     # Listing the signal here allows Propagate to auto-select this execution on signal-only runs.
     signals:
       # A run with --signal-file ../signals/repo-change.yaml lands here first.
