@@ -14,7 +14,7 @@ from .repo_clone import clone_url_repositories
 from .validation import validate_allowed_keys
 
 
-def load_config(config_path: Path) -> Config:
+def load_config(config_path: Path, existing_clones: dict[str, Path] | None = None) -> Config:
     if not config_path.exists():
         raise PropagateError(f"Config file does not exist: {config_path}")
     resolved_config_path = config_path.resolve()
@@ -58,4 +58,4 @@ def load_config(config_path: Path) -> Config:
         executions=executions,
         config_path=resolved_config_path,
     )
-    return clone_url_repositories(config)
+    return clone_url_repositories(config, existing_clones=existing_clones)

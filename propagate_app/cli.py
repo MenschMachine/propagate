@@ -9,7 +9,8 @@ from .config_load import load_config
 from .constants import LOGGER
 from .context_store import context_get_command, context_set_command
 from .errors import PropagateError
-from .models import RuntimeContext
+from .models import ExecutionScheduleState, RunState, RuntimeContext
+from .run_state import load_run_state, state_file_path
 from .scheduler import run_execution_schedule
 from .signals import log_active_signal, parse_active_signal, select_initial_execution
 
@@ -27,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--signal", help="Signal name to activate for this run.")
     run_parser.add_argument("--signal-payload", help="Signal payload as a YAML or JSON mapping. Requires --signal.")
     run_parser.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
+    run_parser.add_argument("--resume", action="store_true", default=False, help="Resume a previously interrupted run.")
     context_parser = subparsers.add_parser("context", help="Manage local context values.")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
     set_parser = context_subparsers.add_parser("set", help="Store a local context value.")
@@ -48,16 +50,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except PropagateError as error:
         LOGGER.error("%s", error)
         return 1
-    except KeyboardInterrupt:
-        LOGGER.error("Execution interrupted.")
-        return 130
     parser.error(f"Unsupported command: {args.command}")
     return 2
 
 
 def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "run":
-        return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file)
+        return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume)
     if args.command == "context":
         if args.context_command == "set":
             return context_set_command(args.key, args.value, working_dir)
@@ -72,19 +71,90 @@ def run_command(
     signal_name: str | None,
     signal_payload: str | None,
     signal_file: str | None,
+    resume: bool = False,
 ) -> int:
-    config = load_config(Path(config_value).expanduser())
+    config_path = Path(config_value).expanduser()
+    if resume:
+        if any(v is not None for v in (execution_name, signal_name, signal_payload, signal_file)):
+            raise PropagateError("--resume cannot be combined with --execution, --signal, --signal-payload, or --signal-file.")
+        return _run_resume(config_path)
+    return _run_fresh(config_path, execution_name, signal_name, signal_payload, signal_file)
+
+
+def _run_resume(config_path: Path) -> int:
+    try:
+        run_state = load_run_state(config_path)
+        config = load_config(config_path, existing_clones=run_state.cloned_repos)
+        active_signal = run_state.active_signal
+        log_active_signal(active_signal)
+        initialized_dirs = set(run_state.initialized_signal_context_dirs)
+        run_execution_schedule(
+            config,
+            run_state.initial_execution,
+            RuntimeContext(
+                agent_command=config.agent.command,
+                context_sources=config.context_sources,
+                active_signal=active_signal,
+                initialized_signal_context_dirs=initialized_dirs,
+            ),
+            run_state=run_state,
+        )
+        return 0
+    except PropagateError as error:
+        LOGGER.error("%s", error)
+        _log_resume_hint(config_path)
+        return 1
+    except KeyboardInterrupt:
+        _log_resume_hint(config_path)
+        return 130
+
+
+def _run_fresh(
+    config_path: Path,
+    execution_name: str | None,
+    signal_name: str | None,
+    signal_payload: str | None,
+    signal_file: str | None,
+) -> int:
+    config = load_config(config_path)
     active_signal = parse_active_signal(signal_name, signal_payload, signal_file, config.signals)
     log_active_signal(active_signal)
     initial_execution = select_initial_execution(config, execution_name, active_signal)
-    run_execution_schedule(
-        config,
-        initial_execution.name,
-        RuntimeContext(
-            agent_command=config.agent.command,
-            context_sources=config.context_sources,
-            active_signal=active_signal,
-            initialized_signal_context_dirs=set(),
-        ),
+    cloned_repos: dict[str, Path] = {}
+    for name, repo in config.repositories.items():
+        if repo.url is not None and repo.path is not None:
+            cloned_repos[name] = repo.path
+    run_state = RunState(
+        config_path=config.config_path,
+        initial_execution=initial_execution.name,
+        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        active_signal=active_signal,
+        cloned_repos=cloned_repos,
+        initialized_signal_context_dirs=set(),
     )
-    return 0
+    initialized_dirs: set[Path] = set()
+    try:
+        run_execution_schedule(
+            config,
+            initial_execution.name,
+            RuntimeContext(
+                agent_command=config.agent.command,
+                context_sources=config.context_sources,
+                active_signal=active_signal,
+                initialized_signal_context_dirs=initialized_dirs,
+            ),
+            run_state=run_state,
+        )
+        return 0
+    except PropagateError as error:
+        LOGGER.error("%s", error)
+        _log_resume_hint(config_path)
+        return 1
+    except KeyboardInterrupt:
+        _log_resume_hint(config_path)
+        return 130
+
+
+def _log_resume_hint(config_path: Path) -> None:
+    if state_file_path(config_path).exists():
+        LOGGER.error("Use --resume to continue from where it left off.")

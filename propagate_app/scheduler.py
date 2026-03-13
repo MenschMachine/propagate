@@ -2,19 +2,36 @@ from .constants import LOGGER
 from .errors import PropagateError
 from .execution_flow import run_configured_execution
 from .graph import build_execution_graph
-from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionScheduleState, RuntimeContext
+from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionScheduleState, RunState, RuntimeContext
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
+from .run_state import clear_run_state, save_run_state
 
 
-def run_execution_schedule(config: Config, initial_execution_name: str, runtime_context: RuntimeContext) -> None:
+def run_execution_schedule(
+    config: Config,
+    initial_execution_name: str,
+    runtime_context: RuntimeContext,
+    run_state: RunState | None = None,
+) -> None:
     execution_graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(active_names=set(), completed_names=set())
-    LOGGER.info("Starting execution schedule with initial execution '%s'.", initial_execution_name)
-    activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
+    if run_state is not None and run_state.schedule.completed_names:
+        LOGGER.info("Resuming execution schedule; %d executions already completed.", len(run_state.schedule.completed_names))
+        schedule_state = ExecutionScheduleState(
+            active_names=set(run_state.schedule.active_names),
+            completed_names=set(run_state.schedule.completed_names),
+        )
+    else:
+        schedule_state = ExecutionScheduleState(active_names=set(), completed_names=set())
+        LOGGER.info("Starting execution schedule with initial execution '%s'.", initial_execution_name)
+        activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
+    if run_state is not None:
+        _sync_and_save(run_state, schedule_state, runtime_context)
     while True:
         execution_name = select_next_runnable_execution(config, execution_graph, schedule_state)
         if execution_name is None:
             if schedule_state.completed_names == schedule_state.active_names:
+                if run_state is not None:
+                    clear_run_state(run_state.config_path)
                 return
             remaining_names = remaining_active_execution_names(execution_graph.execution_order, schedule_state)
             raise PropagateError("No runnable executions remain for active run plan: " + ", ".join(remaining_names))
@@ -33,6 +50,17 @@ def run_execution_schedule(config: Config, initial_execution_name: str, runtime_
             schedule_state.active_names,
             schedule_state.completed_names,
         )
+        if run_state is not None:
+            _sync_and_save(run_state, schedule_state, runtime_context)
+
+
+def _sync_and_save(run_state: RunState, schedule_state: ExecutionScheduleState, runtime_context: RuntimeContext) -> None:
+    run_state.schedule = ExecutionScheduleState(
+        active_names=set(schedule_state.active_names),
+        completed_names=set(schedule_state.completed_names),
+    )
+    run_state.initialized_signal_context_dirs = set(runtime_context.initialized_signal_context_dirs)
+    save_run_state(run_state)
 
 
 def activate_matching_triggers(

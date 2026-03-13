@@ -3,3 +3,5 @@
 /.propagate*md
 .last-message.txt
 .env
+.propagate-state-*.yaml
+/propagate.egg-info

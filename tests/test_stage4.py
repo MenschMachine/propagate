@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
@@ -132,32 +134,6 @@ class PropagateStage4GitTests(unittest.TestCase):
         parts.extend(shlex.quote(arg) for arg in args)
         return " ".join(parts)
 
-    def to_yaml(self, value: object, indent: int = 0) -> str:
-        prefix = " " * indent
-        if isinstance(value, dict):
-            lines: list[str] = []
-            for key, nested_value in value.items():
-                if isinstance(nested_value, (dict, list)):
-                    lines.append(f"{prefix}{key}:")
-                    lines.append(self.to_yaml(nested_value, indent + 2).rstrip("\n"))
-                else:
-                    lines.append(f"{prefix}{key}: {json.dumps(nested_value)}")
-            return "\n".join(lines) + "\n"
-        if isinstance(value, list):
-            lines = []
-            for item in value:
-                if isinstance(item, dict):
-                    item_lines = self.to_yaml(item, indent + 2).rstrip("\n").splitlines()
-                    lines.append(f"{prefix}- {item_lines[0].lstrip()}")
-                    lines.extend(item_lines[1:])
-                elif isinstance(item, list):
-                    lines.append(f"{prefix}-")
-                    lines.append(self.to_yaml(item, indent + 2).rstrip("\n"))
-                else:
-                    lines.append(f"{prefix}- {json.dumps(item)}")
-            return "\n".join(lines) + "\n"
-        return f"{prefix}{json.dumps(value)}\n"
-
     def init_repo(self) -> None:
         self.run_git("init", "-b", "main")
         self.run_git("config", "user.name", "Propagate Tests")
@@ -203,7 +179,7 @@ class PropagateStage4GitTests(unittest.TestCase):
         }
         if context_sources is not None:
             config_data["context_sources"] = context_sources
-        self.config_path.write_text(self.to_yaml(config_data), encoding="utf-8")
+        self.config_path.write_text(yaml.dump(config_data, sort_keys=False), encoding="utf-8")
 
     def test_git_run_creates_branch_commit_push_and_pull_request(self) -> None:
         self.init_repo()

@@ -128,6 +128,16 @@ class ExecutionScheduleState:
     completed_names: set[str]
 
 
+@dataclass
+class RunState:
+    config_path: Path
+    initial_execution: str
+    schedule: ExecutionScheduleState
+    active_signal: ActiveSignal | None
+    cloned_repos: dict[str, Path]
+    initialized_signal_context_dirs: set[Path]
+
+
 @dataclass(frozen=True)
 class PreparedGitExecution:
     starting_branch: str

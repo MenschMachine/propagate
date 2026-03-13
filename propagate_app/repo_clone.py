@@ -10,11 +10,15 @@ from .errors import PropagateError
 from .models import Config, RepositoryConfig
 
 
-def clone_url_repositories(config: Config) -> Config:
+def clone_url_repositories(config: Config, existing_clones: dict[str, Path] | None = None) -> Config:
     updated_repos: dict[str, RepositoryConfig] = {}
     for name, repo in config.repositories.items():
         if repo.url is None:
             updated_repos[name] = repo
+            continue
+        if existing_clones and name in existing_clones and existing_clones[name].exists():
+            LOGGER.info("Reusing existing clone for '%s' at '%s'.", name, existing_clones[name])
+            updated_repos[name] = replace(repo, path=existing_clones[name])
             continue
         clone_dir = Path(tempfile.mkdtemp(prefix="propagate-repo-"))
         LOGGER.debug("Cloning '%s' from '%s' into '%s'.", name, repo.url, clone_dir)

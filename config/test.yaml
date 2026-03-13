@@ -16,3 +16,7 @@ executions:
     sub_tasks:
       - id: plan
         prompt: ./prompts/test/plan-backend.md
+        before:
+          - whoami
+          - propagate context set whoami $(whoami)
+          - propagate context dump

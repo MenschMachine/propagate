@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 from conftest import inject_test_repository
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -175,7 +177,7 @@ class PropagateStage2CLITests(unittest.TestCase):
         if context_sources is not None:
             config_data["context_sources"] = context_sources
         config_path.write_text(
-            self.to_yaml(config_data),
+            yaml.dump(config_data, sort_keys=False),
             encoding="utf-8",
         )
         return config_path
@@ -184,32 +186,6 @@ class PropagateStage2CLITests(unittest.TestCase):
         parts = [shlex.quote(str(CLI_PYTHON)), shlex.quote(str(script_path))]
         parts.extend(shlex.quote(arg) for arg in args)
         return " ".join(parts)
-
-    def to_yaml(self, value: object, indent: int = 0) -> str:
-        prefix = " " * indent
-        if isinstance(value, dict):
-            lines: list[str] = []
-            for key, nested_value in value.items():
-                if isinstance(nested_value, (dict, list)):
-                    lines.append(f"{prefix}{key}:")
-                    lines.append(self.to_yaml(nested_value, indent + 2).rstrip("\n"))
-                else:
-                    lines.append(f"{prefix}{key}: {json.dumps(nested_value)}")
-            return "\n".join(lines) + "\n"
-        if isinstance(value, list):
-            lines = []
-            for item in value:
-                if isinstance(item, dict):
-                    item_lines = self.to_yaml(item, indent + 2).rstrip("\n").splitlines()
-                    lines.append(f"{prefix}- {item_lines[0].lstrip()}")
-                    lines.extend(item_lines[1:])
-                elif isinstance(item, list):
-                    lines.append(f"{prefix}-")
-                    lines.append(self.to_yaml(item, indent + 2).rstrip("\n"))
-                else:
-                    lines.append(f"{prefix}- {json.dumps(item)}")
-            return "\n".join(lines) + "\n"
-        return f"{prefix}{json.dumps(value)}\n"
 
     def read_capture(self) -> dict[str, object]:
         return json.loads(self.capture_output.read_text(encoding="utf-8"))
@@ -372,7 +348,7 @@ class PropagateStage2CLITests(unittest.TestCase):
             ]
         )
         config_path.write_text(
-            self.to_yaml(
+            yaml.dump(
                 {
                     "version": "6",
                     "agent": {"command": command},
@@ -386,7 +362,7 @@ class PropagateStage2CLITests(unittest.TestCase):
                             ]
                         }
                     },
-                }
+                }, sort_keys=False
             ),
             encoding="utf-8",
         )

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
 from conftest import inject_test_repository
 
 
@@ -91,32 +92,6 @@ class PropagateStage5SignalTests(unittest.TestCase):
         parts.extend(shlex.quote(arg) for arg in args)
         return " ".join(parts)
 
-    def to_yaml(self, value: object, indent: int = 0) -> str:
-        prefix = " " * indent
-        if isinstance(value, dict):
-            lines: list[str] = []
-            for key, nested_value in value.items():
-                if isinstance(nested_value, (dict, list)):
-                    lines.append(f"{prefix}{key}:")
-                    lines.append(self.to_yaml(nested_value, indent + 2).rstrip("\n"))
-                else:
-                    lines.append(f"{prefix}{key}: {json.dumps(nested_value)}")
-            return "\n".join(lines) + "\n"
-        if isinstance(value, list):
-            lines = []
-            for item in value:
-                if isinstance(item, dict):
-                    item_lines = self.to_yaml(item, indent + 2).rstrip("\n").splitlines()
-                    lines.append(f"{prefix}- {item_lines[0].lstrip()}")
-                    lines.extend(item_lines[1:])
-                elif isinstance(item, list):
-                    lines.append(f"{prefix}-")
-                    lines.append(self.to_yaml(item, indent + 2).rstrip("\n"))
-                else:
-                    lines.append(f"{prefix}- {json.dumps(item)}")
-            return "\n".join(lines) + "\n"
-        return f"{prefix}{json.dumps(value)}\n"
-
     def write_config(self, config_data: dict[str, object], config_dir: Path | None = None) -> Path:
         config_root = config_dir or (self.workspace / "config")
         prompt_dir = config_root / "prompts"
@@ -127,7 +102,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
             if isinstance(executions, dict):
                 repositories, patched_executions = inject_test_repository(executions, self.workspace)
                 config_data = {**config_data, "repositories": repositories, "executions": patched_executions}
-        config_path.write_text(self.to_yaml(config_data), encoding="utf-8")
+        config_path.write_text(yaml.dump(config_data, sort_keys=False), encoding="utf-8")
         return config_path
 
     def test_signal_auto_selects_execution_and_populates_context(self) -> None:
