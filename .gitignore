@@ -5,3 +5,4 @@
 .env
 .propagate-state-*.yaml
 /propagate.egg-info
+/.claude
