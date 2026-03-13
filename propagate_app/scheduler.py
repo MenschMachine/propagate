@@ -15,11 +15,13 @@ def run_execution_schedule(
     run_state: RunState | None = None,
 ) -> None:
     execution_graph = build_execution_graph(config)
-    if run_state is not None and run_state.schedule.completed_names:
+    has_prior_progress = run_state is not None and (run_state.schedule.completed_names or run_state.schedule.completed_tasks)
+    if has_prior_progress:
         LOGGER.info("Resuming execution schedule; %d executions already completed.", len(run_state.schedule.completed_names))
         schedule_state = ExecutionScheduleState(
             active_names=set(run_state.schedule.active_names),
             completed_names=set(run_state.schedule.completed_names),
+            completed_tasks={name: set(task_ids) for name, task_ids in run_state.schedule.completed_tasks.items()},
         )
     else:
         schedule_state = ExecutionScheduleState(active_names=set(), completed_names=set())
@@ -40,8 +42,15 @@ def run_execution_schedule(
         context_root = get_context_root(config.config_path)
         clear_execution_context(context_root, execution.name)
         execution_runtime_context = prepare_execution_runtime_context(config, execution, runtime_context)
+        completed_task_ids = schedule_state.completed_tasks.get(execution_name, set())
+
+        def on_task_completed(exec_name: str, task_id: str) -> None:
+            schedule_state.completed_tasks.setdefault(exec_name, set()).add(task_id)
+            if run_state is not None:
+                _sync_and_save(run_state, schedule_state, runtime_context)
+
         try:
-            run_configured_execution(execution, execution_runtime_context)
+            run_configured_execution(execution, execution_runtime_context, completed_task_ids, on_task_completed)
         except PropagateError as error:
             raise wrap_execution_runtime_error(execution, error) from error
         schedule_state.completed_names.add(execution.name)
@@ -61,6 +70,7 @@ def _sync_and_save(run_state: RunState, schedule_state: ExecutionScheduleState, 
     run_state.schedule = ExecutionScheduleState(
         active_names=set(schedule_state.active_names),
         completed_names=set(schedule_state.completed_names),
+        completed_tasks={name: set(task_ids) for name, task_ids in schedule_state.completed_tasks.items()},
     )
     run_state.initialized_signal_context_dirs = set(runtime_context.initialized_signal_context_dirs)
     save_run_state(run_state)

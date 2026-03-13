@@ -21,7 +21,7 @@ def clone_url_repositories(config: Config, existing_clones: dict[str, Path] | No
             updated_repos[name] = replace(repo, path=existing_clones[name])
             continue
         clone_dir = Path(tempfile.mkdtemp(prefix="propagate-repo-"))
-        LOGGER.debug("Cloning '%s' from '%s' into '%s'.", name, repo.url, clone_dir)
+        LOGGER.info("Cloning repository '%s' from '%s' into '%s'.", name, repo.url, clone_dir)
         try:
             subprocess.run(
                 ["git", "clone", repo.url, str(clone_dir)],

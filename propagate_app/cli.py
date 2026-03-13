@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import os
 from pathlib import Path
 from typing import Sequence
 
 from .config_load import load_config
-from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER
+from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, configure_logging
 from .context_store import (
     context_dump_command,
     context_get_command,
@@ -20,10 +19,6 @@ from .models import ExecutionScheduleState, RunState, RuntimeContext
 from .run_state import load_run_state, state_file_path
 from .scheduler import run_execution_schedule
 from .signals import log_active_signal, parse_active_signal, select_initial_execution
-
-
-def configure_logging() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 
 def build_parser() -> argparse.ArgumentParser:

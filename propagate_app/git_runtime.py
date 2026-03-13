@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Callable
 
 from .constants import LOGGER
 from .errors import PropagateError
@@ -15,14 +16,19 @@ from .models import ExecutionConfig, GitBranchConfig, GitCommitConfig, GitConfig
 from .sub_tasks import run_execution_sub_tasks
 
 
-def run_execution_with_git(execution: ExecutionConfig, runtime_context: RuntimeContext) -> None:
+def run_execution_with_git(
+    execution: ExecutionConfig,
+    runtime_context: RuntimeContext,
+    completed_task_ids: set[str] | None = None,
+    on_task_completed: Callable[[str, str], None] | None = None,
+) -> None:
     git_config = execution.git
     if git_config is None:
-        run_execution_sub_tasks(execution, runtime_context)
+        run_execution_sub_tasks(execution, runtime_context, completed_task_ids, on_task_completed)
         return
     LOGGER.info("Git automation enabled for execution '%s'.", execution.name)
     prepared_execution = prepare_git_execution(execution.name, git_config.branch, runtime_context.working_dir)
-    run_execution_sub_tasks(execution, runtime_context)
+    run_execution_sub_tasks(execution, runtime_context, completed_task_ids, on_task_completed)
     publish_git_execution_changes(execution, git_config, runtime_context, prepared_execution)
 
 

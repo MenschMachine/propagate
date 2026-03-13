@@ -7,6 +7,8 @@ from pathlib import Path
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER
 from .context_sources import run_context_source
 from .errors import PropagateError
+from typing import Callable
+
 from .models import ExecutionConfig, RuntimeContext, SubTaskConfig
 from .processes import build_agent_command, run_agent_command, run_shell_command
 from .prompts import build_sub_task_prompt
@@ -22,9 +24,19 @@ def build_context_env(runtime_context: RuntimeContext) -> dict[str, str]:
     return env
 
 
-def run_execution_sub_tasks(execution: ExecutionConfig, runtime_context: RuntimeContext) -> None:
+def run_execution_sub_tasks(
+    execution: ExecutionConfig,
+    runtime_context: RuntimeContext,
+    completed_task_ids: set[str] | None = None,
+    on_task_completed: Callable[[str, str], None] | None = None,
+) -> None:
     for sub_task in execution.sub_tasks:
+        if completed_task_ids and sub_task.task_id in completed_task_ids:
+            LOGGER.info("Skipping already completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution.name)
+            continue
         run_sub_task(execution.name, sub_task, runtime_context)
+        if on_task_completed is not None:
+            on_task_completed(execution.name, sub_task.task_id)
 
 
 def run_sub_task(execution_name: str, sub_task: SubTaskConfig, runtime_context: RuntimeContext) -> None:
