@@ -48,15 +48,20 @@ def parse_execution(
     sub_tasks_data = execution_data.get("sub_tasks")
     if not isinstance(sub_tasks_data, list) or not sub_tasks_data:
         raise PropagateError(f"Execution '{name}' must define a non-empty 'sub_tasks' list.")
+    sub_tasks: list[SubTaskConfig] = []
+    seen_task_ids: set[str] = set()
+    for index, sub_task_data in enumerate(sub_tasks_data, start=1):
+        sub_task = parse_sub_task(name, index, sub_task_data, config_dir, context_source_names)
+        if sub_task.task_id in seen_task_ids:
+            raise PropagateError(f"Execution '{name}' contains duplicate sub-task id '{sub_task.task_id}'.")
+        seen_task_ids.add(sub_task.task_id)
+        sub_tasks.append(sub_task)
     return ExecutionConfig(
         name=name,
         repository=parse_execution_repository(name, execution_data.get("repository"), repository_names),
         depends_on=parse_execution_dependencies(name, execution_data.get("depends_on"), execution_names),
         signals=parse_execution_signals(name, execution_data.get("signals"), signal_names),
-        sub_tasks=[
-            parse_sub_task(name, index, sub_task_data, config_dir, context_source_names)
-            for index, sub_task_data in enumerate(sub_tasks_data, start=1)
-        ],
+        sub_tasks=sub_tasks,
         git=parse_git_config(name, execution_data.get("git"), context_source_names),
     )
 
