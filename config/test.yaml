@@ -5,6 +5,8 @@ agent:
 repositories:
   test-propagation-backend:
     url: git@github.com:MenschMachine/test-propagation-backend.git
+  test-propagation-frontend:
+    url: git@github.com:MenschMachine/test-propagation-frontend.git
 
 context_sources:
   pwd:
@@ -14,9 +16,14 @@ context_sources:
   date:
     command: date
 
+signals:
+  run:
+    payload: {}
+
 executions:
   test-backend:
     repository: test-propagation-backend
+    signals: [run]
     sub_tasks:
       - id: plan
         #prompt: ./prompts/test/plan-backend.md
@@ -37,3 +44,7 @@ executions:
           - :date
           - propagate context set whoami $(whoami)
           - propagate context dump
+  test-frontend:
+    repository: test-propagation-frontend
+    sub_tasks:
+      - id: noop

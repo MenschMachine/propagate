@@ -67,3 +67,4 @@ YAML with `version: "6"` required. Key sections: `agent`, `repositories`, `conte
 
 - Always write failing tests first
 - One test file per feature or bugfix
+- keep everything under docs/ always up to date. Check if your changes need to be reflected there.
