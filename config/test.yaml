@@ -3,8 +3,8 @@ agent:
   command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} and follow its instructions."'
 
 repositories:
-  propagate:
-    path: ..
+  test-propagation-backend:
+    url: git@github.com:MenschMachine/test-propagation-backend.git
 
 context_sources:
   commit_message:
@@ -12,7 +12,7 @@ context_sources:
 
 executions:
   test-backend:
-    repository: propagate
+    repository: test-propagation-backend
     sub_tasks:
       - id: plan
         prompt: ./prompts/test/plan-backend.md

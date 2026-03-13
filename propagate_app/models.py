@@ -19,7 +19,9 @@ class ContextSourceConfig:
 @dataclass(frozen=True)
 class RepositoryConfig:
     name: str
-    path: Path
+    path: Path | None
+    url: str | None = None
+    ref: str | None = None
 
 
 @dataclass(frozen=True)

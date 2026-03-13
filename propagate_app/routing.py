@@ -24,8 +24,13 @@ def prepare_execution_runtime_context(
 
 
 def resolve_execution_routing(execution: ExecutionConfig, config: Config) -> ExecutionRouting:
+    repo = config.repositories[execution.repository]
+    if repo.path is None:
+        raise PropagateError(
+            f"Execution '{execution.name}' references repository '{execution.repository}' which has no resolved path."
+        )
     return ExecutionRouting(
-        working_dir=config.repositories[execution.repository].path,
+        working_dir=repo.path,
         location_display=execution_location_display(execution),
         repository_name=execution.repository,
     )

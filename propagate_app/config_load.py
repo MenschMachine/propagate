@@ -10,6 +10,7 @@ from .config_signals import parse_signal_configs
 from .errors import PropagateError
 from .graph import parse_propagation_triggers, validate_execution_graph_is_acyclic
 from .models import Config
+from .repo_clone import clone_url_repositories
 from .validation import validate_allowed_keys
 
 
@@ -47,7 +48,7 @@ def load_config(config_path: Path) -> Config:
     )
     propagation_triggers = parse_propagation_triggers(raw_data.get("propagation"), set(executions), set(signals))
     validate_execution_graph_is_acyclic(executions, propagation_triggers)
-    return Config(
+    config = Config(
         version=version,
         agent=agent,
         repositories=repositories,
@@ -57,3 +58,4 @@ def load_config(config_path: Path) -> Config:
         executions=executions,
         config_path=resolved_config_path,
     )
+    return clone_url_repositories(config)

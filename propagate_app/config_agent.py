@@ -38,7 +38,23 @@ def parse_repositories(repositories_data: Any, config_dir: Path) -> dict[str, Re
 def parse_repository(repository_name: str, repository_data: Any, config_dir: Path) -> RepositoryConfig:
     if not isinstance(repository_data, dict):
         raise PropagateError(f"Repository '{repository_name}' must be a mapping.")
-    validate_allowed_keys(repository_data, {"path"}, f"Repository '{repository_name}'")
+    validate_allowed_keys(repository_data, {"path", "url", "ref"}, f"Repository '{repository_name}'")
+    has_path = "path" in repository_data
+    has_url = "url" in repository_data
+    if has_path and has_url:
+        raise PropagateError(f"Repository '{repository_name}' must declare either 'path' or 'url', not both.")
+    if not has_path and not has_url:
+        raise PropagateError(f"Repository '{repository_name}' must declare either 'path' or 'url'.")
+    ref_value = repository_data.get("ref")
+    if ref_value is not None and not has_url:
+        raise PropagateError(f"Repository '{repository_name}' declares 'ref' without 'url'.")
+    if ref_value is not None and (not isinstance(ref_value, str) or not ref_value.strip()):
+        raise PropagateError(f"Repository '{repository_name}' 'ref' must be a non-empty string.")
+    if has_url:
+        url_value = repository_data.get("url")
+        if not isinstance(url_value, str) or not url_value.strip():
+            raise PropagateError(f"Repository '{repository_name}' must include a non-empty 'url'.")
+        return RepositoryConfig(name=repository_name, path=None, url=url_value, ref=ref_value)
     path_value = repository_data.get("path")
     if not isinstance(path_value, str) or not path_value.strip():
         raise PropagateError(f"Repository '{repository_name}' must include a non-empty 'path'.")

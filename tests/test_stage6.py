@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -46,6 +47,7 @@ class PropagateStage6DagTests(unittest.TestCase):
                     "items.append({",
                     "    'cwd': os.getcwd(),",
                     "    'prompt': prompt_path.read_text(encoding='utf-8'),",
+                    "    'files': sorted(os.listdir('.')),",
                     "})",
                     "log_path.write_text(json.dumps(items), encoding='utf-8')",
                 ]
@@ -538,6 +540,259 @@ class PropagateStage6DagTests(unittest.TestCase):
             self.assertEqual((context_dir / ":signal.branch").read_text(encoding="utf-8"), "main")
             self.assertFalse((context_dir / ":signal.legacy").exists())
             self.assertEqual((context_dir / "shared").read_text(encoding="utf-8"), "keep-me")
+
+
+    def _create_bare_repo(self, name: str, branch: str = "main") -> Path:
+        bare_dir = self.workspace / name
+        bare_dir.mkdir()
+        subprocess.run(["git", "init", "--bare", str(bare_dir)], check=True, capture_output=True)
+        work_dir = self.workspace / f"{name}-work"
+        work_dir.mkdir()
+        subprocess.run(["git", "clone", str(bare_dir), str(work_dir)], check=True, capture_output=True)
+        subprocess.run(["git", "checkout", "-b", branch], cwd=str(work_dir), check=True, capture_output=True)
+        dummy = work_dir / "README.md"
+        dummy.write_text("init\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=str(work_dir), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.name=test", "-c", "user.email=test@test", "commit", "-m", "init"],
+            cwd=str(work_dir), check=True, capture_output=True,
+        )
+        subprocess.run(["git", "push", "-u", "origin", branch], cwd=str(work_dir), check=True, capture_output=True)
+        shutil.rmtree(work_dir)
+        return bare_dir
+
+    def test_url_repository_is_cloned_into_temp_dir_and_execution_runs_there(self) -> None:
+        bare_repo = self._create_bare_repo("remote-repo")
+        (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "remote": {"url": str(bare_repo)},
+                },
+                "executions": {
+                    "task": {
+                        "repository": "remote",
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        invocations = json.loads(self.invocation_log.read_text(encoding="utf-8"))
+        self.assertEqual(len(invocations), 1)
+        cwd_path = Path(invocations[0]["cwd"])
+        self.addCleanup(shutil.rmtree, cwd_path, True)
+        self.assertNotEqual(cwd_path.resolve(), bare_repo.resolve())
+        self.assertIn("README.md", invocations[0]["files"])
+
+    def test_url_repository_with_ref_checks_out_specified_branch(self) -> None:
+        bare_repo = self._create_bare_repo("ref-repo")
+        work_dir = self.workspace / "ref-repo-work2"
+        work_dir.mkdir()
+        subprocess.run(["git", "clone", str(bare_repo), str(work_dir)], check=True, capture_output=True)
+        subprocess.run(["git", "checkout", "-b", "feature"], cwd=str(work_dir), check=True, capture_output=True)
+        (work_dir / "feature.txt").write_text("feature\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=str(work_dir), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.name=test", "-c", "user.email=test@test", "commit", "-m", "feature"],
+            cwd=str(work_dir), check=True, capture_output=True,
+        )
+        subprocess.run(["git", "push", "-u", "origin", "feature"], cwd=str(work_dir), check=True, capture_output=True)
+        shutil.rmtree(work_dir)
+
+        (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "remote": {"url": str(bare_repo), "ref": "feature"},
+                },
+                "executions": {
+                    "task": {
+                        "repository": "remote",
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        invocations = json.loads(self.invocation_log.read_text(encoding="utf-8"))
+        cwd_path = Path(invocations[0]["cwd"])
+        self.addCleanup(shutil.rmtree, cwd_path, True)
+        self.assertIn("feature.txt", invocations[0]["files"])
+
+    def test_url_repository_clone_failure_reports_clear_error(self) -> None:
+        (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "remote": {"url": "/nonexistent/repo/path"},
+                },
+                "executions": {
+                    "task": {
+                        "repository": "remote",
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Failed to clone repository 'remote'", result.stderr)
+
+    def test_url_repository_temp_dir_persists_after_execution(self) -> None:
+        bare_repo = self._create_bare_repo("persist-repo")
+        (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "remote": {"url": str(bare_repo)},
+                },
+                "executions": {
+                    "task": {
+                        "repository": "remote",
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        invocations = json.loads(self.invocation_log.read_text(encoding="utf-8"))
+        cwd_path = Path(invocations[0]["cwd"])
+        self.assertTrue(cwd_path.exists(), f"Cloned repo should persist after execution: {cwd_path}")
+        self.addCleanup(shutil.rmtree, cwd_path, True)
+
+    def test_url_repository_with_nonexistent_ref_fails_with_clear_error(self) -> None:
+        bare_repo = self._create_bare_repo("bad-ref-repo")
+        (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "remote": {"url": str(bare_repo), "ref": "nonexistent-branch"},
+                },
+                "executions": {
+                    "task": {
+                        "repository": "remote",
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Failed to checkout ref 'nonexistent-branch' for repository 'remote'", result.stderr)
+
+    def test_repository_with_ref_but_path_fails_during_config_load(self) -> None:
+        (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "local": {"path": "../some-dir", "ref": "main"},
+                },
+                "executions": {
+                    "task": {
+                        "repository": "local",
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("declares 'ref' without 'url'", result.stderr)
+
+    def test_repository_with_both_path_and_url_fails_during_config_load(self) -> None:
+        (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "both": {"path": "../some-dir", "url": "https://github.com/org/repo"},
+                },
+                "executions": {
+                    "task": {
+                        "repository": "both",
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("must declare either 'path' or 'url', not both", result.stderr)
 
 
 if __name__ == "__main__":
