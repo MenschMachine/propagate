@@ -3,28 +3,136 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .errors import PropagateError
 from .constants import LOGGER
 from .validation import validate_context_key
 
+if TYPE_CHECKING:
+    from .models import RuntimeContext
 
-def get_context_dir(working_dir: Path) -> Path:
-    return working_dir / ".propagate-context"
+
+def get_context_root(config_path: Path) -> Path:
+    return config_path.parent / ".propagate-context"
 
 
-def context_set_command(key: str, value: str, working_dir: Path) -> int:
+def get_global_context_dir(context_root: Path) -> Path:
+    return context_root
+
+
+def get_execution_context_dir(context_root: Path, execution_name: str) -> Path:
+    return context_root / execution_name
+
+
+def get_task_context_dir(context_root: Path, execution_name: str, task_id: str) -> Path:
+    return context_root / execution_name / task_id
+
+
+def resolve_execution_context_dir(runtime_context: RuntimeContext) -> Path:
+    return get_execution_context_dir(runtime_context.context_root, runtime_context.execution_name)
+
+
+def resolve_context_dir_for_write(
+    context_root: Path,
+    execution_name: str,
+    task_id: str,
+    *,
+    scope_global: bool = False,
+    scope_local: bool = False,
+) -> Path:
+    if scope_global:
+        return get_global_context_dir(context_root)
+    if scope_local:
+        if not task_id:
+            raise PropagateError("--local requires a task context (PROPAGATE_TASK must be set).")
+        return get_task_context_dir(context_root, execution_name, task_id)
+    return get_execution_context_dir(context_root, execution_name)
+
+
+def resolve_context_dir_for_read(
+    context_root: Path,
+    execution_name: str,
+    task_id: str,
+    *,
+    scope_global: bool = False,
+    scope_local: bool = False,
+    scope_task: str | None = None,
+) -> Path:
+    if scope_global:
+        return get_global_context_dir(context_root)
+    if scope_local:
+        if not task_id:
+            raise PropagateError("--local requires a task context (PROPAGATE_TASK must be set).")
+        return get_task_context_dir(context_root, execution_name, task_id)
+    if scope_task is not None:
+        _validate_task_path(scope_task)
+        parts = scope_task.split("/", 1)
+        if len(parts) == 2:
+            return get_task_context_dir(context_root, parts[0], parts[1])
+        return get_execution_context_dir(context_root, parts[0])
+    return get_execution_context_dir(context_root, execution_name)
+
+
+def _validate_task_path(task_path: str) -> None:
+    if "/" in task_path:
+        parts = task_path.split("/")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise PropagateError(f"--task value must be 'execution' or 'execution/task', got: '{task_path}'")
+
+
+def context_set_command(key: str, value: str, context_dir: Path) -> int:
     validated_key = validate_context_key(key)
-    context_dir = get_context_dir(working_dir)
     ensure_context_dir(context_dir)
     write_context_value(context_dir, validated_key, value)
     LOGGER.info("Stored context key '%s'.", validated_key)
     return 0
 
 
-def context_get_command(key: str, working_dir: Path) -> int:
-    sys.stdout.write(read_context_value(get_context_dir(working_dir), validate_context_key(key)))
+def context_get_command(key: str, context_dir: Path) -> int:
+    sys.stdout.write(read_context_value(context_dir, validate_context_key(key)))
     return 0
+
+
+def context_dump_command(context_root: Path) -> int:
+    import yaml
+
+    result = load_full_context_tree(context_root)
+    sys.stdout.write(yaml.dump(result, default_flow_style=False, sort_keys=True, allow_unicode=True))
+    return 0
+
+
+def load_full_context_tree(context_root: Path) -> dict:
+    if not context_root.exists():
+        return {}
+    tree: dict = {}
+    global_items = load_local_context(context_root)
+    tree["global"] = dict(global_items)
+    executions: dict = {}
+    try:
+        entries = sorted(context_root.iterdir())
+    except OSError as error:
+        raise PropagateError(f"Failed to read context root {context_root}: {error}") from error
+    for entry in entries:
+        if not entry.is_dir():
+            continue
+        exec_node: dict = {}
+        exec_node["context"] = dict(load_local_context(entry))
+        tasks: dict = {}
+        try:
+            sub_entries = sorted(entry.iterdir())
+        except OSError as error:
+            raise PropagateError(f"Failed to read context directory {entry}: {error}") from error
+        for sub_entry in sub_entries:
+            if not sub_entry.is_dir():
+                continue
+            task_items = load_local_context(sub_entry)
+            if task_items:
+                tasks[sub_entry.name] = dict(task_items)
+        exec_node["tasks"] = tasks
+        executions[entry.name] = exec_node
+    tree["executions"] = executions
+    return tree
 
 
 def ensure_context_dir(context_dir: Path) -> None:
@@ -73,13 +181,34 @@ def load_local_context(context_dir: Path) -> list[tuple[str, str]]:
         return []
     require_context_dir(context_dir)
     try:
-        entries = sorted(context_dir.iterdir(), key=lambda entry: entry.name)
+        entries = sorted(
+            (e for e in context_dir.iterdir() if e.is_file()),
+            key=lambda entry: entry.name,
+        )
     except OSError as error:
         raise PropagateError(f"Failed to read context directory {context_dir}: {error}") from error
     return [
         (validate_context_key(entry.name), read_context_entry(context_dir, entry.name, entry))
         for entry in entries
     ]
+
+
+def load_merged_context(context_root: Path, execution_name: str, task_id: str) -> list[tuple[str, str]]:
+    global_items = load_local_context(get_global_context_dir(context_root))
+    execution_items = load_local_context(get_execution_context_dir(context_root, execution_name))
+    if task_id:
+        task_items = load_local_context(get_task_context_dir(context_root, execution_name, task_id))
+    else:
+        task_items = []
+    return merge_context_layers(global_items, execution_items, task_items)
+
+
+def merge_context_layers(*layers: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    merged: dict[str, str] = {}
+    for layer in layers:
+        for key, value in layer:
+            merged[key] = value
+    return sorted(merged.items())
 
 
 def require_context_dir(context_dir: Path) -> None:

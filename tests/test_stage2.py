@@ -304,8 +304,8 @@ class PropagateStage2CLITests(unittest.TestCase):
         prompt_dir.mkdir(parents=True)
         prompt_path = prompt_dir / "task.md"
         prompt_path.write_text("Base prompt.", encoding="utf-8")
-        context_dir = self.workspace / ".propagate-context"
-        context_dir.mkdir()
+        context_dir = config_dir / ".propagate-context" / "default"
+        context_dir.mkdir(parents=True)
         (context_dir / "zeta").write_text("last value", encoding="utf-8")
         (context_dir / "alpha").write_text("first value", encoding="utf-8")
 
@@ -380,8 +380,8 @@ class PropagateStage2CLITests(unittest.TestCase):
         prompt_dir = config_dir / "prompts"
         prompt_dir.mkdir(parents=True)
         (prompt_dir / "task.md").write_text("", encoding="utf-8")
-        context_dir = self.workspace / ".propagate-context"
-        context_dir.mkdir()
+        context_dir = config_dir / ".propagate-context" / "default"
+        context_dir.mkdir(parents=True)
         (context_dir / "topic").write_text("value", encoding="utf-8")
 
         config_path = self.write_config(
@@ -443,7 +443,7 @@ class PropagateStage2CLITests(unittest.TestCase):
             "Prompt body.\n\n## Context\n\n### :spec\nline 1\nline 2\n",
         )
         self.assertEqual(
-            (self.workspace / ".propagate-context" / ":spec").read_text(encoding="utf-8"),
+            (config_dir / ".propagate-context" / "default" / ":spec").read_text(encoding="utf-8"),
             "line 1\nline 2",
         )
 
@@ -497,7 +497,7 @@ class PropagateStage2CLITests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            (self.workspace / ".propagate-context" / ":late").read_text(encoding="utf-8"),
+            (config_dir / ".propagate-context" / "default" / ":late").read_text(encoding="utf-8"),
             "after-hook context",
         )
 
@@ -755,7 +755,7 @@ class PropagateStage2CLITests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            (self.workspace / ".propagate-context" / ":shared").read_text(encoding="utf-8"),
+            (config_dir / ".propagate-context" / "default" / ":shared").read_text(encoding="utf-8"),
             "shared context",
         )
 

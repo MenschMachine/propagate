@@ -120,6 +120,9 @@ class RuntimeContext:
     active_signal: ActiveSignal | None
     initialized_signal_context_dirs: set[Path]
     working_dir: Path = field(default_factory=Path)
+    context_root: Path = field(default_factory=Path)
+    execution_name: str = ""
+    task_id: str = ""
 
 
 @dataclass

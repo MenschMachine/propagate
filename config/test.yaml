@@ -9,6 +9,8 @@ repositories:
 context_sources:
   commit_message:
     command: 'gommit -A -n -I'
+  date:
+    command: 'date'
 
 executions:
   test-backend:
@@ -17,6 +19,6 @@ executions:
       - id: plan
         prompt: ./prompts/test/plan-backend.md
         before:
-          - whoami
+          - :date
           - propagate context set whoami $(whoami)
           - propagate context dump

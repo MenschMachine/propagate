@@ -1,4 +1,5 @@
 from .constants import LOGGER
+from .context_store import get_context_root
 from .errors import PropagateError
 from .models import Config, ExecutionConfig, ExecutionRouting, RuntimeContext
 from .signal_context import prepare_signal_context_for_working_dir
@@ -12,12 +13,15 @@ def prepare_execution_runtime_context(
     routing = resolve_execution_routing(execution, config)
     log_execution_routing(execution, routing)
     ensure_execution_working_dir(execution, routing)
+    context_root = get_context_root(config.config_path)
     execution_runtime_context = RuntimeContext(
         agent_command=runtime_context.agent_command,
         context_sources=runtime_context.context_sources,
         working_dir=routing.working_dir,
         active_signal=runtime_context.active_signal,
         initialized_signal_context_dirs=runtime_context.initialized_signal_context_dirs,
+        context_root=context_root,
+        execution_name=execution.name,
     )
     prepare_signal_context_for_working_dir(execution_runtime_context)
     return execution_runtime_context

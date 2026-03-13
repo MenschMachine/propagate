@@ -232,7 +232,7 @@ class PropagateStage4GitTests(unittest.TestCase):
             commit_message,
         )
         self.assertEqual(
-            (self.repo / ".propagate-context" / ":commit-message").read_text(encoding="utf-8"),
+            (self.repo / "config" / ".propagate-context" / "default" / ":commit-message").read_text(encoding="utf-8"),
             commit_message,
         )
         self.run_git("rev-parse", "--verify", "refs/heads/propagate/build-stage5", cwd=self.remote_repo)
@@ -256,8 +256,8 @@ class PropagateStage4GitTests(unittest.TestCase):
 
     def test_git_run_can_source_commit_message_from_reserved_context_key(self) -> None:
         self.init_repo()
-        context_dir = self.repo / ".propagate-context"
-        context_dir.mkdir()
+        context_dir = self.repo / "config" / ".propagate-context" / "default"
+        context_dir.mkdir(parents=True)
         (context_dir / ":commit-message").write_text("Reserved key message\n\nBody line", encoding="utf-8")
         self.write_config(
             {

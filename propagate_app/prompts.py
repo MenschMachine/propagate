@@ -1,15 +1,21 @@
 from pathlib import Path
 
 from .constants import LOGGER
-from .context_store import append_context_to_prompt, get_context_dir, load_local_context
+from .context_store import append_context_to_prompt, load_merged_context
 from .errors import PropagateError
+from .models import RuntimeContext
 
 
-def build_sub_task_prompt(prompt_path: Path, task_id: str, working_dir: Path) -> str:
+def build_sub_task_prompt(prompt_path: Path, task_id: str, runtime_context: RuntimeContext) -> str:
     prompt_text = read_prompt(prompt_path)
-    context_dir = get_context_dir(working_dir)
-    LOGGER.info("Loading local context for sub-task '%s' from '%s'.", task_id, context_dir)
-    return append_context_to_prompt(prompt_text, load_local_context(context_dir))
+    LOGGER.info(
+        "Loading merged context for sub-task '%s' (global + execution '%s' + task '%s').",
+        task_id,
+        runtime_context.execution_name,
+        runtime_context.task_id or "(none)",
+    )
+    items = load_merged_context(runtime_context.context_root, runtime_context.execution_name, runtime_context.task_id)
+    return append_context_to_prompt(prompt_text, items)
 
 
 def read_prompt(prompt_path: Path) -> str:

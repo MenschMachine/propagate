@@ -124,10 +124,10 @@ class PropagateStage6DagTests(unittest.TestCase):
         docs_dir = self.workspace / "docs"
         core_dir.mkdir()
         docs_dir.mkdir()
-        (core_dir / ".propagate-context").mkdir()
-        (docs_dir / ".propagate-context").mkdir()
-        (core_dir / ".propagate-context" / ":signal.type").write_text("stale-core", encoding="utf-8")
-        (docs_dir / ".propagate-context" / ":signal.type").write_text("stale-docs", encoding="utf-8")
+        (self.config_dir / ".propagate-context" / "build-core").mkdir(parents=True)
+        (self.config_dir / ".propagate-context" / "prepare-docs-context").mkdir(parents=True)
+        (self.config_dir / ".propagate-context" / "build-core" / ":signal.type").write_text("stale-core", encoding="utf-8")
+        (self.config_dir / ".propagate-context" / "prepare-docs-context" / ":signal.type").write_text("stale-docs", encoding="utf-8")
 
         (self.prompt_dir / "build-core.md").write_text("build core\n", encoding="utf-8")
         (self.prompt_dir / "prepare-docs.md").write_text("prepare docs\n", encoding="utf-8")
@@ -209,11 +209,11 @@ class PropagateStage6DagTests(unittest.TestCase):
         self.assertIn("Activating dependency 'prepare-docs-context' for execution 'update-docs'.", result.stderr)
         self.assertIn("Activating dependency 'lint-docs' for execution 'update-docs'.", result.stderr)
         self.assertEqual(
-            (core_dir / ".propagate-context" / ":signal.type").read_text(encoding="utf-8"),
+            (self.config_dir / ".propagate-context" / "build-core" / ":signal.type").read_text(encoding="utf-8"),
             "repo-change",
         )
         self.assertEqual(
-            (docs_dir / ".propagate-context" / ":signal.type").read_text(encoding="utf-8"),
+            (self.config_dir / ".propagate-context" / "prepare-docs-context" / ":signal.type").read_text(encoding="utf-8"),
             "repo-change",
         )
 
@@ -425,12 +425,12 @@ class PropagateStage6DagTests(unittest.TestCase):
         core_dir.mkdir()
         docs_dir.mkdir()
 
-        local_context_dir = local_dir / ".propagate-context"
-        core_context_dir = core_dir / ".propagate-context"
-        docs_context_dir = docs_dir / ".propagate-context"
-        local_context_dir.mkdir()
-        core_context_dir.mkdir()
-        docs_context_dir.mkdir()
+        local_context_dir = self.config_dir / ".propagate-context" / "start-local"
+        core_context_dir = self.config_dir / ".propagate-context" / "build-core"
+        docs_context_dir = self.config_dir / ".propagate-context" / "update-docs"
+        local_context_dir.mkdir(parents=True)
+        core_context_dir.mkdir(parents=True)
+        docs_context_dir.mkdir(parents=True)
 
         for context_dir, stale_value in (
             (local_context_dir, "stale-local"),

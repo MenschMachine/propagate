@@ -6,21 +6,25 @@ from typing import Any
 import yaml
 
 from .constants import LOGGER, SIGNAL_NAMESPACE_PREFIX
-from .context_store import ensure_context_dir, get_context_dir, require_context_dir, write_context_value
+from .context_store import ensure_context_dir, require_context_dir, resolve_execution_context_dir, write_context_value
 from .errors import PropagateError
 from .models import ActiveSignal, RuntimeContext
 
 
 def prepare_signal_context_for_working_dir(runtime_context: RuntimeContext) -> None:
-    if runtime_context.working_dir in runtime_context.initialized_signal_context_dirs:
+    context_dir = _resolve_signal_context_dir(runtime_context)
+    if context_dir in runtime_context.initialized_signal_context_dirs:
         return
-    context_dir = get_context_dir(runtime_context.working_dir)
     LOGGER.info("Initializing ':signal' context namespace in '%s'.", context_dir)
     clear_signal_context_namespace(context_dir)
     if runtime_context.active_signal is not None:
         LOGGER.info("Populating ':signal' context namespace for signal '%s'.", runtime_context.active_signal.signal_type)
         store_active_signal_context(context_dir, runtime_context.active_signal)
-    runtime_context.initialized_signal_context_dirs.add(runtime_context.working_dir)
+    runtime_context.initialized_signal_context_dirs.add(context_dir)
+
+
+def _resolve_signal_context_dir(runtime_context: RuntimeContext) -> Path:
+    return resolve_execution_context_dir(runtime_context)
 
 
 def clear_signal_context_namespace(context_dir: Path) -> None:

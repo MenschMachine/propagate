@@ -160,7 +160,7 @@ class PropagateStage5SignalTests(unittest.TestCase):
         self.assertIn("### :signal.urgent\nTrue\n", captured_prompt)
         self.assertIn("### :signal.payload\nbranch: main\nfiles:\n- propagate.py\nurgent: true\n", captured_prompt)
 
-        context_dir = self.workspace / ".propagate-context"
+        context_dir = config_dir / ".propagate-context" / "build"
         self.assertEqual((context_dir / ":signal.type").read_text(encoding="utf-8"), "repo-change")
         self.assertEqual((context_dir / ":signal.source").read_text(encoding="utf-8"), "cli")
         self.assertEqual((context_dir / ":signal.branch").read_text(encoding="utf-8"), "main")

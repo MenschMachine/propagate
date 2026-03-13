@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from .constants import LOGGER
-from .context_sources import run_execution_context_source
-from .context_store import get_context_dir, read_context_value
+from .context_sources import run_context_source
+from .context_store import read_context_value, resolve_execution_context_dir
 from .errors import PropagateError
 from .models import GitCommitConfig, GitPrConfig, GitPushConfig, RuntimeContext
 from .processes import run_git_command, run_process_command
@@ -13,17 +13,18 @@ def load_commit_message(commit_config: GitCommitConfig, runtime_context: Runtime
     if commit_config.message_source is not None:
         source_name = commit_config.message_source
         LOGGER.info("Loading commit message from context source '%s'.", source_name)
-        message = run_execution_context_source(
+        message = run_context_source(
             runtime_context.context_sources[source_name],
-            runtime_context.working_dir,
-            execution_name,
+            runtime_context,
+            f"execution '{execution_name}'",
         )
     else:
         message_key = commit_config.message_key
         if message_key is None:
             raise PropagateError("Git commit configuration is missing a message source.")
         LOGGER.info("Loading commit message from context key '%s'.", message_key)
-        message = read_context_value(get_context_dir(runtime_context.working_dir), message_key)
+        context_dir = resolve_execution_context_dir(runtime_context)
+        message = read_context_value(context_dir, message_key)
     validate_commit_message(message)
     return message
 

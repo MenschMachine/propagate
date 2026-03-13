@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -12,12 +13,18 @@ def build_agent_command(agent_command: str, prompt_file: Path) -> str:
     return agent_command.replace("{prompt_file}", shlex.quote(str(prompt_file)))
 
 
-def run_agent_command(command: str, working_dir: Path, task_id: str) -> None:
+def run_agent_command(
+    command: str,
+    working_dir: Path,
+    task_id: str,
+    extra_env: dict[str, str] | None = None,
+) -> None:
     run_shell_command(
         command,
         working_dir,
         failure_message=f"Agent command failed for sub-task '{task_id}' with exit code {{exit_code}}.",
         start_failure_message=f"Failed to start agent command for sub-task '{task_id}': {{error}}",
+        extra_env=extra_env,
     )
 
 
@@ -29,7 +36,11 @@ def run_shell_command(
     *,
     capture_output: bool = False,
     text: bool = False,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    env = None
+    if extra_env:
+        env = {**os.environ, **extra_env}
     try:
         return subprocess.run(
             command,
@@ -38,6 +49,7 @@ def run_shell_command(
             check=True,
             capture_output=capture_output,
             text=text,
+            env=env,
         )
     except subprocess.CalledProcessError as error:
         raise PropagateError(failure_message.format(exit_code=error.returncode)) from error
