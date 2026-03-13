@@ -1,0 +1,13 @@
+version: "6"
+agent:
+  command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} and follow its instructions."'
+
+context_sources:
+  commit_message:
+    command: 'gommit -A -n -I'
+
+executions:
+  test-backend:
+    sub_tasks:
+      - id: plan
+        prompt: ./prompts/test/plan-backend.md
