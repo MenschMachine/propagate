@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -79,6 +80,15 @@ def _validate_task_path(task_path: str) -> None:
         parts = task_path.split("/")
         if len(parts) != 2 or not parts[0] or not parts[1]:
             raise PropagateError(f"--task value must be 'execution' or 'execution/task', got: '{task_path}'")
+
+
+def clear_execution_context(context_root: Path, execution_name: str) -> None:
+    execution_dir = get_execution_context_dir(context_root, execution_name)
+    if not execution_dir.exists():
+        return
+    LOGGER.debug("Clearing execution context directory: %s", execution_dir)
+    shutil.rmtree(execution_dir)
+    execution_dir.mkdir(parents=True, exist_ok=True)
 
 
 def context_set_command(key: str, value: str, context_dir: Path) -> int:

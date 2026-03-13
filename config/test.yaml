@@ -7,10 +7,12 @@ repositories:
     url: git@github.com:MenschMachine/test-propagation-backend.git
 
 context_sources:
+  pwd:
+    command: pwd
   commit_message:
-    command: 'gommit -A -n -I'
+    command: gommit -A -n -I
   date:
-    command: 'date'
+    command: date
 
 executions:
   test-backend:
@@ -19,6 +21,7 @@ executions:
       - id: plan
         prompt: ./prompts/test/plan-backend.md
         before:
-          - :date
+          - :pwd
+          - :commit_message
           - propagate context set whoami $(whoami)
           - propagate context dump

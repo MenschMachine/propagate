@@ -91,7 +91,7 @@ def run_hook_phase(
         if action.startswith(":"):
             source_name = action[1:]
             LOGGER.info(
-                "Loading context source '%s' for %s hook %d/%d in sub-task '%s'.",
+                "Evaluating context source '%s' for %s hook %d/%d in sub-task '%s'.",
                 source_name,
                 phase,
                 hook_index,

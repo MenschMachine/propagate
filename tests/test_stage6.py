@@ -519,7 +519,7 @@ class PropagateStage6DagTests(unittest.TestCase):
             self.assertEqual((context_dir / ":signal.type").read_text(encoding="utf-8"), "repo-change")
             self.assertEqual((context_dir / ":signal.branch").read_text(encoding="utf-8"), "main")
             self.assertFalse((context_dir / ":signal.legacy").exists())
-            self.assertEqual((context_dir / "shared").read_text(encoding="utf-8"), "keep-me")
+            self.assertFalse((context_dir / "shared").exists(), "Pre-existing context should be cleared on fresh run")
 
 
     def _create_bare_repo(self, name: str, branch: str = "main") -> Path:

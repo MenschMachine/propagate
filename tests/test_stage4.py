@@ -256,9 +256,7 @@ class PropagateStage4GitTests(unittest.TestCase):
 
     def test_git_run_can_source_commit_message_from_reserved_context_key(self) -> None:
         self.init_repo()
-        context_dir = self.repo / "config" / ".propagate-context" / "default"
-        context_dir.mkdir(parents=True)
-        (context_dir / ":commit-message").write_text("Reserved key message\n\nBody line", encoding="utf-8")
+        commit_message = "Reserved key message\n\nBody line"
         self.write_config(
             {
                 "branch": {
@@ -267,9 +265,14 @@ class PropagateStage4GitTests(unittest.TestCase):
                     "reuse": True,
                 },
                 "commit": {
-                    "message_key": ":commit-message",
+                    "message_source": "commit-message",
                 },
-            }
+            },
+            context_sources={
+                "commit-message": {
+                    "command": self.build_python_command(self.emit_text_script, commit_message),
+                }
+            },
         )
         self.commit_all("initial commit")
 
@@ -282,7 +285,7 @@ class PropagateStage4GitTests(unittest.TestCase):
         )
         self.assertEqual(
             self.run_git("log", "-1", "--pretty=%B").stdout.strip("\n"),
-            "Reserved key message\n\nBody line",
+            commit_message,
         )
 
     def test_git_run_fails_before_sub_tasks_when_working_tree_is_dirty(self) -> None:

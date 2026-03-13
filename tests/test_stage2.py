@@ -304,10 +304,6 @@ class PropagateStage2CLITests(unittest.TestCase):
         prompt_dir.mkdir(parents=True)
         prompt_path = prompt_dir / "task.md"
         prompt_path.write_text("Base prompt.", encoding="utf-8")
-        context_dir = config_dir / ".propagate-context" / "default"
-        context_dir.mkdir(parents=True)
-        (context_dir / "zeta").write_text("last value", encoding="utf-8")
-        (context_dir / "alpha").write_text("first value", encoding="utf-8")
 
         config_path = self.write_config(
             {
@@ -316,11 +312,24 @@ class PropagateStage2CLITests(unittest.TestCase):
                         {
                             "id": "task",
                             "prompt": "./prompts/task.md",
+                            "before": [":alpha", ":zeta"],
                         }
                     ]
                 }
             },
             config_dir,
+            context_sources={
+                "zeta": {
+                    "command": self.build_python_command(
+                        self.context_source_script, "last value"
+                    )
+                },
+                "alpha": {
+                    "command": self.build_python_command(
+                        self.context_source_script, "first value"
+                    )
+                },
+            },
         )
 
         result = self.run_cli("run", "--config", str(config_path), cwd=self.workspace)
@@ -328,7 +337,7 @@ class PropagateStage2CLITests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             self.read_capture()["content"],
-            "Base prompt.\n\n## Context\n\n### alpha\nfirst value\n\n### zeta\nlast value\n",
+            "Base prompt.\n\n## Context\n\n### :alpha\nfirst value\n\n### :zeta\nlast value\n",
         )
 
     def test_run_executes_sub_tasks_sequentially(self) -> None:
@@ -380,9 +389,6 @@ class PropagateStage2CLITests(unittest.TestCase):
         prompt_dir = config_dir / "prompts"
         prompt_dir.mkdir(parents=True)
         (prompt_dir / "task.md").write_text("", encoding="utf-8")
-        context_dir = config_dir / ".propagate-context" / "default"
-        context_dir.mkdir(parents=True)
-        (context_dir / "topic").write_text("value", encoding="utf-8")
 
         config_path = self.write_config(
             {
@@ -391,11 +397,19 @@ class PropagateStage2CLITests(unittest.TestCase):
                         {
                             "id": "task",
                             "prompt": "./prompts/task.md",
+                            "before": [":topic"],
                         }
                     ]
                 }
             },
             config_dir,
+            context_sources={
+                "topic": {
+                    "command": self.build_python_command(
+                        self.context_source_script, "value"
+                    )
+                },
+            },
         )
 
         result = self.run_cli("run", "--config", str(config_path), cwd=self.workspace)
@@ -403,7 +417,7 @@ class PropagateStage2CLITests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             self.read_capture()["content"],
-            "## Context\n\n### topic\nvalue\n",
+            "## Context\n\n### :topic\nvalue\n",
         )
 
     def test_run_before_hook_loads_context_source_into_reserved_key(self) -> None:

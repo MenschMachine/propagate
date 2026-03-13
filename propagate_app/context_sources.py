@@ -48,4 +48,4 @@ def capture_context_source_output(
         capture_output=True,
         text=True,
     )
-    return result.stdout
+    return result.stdout.strip()

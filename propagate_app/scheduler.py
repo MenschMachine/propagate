@@ -1,4 +1,5 @@
 from .constants import LOGGER
+from .context_store import clear_execution_context, get_context_root
 from .errors import PropagateError
 from .execution_flow import run_configured_execution
 from .graph import build_execution_graph
@@ -36,6 +37,8 @@ def run_execution_schedule(
             remaining_names = remaining_active_execution_names(execution_graph.execution_order, schedule_state)
             raise PropagateError("No runnable executions remain for active run plan: " + ", ".join(remaining_names))
         execution = config.executions[execution_name]
+        context_root = get_context_root(config.config_path)
+        clear_execution_context(context_root, execution.name)
         execution_runtime_context = prepare_execution_runtime_context(config, execution, runtime_context)
         try:
             run_configured_execution(execution, execution_runtime_context)
