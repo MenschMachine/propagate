@@ -327,6 +327,78 @@ class PropagateStage5SignalTests(unittest.TestCase):
         self.assertIn("Failed to parse Signal 'repo-change' payload:", result.stderr)
         self.assertFalse(self.capture_output.exists())
 
+    def test_signal_required_execution_fails_without_signal_auto_select(self) -> None:
+        config_dir = self.workspace / "config"
+        prompt_dir = config_dir / "prompts"
+        prompt_dir.mkdir(parents=True)
+        (prompt_dir / "task.md").write_text("Task prompt.\n", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.capture_output),
+                    )
+                },
+                "signals": {
+                    "run": {"payload": {}}
+                },
+                "executions": {
+                    "deploy": {
+                        "signals": ["run"],
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            },
+            config_dir,
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), cwd=self.workspace)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires a signal", result.stderr)
+        self.assertIn("run", result.stderr)
+
+    def test_signal_required_execution_fails_without_signal_explicit_select(self) -> None:
+        config_dir = self.workspace / "config"
+        prompt_dir = config_dir / "prompts"
+        prompt_dir.mkdir(parents=True)
+        (prompt_dir / "task.md").write_text("Task prompt.\n", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.capture_output),
+                    )
+                },
+                "signals": {
+                    "deploy": {"payload": {}}
+                },
+                "executions": {
+                    "deploy-backend": {
+                        "signals": ["deploy"],
+                        "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                    }
+                },
+            },
+            config_dir,
+        )
+
+        result = self.run_cli(
+            "run", "--config", str(config_path), "--execution", "deploy-backend", cwd=self.workspace
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires a signal", result.stderr)
+        self.assertIn("deploy", result.stderr)
+
     def test_invalid_propagation_trigger_fails_during_config_load(self) -> None:
         config_dir = self.workspace / "config"
         prompt_dir = config_dir / "prompts"

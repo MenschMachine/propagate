@@ -136,7 +136,9 @@ def select_initial_execution(
         execution = matching_executions[0]
         LOGGER.info("Auto-selected execution '%s' for signal '%s'.", execution.name, active_signal.signal_type)
         return execution
-    return select_execution(config, None)
+    execution = select_execution(config, None)
+    ensure_execution_accepts_signal(execution, active_signal)
+    return execution
 
 
 def select_execution(config: Config, requested_name: str | None) -> ExecutionConfig:
@@ -155,8 +157,14 @@ def select_execution(config: Config, requested_name: str | None) -> ExecutionCon
 
 
 def ensure_execution_accepts_signal(execution: ExecutionConfig, active_signal: ActiveSignal | None) -> None:
-    if active_signal is None or not execution.signals or active_signal.signal_type in execution.signals:
+    if not execution.signals:
         return
+    if active_signal is not None and active_signal.signal_type in execution.signals:
+        return
+    if active_signal is None:
+        raise PropagateError(
+            f"Execution '{execution.name}' requires a signal. Accepted signals: {', '.join(execution.signals)}."
+        )
     raise PropagateError(
         f"Execution '{execution.name}' does not accept signal '{active_signal.signal_type}'. Allowed signals: {', '.join(execution.signals)}."
     )
