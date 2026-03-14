@@ -32,6 +32,23 @@
       action:
         type: string
 
+  pull_request.reopened:
+    payload:
+      repository:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
+      head_ref:
+        type: string
+      base_ref:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+
   pull_request.labeled:
     payload:
       repository:
