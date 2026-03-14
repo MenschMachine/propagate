@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from propagate_app.signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, receive_signal
-from propagate_telegram.cli import _parse_allowed_users, _resolve_token
+from propagate_telegram.cli import _parse_allowed_users, _resolve_allowed_users, _resolve_token
 from propagate_telegram.message_parser import parse_run_message
 
 # ---------------------------------------------------------------------------
@@ -134,6 +135,21 @@ def test_parse_allowed_users_invalid():
         _parse_allowed_users("123,abc")
 
 
+def test_resolve_allowed_users_cli_wins(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_USERS", "999")
+    assert _resolve_allowed_users("123,456") == "123,456"
+
+
+def test_resolve_allowed_users_from_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_USERS", "111,222")
+    assert _resolve_allowed_users(None) == "111,222"
+
+
+def test_resolve_allowed_users_none(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_USERS", raising=False)
+    assert _resolve_allowed_users(None) is None
+
+
 # ---------------------------------------------------------------------------
 # Handler tests (mock Telegram, real ZMQ)
 # ---------------------------------------------------------------------------
@@ -200,18 +216,20 @@ async def test_handle_run_delivers_signal(zmq_socket, push_socket):
 
 
 @pytest.mark.anyio
-async def test_handle_run_ignores_unauthorized_user(zmq_socket, push_socket):
+async def test_handle_run_ignores_unauthorized_user(zmq_socket, push_socket, caplog):
     from propagate_telegram.bot import handle_run
 
     pull, _ = zmq_socket
     update = _make_update(999, "hacker", "/run deploy\nDo bad things.")
     context = _make_context(SIGNALS, push_socket, {123})
 
-    await handle_run(update, context)
+    with caplog.at_level(logging.WARNING, logger="propagate.telegram"):
+        await handle_run(update, context)
 
     update.message.reply_text.assert_not_called()
     result = receive_signal(pull, block=True, timeout_ms=500)
     assert result is None
+    assert any("Unauthorized" in r.message and "hacker" in r.message for r in caplog.records)
 
 
 @pytest.mark.anyio

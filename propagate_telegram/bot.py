@@ -10,12 +10,21 @@ from .message_parser import parse_run_message
 logger = logging.getLogger("propagate.telegram")
 
 
+def _is_allowed(update, allowed_users: set[int]) -> bool:
+    user = update.effective_user
+    if user.id in allowed_users:
+        return True
+    username = user.username or str(user.id)
+    logger.warning("Unauthorized command from user %s (id=%d).", username, user.id)
+    return False
+
+
 async def handle_run(update, context) -> None:
     """Handle the ``/run`` command: parse, validate, and deliver a signal."""
     bot_data: dict[str, Any] = context.bot_data
     allowed_users: set[int] = bot_data["allowed_users"]
 
-    if update.effective_user.id not in allowed_users:
+    if not _is_allowed(update, allowed_users):
         return
 
     text: str = update.message.text
@@ -44,7 +53,7 @@ async def handle_run(update, context) -> None:
 async def handle_signals(update, context) -> None:
     """Handle the ``/signals`` command: list configured signals."""
     allowed_users: set[int] = context.bot_data["allowed_users"]
-    if update.effective_user.id not in allowed_users:
+    if not _is_allowed(update, allowed_users):
         return
 
     config_signals: dict[str, Any] = context.bot_data["config_signals"]
@@ -59,7 +68,7 @@ async def handle_signals(update, context) -> None:
 async def handle_help(update, context) -> None:
     """Handle the ``/help`` command."""
     allowed_users: set[int] = context.bot_data["allowed_users"]
-    if update.effective_user.id not in allowed_users:
+    if not _is_allowed(update, allowed_users):
         return
 
     config_signals: dict[str, Any] = context.bot_data["config_signals"]

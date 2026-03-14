@@ -15,12 +15,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", required=True, help="Path to the propagate YAML config.")
     parser.add_argument("--token", help="Telegram bot token.")
     parser.add_argument("--token-env", help="Environment variable name containing the bot token.")
-    parser.add_argument("--allowed-users", required=True, help="Comma-separated Telegram user IDs allowed to send commands.")
+    parser.add_argument("--allowed-users", help="Comma-separated Telegram user IDs allowed to send commands (default: $TELEGRAM_USERS).")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    from dotenv import load_dotenv
+    load_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     log_level = logging.DEBUG if args.debug else logging.INFO
@@ -32,8 +34,13 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", error)
         return 1
 
+    raw_users = _resolve_allowed_users(args.allowed_users)
+    if raw_users is None:
+        logger.error("Must specify --allowed-users or set TELEGRAM_USERS env var.")
+        return 1
+
     try:
-        allowed_users = _parse_allowed_users(args.allowed_users)
+        allowed_users = _parse_allowed_users(raw_users)
     except PropagateError as error:
         logger.error("%s", error)
         return 1
@@ -75,6 +82,12 @@ def _resolve_token(token: str | None, token_env: str | None) -> str:
     if token is not None:
         return token
     raise PropagateError("Must specify --token or --token-env.")
+
+
+def _resolve_allowed_users(cli_value: str | None) -> str | None:
+    if cli_value is not None:
+        return cli_value
+    return os.environ.get("TELEGRAM_USERS")
 
 
 def _parse_allowed_users(raw: str) -> set[int]:

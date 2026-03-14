@@ -22,6 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from dotenv import load_dotenv
+    load_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     log_level = logging.DEBUG if args.debug else logging.INFO

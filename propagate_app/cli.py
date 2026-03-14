@@ -68,6 +68,8 @@ def _add_read_scope_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from dotenv import load_dotenv
+    load_dotenv()
     configure_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
