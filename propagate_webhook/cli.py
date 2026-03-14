@@ -45,6 +45,9 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Failed to load config: %s", error)
         return 1
 
+    signal_names = sorted(config.signals)
+    logger.info("Loaded %d signal(s): %s", len(signal_names), ", ".join(signal_names))
+
     from .server import create_app
 
     app = create_app(

@@ -1,4 +1,58 @@
+  pull_request.opened:
+    payload:
+      repository:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
+      head_ref:
+        type: string
+      base_ref:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+
+  pull_request.closed:
+    payload:
+      repository:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
+      head_ref:
+        type: string
+      base_ref:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+
   pull_request.labeled:
+    payload:
+      repository:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
+      label:
+        type: string
+        required: true
+      head_ref:
+        type: string
+      base_ref:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+
+  pull_request.unlabeled:
     payload:
       repository:
         type: string
