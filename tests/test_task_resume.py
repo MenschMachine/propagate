@@ -206,7 +206,7 @@ class TaskResumeTests(unittest.TestCase):
         self.assertTrue(state_file.exists())
         state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
         self.assertIn("completed_tasks", state_data)
-        self.assertEqual(state_data["completed_tasks"], {"work": ["task-a"]})
+        self.assertEqual(state_data["completed_tasks"], {"work": {"task-a": "after"}})
 
     def test_multi_execution_partial_resume(self) -> None:
         """Execution A completes fully, Execution B fails on task 2. Resume skips A entirely, skips B's task 1."""
@@ -323,3 +323,183 @@ class TaskResumeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         invocations = json.loads(self.invocation_log.read_text(encoding="utf-8"))
         self.assertEqual(len(invocations), 1)
+
+    def test_resume_skips_subtask_before_hooks(self) -> None:
+        """Before hooks pass, agent fails → resume skips before, re-runs agent."""
+        repo_dir = self.workspace / "repo"
+        repo_dir.mkdir()
+        (self.prompt_dir / "t1.md").write_text("task-1\n", encoding="utf-8")
+
+        hook_log = self.workspace / "hook_log.txt"
+        fail_on_file = self.workspace / "fail_on.txt"
+        fail_on_file.write_text("task-1", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.fail_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                        str(fail_on_file),
+                    )
+                },
+                "repositories": {
+                    "repo": {"path": "../repo"},
+                },
+                "executions": {
+                    "work": {
+                        "repository": "repo",
+                        "sub_tasks": [
+                            {
+                                "id": "t1",
+                                "prompt": "./prompts/t1.md",
+                                "before": [f"echo before-t1 >> {shlex.quote(str(hook_log))}"],
+                            },
+                        ],
+                    },
+                },
+            }
+        )
+
+        # First run: before hook runs, agent fails
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "work")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("before-t1", hook_log.read_text(encoding="utf-8"))
+
+        # Check state records before phase
+        state_file = state_file_path(config_path)
+        state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
+        self.assertEqual(state_data["completed_tasks"], {"work": {"t1": "before"}})
+
+        # Fix and resume
+        fail_on_file.write_text("never", encoding="utf-8")
+        hook_log.unlink()
+        self.invocation_log.unlink()
+
+        result = self.run_cli("run", "--config", str(config_path), "--resume")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        # Before hook should NOT have run again
+        hook_ran = hook_log.exists() and "before-t1" in hook_log.read_text(encoding="utf-8")
+        self.assertFalse(hook_ran, "before hook should have been skipped on resume")
+
+        # Agent should have run
+        invocations = json.loads(self.invocation_log.read_text(encoding="utf-8"))
+        self.assertEqual(len(invocations), 1)
+
+    def test_resume_skips_subtask_agent(self) -> None:
+        """Agent passes, after hooks fail → resume skips before + agent, re-runs after."""
+        repo_dir = self.workspace / "repo"
+        repo_dir.mkdir()
+        (self.prompt_dir / "t1.md").write_text("task-1\n", encoding="utf-8")
+
+        after_fail_flag = self.workspace / "after_fail.txt"
+        after_fail_flag.write_text("yes", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "repo": {"path": "../repo"},
+                },
+                "executions": {
+                    "work": {
+                        "repository": "repo",
+                        "sub_tasks": [
+                            {
+                                "id": "t1",
+                                "prompt": "./prompts/t1.md",
+                                "after": [f"test ! -f {shlex.quote(str(after_fail_flag))}"],
+                            },
+                        ],
+                    },
+                },
+            }
+        )
+
+        # First run: agent succeeds, after hook fails
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "work")
+        self.assertEqual(result.returncode, 1)
+
+        # Check state records agent phase
+        state_file = state_file_path(config_path)
+        state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
+        self.assertEqual(state_data["completed_tasks"], {"work": {"t1": "agent"}})
+
+        # Fix and resume
+        after_fail_flag.unlink()
+        self.invocation_log.unlink()
+
+        result = self.run_cli("run", "--config", str(config_path), "--resume")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        # Agent should NOT have run again
+        agent_ran = self.invocation_log.exists()
+        self.assertFalse(agent_ran, "agent should have been skipped on resume")
+
+    def test_resume_skips_execution_before_hooks(self) -> None:
+        """Execution before hooks pass, sub-task fails → resume skips execution before hooks."""
+        repo_dir = self.workspace / "repo"
+        repo_dir.mkdir()
+        (self.prompt_dir / "t1.md").write_text("task-1\n", encoding="utf-8")
+
+        exec_hook_log = self.workspace / "exec_hook_log.txt"
+        fail_on_file = self.workspace / "fail_on.txt"
+        fail_on_file.write_text("task-1", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.fail_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                        str(fail_on_file),
+                    )
+                },
+                "repositories": {
+                    "repo": {"path": "../repo"},
+                },
+                "executions": {
+                    "work": {
+                        "repository": "repo",
+                        "before": [f"echo exec-before >> {shlex.quote(str(exec_hook_log))}"],
+                        "sub_tasks": [
+                            {"id": "t1", "prompt": "./prompts/t1.md"},
+                        ],
+                    },
+                },
+            }
+        )
+
+        # First run: execution before hooks run, sub-task fails
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "work")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("exec-before", exec_hook_log.read_text(encoding="utf-8"))
+
+        # Check state records execution before phase
+        state_file = state_file_path(config_path)
+        state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
+        self.assertEqual(state_data["completed_execution_phases"], {"work": "before"})
+
+        # Fix and resume
+        fail_on_file.write_text("never", encoding="utf-8")
+        exec_hook_log.unlink()
+        self.invocation_log.unlink()
+
+        result = self.run_cli("run", "--config", str(config_path), "--resume")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        # Execution before hook should NOT have run again
+        hook_ran = exec_hook_log.exists() and "exec-before" in exec_hook_log.read_text(encoding="utf-8")
+        self.assertFalse(hook_ran, "execution before hook should have been skipped on resume")

@@ -22,7 +22,8 @@ def save_run_state(state: RunState) -> None:
         "initial_execution": state.initial_execution,
         "active_names": sorted(state.schedule.active_names),
         "completed_names": sorted(state.schedule.completed_names),
-        "completed_tasks": {name: sorted(task_ids) for name, task_ids in state.schedule.completed_tasks.items()},
+        "completed_tasks": {name: dict(phases) for name, phases in state.schedule.completed_tasks.items()},
+        "completed_execution_phases": dict(state.schedule.completed_execution_phases),
         "cloned_repos": {name: str(path) for name, path in state.cloned_repos.items()},
         "initialized_signal_context_dirs": sorted(str(p) for p in state.initialized_signal_context_dirs),
     }
@@ -69,13 +70,17 @@ def load_run_state(config_path: Path) -> RunState:
             payload=sig.get("payload", {}),
             source=sig["source"],
         )
+    completed_tasks: dict[str, dict[str, str]] = {
+        name: dict(phases) for name, phases in (data.get("completed_tasks") or {}).items()
+    }
     return RunState(
         config_path=Path(data["config_path"]),
         initial_execution=data["initial_execution"],
         schedule=ExecutionScheduleState(
             active_names=set(data.get("active_names") or []),
             completed_names=set(data.get("completed_names") or []),
-            completed_tasks={name: set(task_ids) for name, task_ids in (data.get("completed_tasks") or {}).items()},
+            completed_tasks=completed_tasks,
+            completed_execution_phases=dict(data.get("completed_execution_phases") or {}),
         ),
         active_signal=active_signal,
         cloned_repos=cloned_repos,

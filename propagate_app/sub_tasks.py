@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import NoReturn
 
-from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER
+from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
 from .context_sources import run_context_source
 from .errors import PropagateError
 from .git_runtime import (
@@ -37,24 +37,39 @@ def build_context_env(runtime_context: RuntimeContext) -> dict[str, str]:
 def run_execution_sub_tasks(
     execution: ExecutionConfig,
     runtime_context: RuntimeContext,
-    completed_task_ids: set[str] | None = None,
-    on_task_completed: Callable[[str, str], None] | None = None,
+    completed_task_phases: dict[str, str] | None = None,
+    on_phase_completed: Callable[[str, str, str], None] | None = None,
 ) -> None:
     for sub_task in execution.sub_tasks:
-        if completed_task_ids and sub_task.task_id in completed_task_ids:
+        task_phase = (completed_task_phases or {}).get(sub_task.task_id)
+        if task_phase == PHASE_AFTER:
             LOGGER.info("Skipping already completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution.name)
             continue
-        run_sub_task(execution.name, sub_task, runtime_context, execution.git)
-        if on_task_completed is not None:
-            on_task_completed(execution.name, sub_task.task_id)
+        run_sub_task(execution.name, sub_task, runtime_context, execution.git, task_phase, on_phase_completed)
 
 
-def run_sub_task(execution_name: str, sub_task: SubTaskConfig, runtime_context: RuntimeContext, git_config: GitConfig | None = None) -> None:
+def run_sub_task(
+    execution_name: str,
+    sub_task: SubTaskConfig,
+    runtime_context: RuntimeContext,
+    git_config: GitConfig | None = None,
+    completed_phase: str | None = None,
+    on_phase_completed: Callable[[str, str, str], None] | None = None,
+) -> None:
     LOGGER.info("Running sub-task '%s' for execution '%s'.", sub_task.task_id, execution_name)
     task_runtime_context = replace(runtime_context, task_id=sub_task.task_id)
     context_id = f"sub-task '{sub_task.task_id}'"
-    run_sub_task_hook_phase(sub_task, "before", sub_task.before, task_runtime_context, git_config, context_id)
-    if sub_task.prompt_path is not None:
+    skip_before = completed_phase in (PHASE_BEFORE, PHASE_AGENT)
+    skip_agent = completed_phase == PHASE_AGENT
+    if skip_before:
+        LOGGER.info("Skipping already completed 'before' phase for sub-task '%s'.", sub_task.task_id)
+    else:
+        run_sub_task_hook_phase(sub_task, "before", sub_task.before, task_runtime_context, git_config, context_id)
+        if on_phase_completed is not None and sub_task.before:
+            on_phase_completed(execution_name, sub_task.task_id, PHASE_BEFORE)
+    if skip_agent:
+        LOGGER.info("Skipping already completed 'agent' phase for sub-task '%s'.", sub_task.task_id)
+    elif sub_task.prompt_path is not None:
         temp_prompt_path = write_temp_text(
             build_sub_task_prompt(sub_task.prompt_path, sub_task.task_id, task_runtime_context),
             prefix="propagate-",
@@ -64,9 +79,15 @@ def run_sub_task(execution_name: str, sub_task: SubTaskConfig, runtime_context: 
             run_sub_task_agent(sub_task, temp_prompt_path, task_runtime_context)
         finally:
             cleanup_temp_file(temp_prompt_path, "temporary prompt file")
+        if on_phase_completed is not None:
+            on_phase_completed(execution_name, sub_task.task_id, PHASE_AGENT)
     else:
         LOGGER.debug("Sub-task '%s' has no prompt, skipping agent invocation.", sub_task.task_id)
+        if on_phase_completed is not None:
+            on_phase_completed(execution_name, sub_task.task_id, PHASE_AGENT)
     run_sub_task_hook_phase(sub_task, "after", sub_task.after, task_runtime_context, git_config, context_id)
+    if on_phase_completed is not None:
+        on_phase_completed(execution_name, sub_task.task_id, PHASE_AFTER)
     LOGGER.info("Completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution_name)
 
 

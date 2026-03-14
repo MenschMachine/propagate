@@ -42,6 +42,7 @@ executions:
       - id: noop
         before:
           - propagate context dump
+          - echo hi
 
 propagation:
   triggers:

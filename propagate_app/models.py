@@ -142,7 +142,8 @@ class RuntimeContext:
 class ExecutionScheduleState:
     active_names: set[str]
     completed_names: set[str]
-    completed_tasks: dict[str, set[str]] = field(default_factory=dict)
+    completed_tasks: dict[str, dict[str, str]] = field(default_factory=dict)
+    completed_execution_phases: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
