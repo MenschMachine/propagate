@@ -91,3 +91,4 @@ YAML with `version: "6"` required. Key sections: `agent`, `repositories`, `conte
 - Write tests using pytest style (plain functions + fixtures), not `unittest.TestCase` classes
 - Always keep docs up to date, especially the feature related docs like GIT.md, SIGNAL.md. If one is missing for your
   feature or subsystem, create it.
+- If there are changes in config syntax, features, etc. update CONFIG_REFERENCE.mdg
