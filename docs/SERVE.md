@@ -117,3 +117,19 @@ propagate send-signal --config config/propagate.yaml \
   --signal deploy \
   --signal-payload '{branch: main}'
 ```
+
+---
+
+## Unified start script
+
+To start all services (`serve`, `webhook`, `telegram`) together with merged, labeled output:
+
+```bash
+scripts/start.sh --config config/propagate.yaml
+
+# Add --dev to also start smee for local webhook forwarding:
+scripts/start.sh --config config/propagate.yaml --dev
+
+# See all options:
+scripts/start.sh --help
+```

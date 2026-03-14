@@ -26,6 +26,9 @@ def serve_command(config_value: str) -> int:
     shutdown = threading.Event()
 
     def handle_shutdown(signum: int, frame: object) -> None:
+        if shutdown.is_set():
+            LOGGER.info("Forced shutdown.")
+            raise KeyboardInterrupt
         LOGGER.info("Received shutdown signal, will exit after current operation.")
         shutdown.set()
 

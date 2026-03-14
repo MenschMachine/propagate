@@ -1,0 +1,8 @@
+start:
+  payload:
+    instructions:
+      type: string
+      required: true
+    sender:
+      type: string
+      required: false

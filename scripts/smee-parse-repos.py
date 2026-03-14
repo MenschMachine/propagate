@@ -2,12 +2,16 @@
 """Parse propagate config and output GitHub owner/repo pairs."""
 
 import argparse
+import logging
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
+
+from propagate_app.constants import configure_logging
+
+logger = logging.getLogger("propagate.smee-parse-repos")
 
 
 def parse_github_url(url: str) -> str | None:
@@ -22,6 +26,7 @@ def parse_github_url(url: str) -> str | None:
 
 
 def main() -> None:
+    configure_logging()
     parser = argparse.ArgumentParser(description="Extract GitHub repos from propagate config")
     parser.add_argument("--config", required=True, help="Path to propagate YAML config")
     args = parser.parse_args()
@@ -40,12 +45,12 @@ def main() -> None:
             if owner_repo:
                 print(owner_repo)
             else:
-                print(f"WARNING: '{name}' URL is not a GitHub URL: {url}", file=sys.stderr)
+                logger.warning("'%s' URL is not a GitHub URL: %s", name, url)
             continue
 
         path_value = repo_data.get("path")
         if not path_value:
-            print(f"WARNING: '{name}' has no url or path", file=sys.stderr)
+            logger.warning("'%s' has no url or path", name)
             continue
 
         repo_path = Path(path_value).expanduser()
@@ -63,9 +68,9 @@ def main() -> None:
             if owner_repo:
                 print(owner_repo)
             else:
-                print(f"WARNING: '{name}' origin is not a GitHub URL: {origin_url}", file=sys.stderr)
+                logger.warning("'%s' origin is not a GitHub URL: %s", name, origin_url)
         except subprocess.CalledProcessError:
-            print(f"WARNING: '{name}' could not get origin URL from {repo_path}", file=sys.stderr)
+            logger.warning("'%s' could not get origin URL from %s", name, repo_path)
 
 
 if __name__ == "__main__":

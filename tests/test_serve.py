@@ -430,3 +430,40 @@ def test_serve_keyboard_interrupt_during_run_exits_cleanly(tmp_path):
         sender.join()
 
     # If we get here, the loop exited cleanly instead of crashing
+
+
+def test_serve_forced_shutdown_on_second_signal(tmp_path):
+    """Second shutdown signal raises KeyboardInterrupt to force exit."""
+    import signal as signal_module
+    from propagate_app.serve import serve_command
+
+    exec_a = make_execution(
+        "a",
+        signals=[ExecutionSignalConfig(signal_name="go")],
+    )
+    signal_cfg = SignalConfig(name="go", payload={})
+    config = make_config(tmp_path, [exec_a], signals={"go": signal_cfg})
+
+    shutdown_event = None
+
+    def mock_serve_loop(cfg, sock, shutdown):
+        nonlocal shutdown_event
+        shutdown_event = shutdown
+        # Simulate first signal already received
+        shutdown.set()
+        # Now simulate a second SIGINT hitting the handler
+        handler = signal_module.getsignal(signal_module.SIGINT)
+        # The second call should raise KeyboardInterrupt
+        try:
+            handler(signal_module.SIGINT, None)
+            assert False, "Expected KeyboardInterrupt"
+        except KeyboardInterrupt:
+            pass
+
+    with (
+        patch("propagate_app.serve._serve_loop", side_effect=mock_serve_loop),
+        patch("propagate_app.serve.load_config", return_value=config),
+    ):
+        result = serve_command(str(config.config_path))
+
+    assert result == 0

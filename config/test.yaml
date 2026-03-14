@@ -17,14 +17,14 @@ context_sources:
     command: date
 
 signals:
-  include: includes/github-signals.yaml
-  run:
-    payload: { }
+  include:
+    - includes/default.yaml
+    - includes/github-signals.yaml
 
 executions:
   test-backend:
     repository: test-propagation-backend
-    signals: [ run ]
+    signals: [ start ]
     sub_tasks:
       - id: plan
         #prompt: ./prompts/test/plan-backend.md

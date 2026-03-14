@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 
+from propagate_app.constants import configure_logging
 from propagate_app.errors import PropagateError
 
 logger = logging.getLogger("propagate.webhook")
@@ -26,8 +27,9 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(level=log_level, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging()
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     try:
         secret = _resolve_secret(args.secret, args.secret_env)
