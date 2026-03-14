@@ -4,7 +4,6 @@ Adding a `git:` block to an execution enables automatic branch management, commi
 
 ## TODO
 
-- **Push conflict resolution**: Push failures (e.g. remote has new commits) are fatal — the execution errors out. No pull, rebase, or retry is attempted.
 - **PR title/description**: Both are derived by splitting the commit message on the first newline. Line 1 → title, remainder → body. No templating or generation — whatever the `message_source` command or `message_key` value produces is used verbatim.
 
 ## Execution flow

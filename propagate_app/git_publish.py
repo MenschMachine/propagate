@@ -58,11 +58,57 @@ def create_execution_commit(commit_message: str, working_dir: Path) -> None:
 
 def push_branch(push_config: GitPushConfig, branch_name: str, working_dir: Path) -> None:
     LOGGER.info("Pushing branch '%s' to remote '%s'.", branch_name, push_config.remote)
-    run_git_command(
+    result = run_git_command(
         ["push", "--set-upstream", push_config.remote, branch_name],
         working_dir,
         failure_message=f"Failed to push branch '{branch_name}' to remote '{push_config.remote}'.",
         start_failure_message=f"Failed to start push to remote '{push_config.remote}': {{error}}",
+        check=False,
+    )
+    if result.returncode == 0:
+        return
+    LOGGER.debug("Push rejected; attempting fetch and rebase from '%s/%s'.", push_config.remote, branch_name)
+    _rebase_and_retry_push(push_config, branch_name, working_dir)
+
+
+def _rebase_and_retry_push(push_config: GitPushConfig, branch_name: str, working_dir: Path) -> None:
+    remote = push_config.remote
+    fetch = run_git_command(
+        ["fetch", remote, branch_name],
+        working_dir,
+        failure_message=f"Failed to fetch '{branch_name}' from remote '{remote}'.",
+        start_failure_message=f"Failed to start fetch from remote '{remote}': {{error}}",
+        check=False,
+    )
+    if fetch.returncode != 0:
+        raise PropagateError(f"Failed to fetch '{branch_name}' from '{remote}' before retrying push.")
+    rebase = run_git_command(
+        ["rebase", f"{remote}/{branch_name}"],
+        working_dir,
+        failure_message=f"Rebase onto '{remote}/{branch_name}' failed.",
+        start_failure_message=f"Failed to start rebase: {{error}}",
+        check=False,
+    )
+    if rebase.returncode != 0:
+        LOGGER.debug("Rebase stderr: %s", rebase.stderr)
+        abort = run_git_command(
+            ["rebase", "--abort"],
+            working_dir,
+            failure_message="Failed to abort rebase.",
+            start_failure_message="Failed to start rebase abort: {error}",
+            check=False,
+        )
+        if abort.returncode != 0:
+            LOGGER.warning("Rebase abort failed (returncode %d); repository may be mid-rebase.", abort.returncode)
+        raise PropagateError(
+            f"Failed to push branch '{branch_name}' to remote '{remote}': "
+            f"push was rejected and rebase onto '{remote}/{branch_name}' failed due to conflicts."
+        )
+    run_git_command(
+        ["push", "--set-upstream", remote, branch_name],
+        working_dir,
+        failure_message=f"Failed to push branch '{branch_name}' to remote '{remote}' after rebase.",
+        start_failure_message=f"Failed to start push to remote '{remote}': {{error}}",
     )
 
 
