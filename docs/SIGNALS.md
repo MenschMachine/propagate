@@ -38,6 +38,46 @@ signals:
     payload: {}
 ```
 
+### Including signals from external files
+
+Signal definitions can be loaded from external YAML files using the `include` key. This keeps reusable signal sets (e.g. GitHub webhook signals) in separate files and avoids duplication across configs. Paths are relative to the config file directory.
+
+Single file:
+
+```yaml
+signals:
+  include: includes/github-signals.yaml
+  run:
+    payload: {}
+```
+
+Multiple files:
+
+```yaml
+signals:
+  include:
+    - includes/github-signals.yaml
+    - includes/deploy-signals.yaml
+  run:
+    payload: {}
+```
+
+The included file must be a YAML mapping of signal definitions (same format as inline signals):
+
+```yaml
+# includes/github-signals.yaml
+pull_request.labeled:
+  payload:
+    repository:
+      type: string
+      required: true
+    label:
+      type: string
+      required: true
+```
+
+Duplicate signal names between included files and inline definitions (or between multiple included files) are rejected.
+
 ### Payload field options
 
 | Key | Values | Default | Description |

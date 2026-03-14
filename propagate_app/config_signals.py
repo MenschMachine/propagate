@@ -1,6 +1,9 @@
+from pathlib import Path
 from typing import Any
 
-from .constants import SUPPORTED_SIGNAL_FIELD_TYPES
+import yaml
+
+from .constants import LOGGER, SUPPORTED_SIGNAL_FIELD_TYPES
 from .errors import PropagateError
 from .models import SignalConfig, SignalFieldConfig
 from .validation import (
@@ -8,6 +11,40 @@ from .validation import (
     validate_context_source_name,
     validate_signal_field_name,
 )
+
+
+def resolve_signal_includes(signals_data: dict, config_dir: Path) -> dict:
+    """Pop 'include' key, load referenced files, merge with inline signals."""
+    merged = dict(signals_data)
+    include = merged.pop("include", None)
+    if include is None:
+        return merged
+    paths = [include] if isinstance(include, str) else include
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise PropagateError("signals.include must be a string or list of strings.")
+    for path_str in paths:
+        file_path = (config_dir / path_str).resolve()
+        if not file_path.exists():
+            raise PropagateError(f"Signal include file does not exist: {file_path}")
+        LOGGER.debug("Loading signal include: %s", file_path)
+        try:
+            with file_path.open("r", encoding="utf-8") as handle:
+                included = yaml.safe_load(handle)
+        except yaml.YAMLError as error:
+            raise PropagateError(
+                f"Failed to parse signal include file {file_path}: {error}"
+            ) from error
+        if not isinstance(included, dict):
+            raise PropagateError(
+                f"Signal include file must be a YAML mapping: {file_path}"
+            )
+        for key in included:
+            if key in merged:
+                raise PropagateError(
+                    f"Duplicate signal '{key}' from include file {file_path}"
+                )
+        merged.update(included)
+    return merged
 
 
 def parse_signal_configs(signals_data: Any) -> dict[str, SignalConfig]:

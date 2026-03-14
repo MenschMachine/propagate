@@ -6,7 +6,7 @@ import yaml
 
 from .config_agent import parse_agent, parse_context_sources, parse_repositories
 from .config_executions import parse_executions
-from .config_signals import parse_signal_configs
+from .config_signals import parse_signal_configs, resolve_signal_includes
 from .errors import PropagateError
 from .graph import parse_propagation_triggers, validate_execution_graph_is_acyclic
 from .models import Config
@@ -37,7 +37,10 @@ def load_config(config_path: Path) -> Config:
     agent = parse_agent(raw_data.get("agent"))
     repositories = parse_repositories(raw_data.get("repositories"), resolved_config_path.parent)
     context_sources = parse_context_sources(raw_data.get("context_sources"))
-    signals = parse_signal_configs(raw_data.get("signals"))
+    raw_signals = raw_data.get("signals")
+    if isinstance(raw_signals, dict) and "include" in raw_signals:
+        raw_signals = resolve_signal_includes(raw_signals, resolved_config_path.parent)
+    signals = parse_signal_configs(raw_signals)
     executions = parse_executions(
         raw_data.get("executions"),
         resolved_config_path.parent,
