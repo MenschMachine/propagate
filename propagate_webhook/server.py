@@ -48,20 +48,30 @@ def create_app(config_signals: dict[str, Any], zmq_address: str, secret: str | N
             _verify_signature(raw_body, x_hub_signature_256, app.state.secret)
 
         body = await request.json()
+
+        repo = body.get("repository", {}).get("full_name", "unknown")
+        sender = body.get("sender", {}).get("login", "unknown")
+        logger.info("Webhook received: event=%s repo=%s sender=%s", x_github_event, repo, sender)
+
+        if app.state.secret is not None:
+            logger.debug("Signature verified")
+
         result = parse_github_event(x_github_event, body)
         if result is None:
-            logger.debug("Unsupported event type '%s'; ignoring.", x_github_event)
+            logger.info("Unsupported event type '%s'; ignoring.", x_github_event)
             return {"status": "ignored", "reason": "unsupported_event"}
 
         signal_name, payload = result
+        logger.debug("Parsed signal '%s' with payload: %s", signal_name, payload)
+
         if signal_name not in app.state.config_signals:
-            logger.debug("Signal '%s' not defined in config; ignoring.", signal_name)
+            logger.info("Signal '%s' not defined in config; ignoring.", signal_name)
             return {"status": "ignored", "reason": "unknown_signal"}
 
         if app.state.push_socket is None:
             raise HTTPException(status_code=503, detail="Signal transport not connected.")
         send_signal(app.state.push_socket, signal_name, payload)
-        logger.info("Delivered signal '%s'.", signal_name)
+        logger.info("Delivered signal '%s' for %s.", signal_name, repo)
         return {"status": "delivered", "signal": signal_name}
 
     return app

@@ -1,11 +1,13 @@
 import hashlib
 import hmac
 import json
+import logging
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from propagate_app.signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, receive_signal
+from propagate_webhook.cli import build_parser
 from propagate_webhook.server import create_app
 
 pytestmark = pytest.mark.anyio
@@ -208,3 +210,65 @@ async def test_webhook_returns_503_when_socket_not_connected(zmq_socket):
     async with AsyncClient(transport=ASGITransport(app=application, raise_app_exceptions=False), base_url="http://test") as client:
         response = await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
     assert response.status_code == 503
+
+
+def test_debug_flag_sets_debug_level():
+    parser = build_parser()
+    args = parser.parse_args(["--config", "test.yaml", "--debug"])
+    assert args.debug is True
+
+
+def test_no_debug_flag_default():
+    parser = build_parser()
+    args = parser.parse_args(["--config", "test.yaml"])
+    assert args.debug is False
+
+
+@pytest.mark.anyio
+async def test_webhook_logs_on_delivery(app, zmq_socket, caplog):
+    body = {
+        "action": "labeled",
+        "label": {"name": "approved"},
+        "pull_request": {
+            "number": 42,
+            "head": {"ref": "feature"},
+            "base": {"ref": "main"},
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "alice"},
+    }
+    with caplog.at_level(logging.INFO, logger="propagate.webhook"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
+
+    assert any("Webhook received: event=pull_request repo=owner/repo sender=alice" in r.message for r in caplog.records)
+    assert any("Delivered signal 'pull_request.labeled' for owner/repo" in r.message for r in caplog.records)
+
+
+@pytest.mark.anyio
+async def test_webhook_logs_ignored_event(app, caplog):
+    body = {"zen": "Keep it simple"}
+    with caplog.at_level(logging.INFO, logger="propagate.webhook"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post("/webhook", json=body, headers={"X-GitHub-Event": "ping"})
+
+    assert any("Unsupported event type 'ping'; ignoring." in r.message for r in caplog.records)
+
+
+@pytest.mark.anyio
+async def test_webhook_logs_unknown_signal(app, caplog):
+    body = {
+        "action": "opened",
+        "pull_request": {
+            "number": 1,
+            "head": {"ref": "x"},
+            "base": {"ref": "main"},
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "alice"},
+    }
+    with caplog.at_level(logging.INFO, logger="propagate.webhook"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
+
+    assert any("Signal 'pull_request.opened' not defined in config; ignoring." in r.message for r in caplog.records)

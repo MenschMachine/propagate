@@ -27,6 +27,7 @@ propagate-webhook --config config/propagate.yaml --port 8080
 | `--host` | `0.0.0.0` | Host to bind to |
 | `--secret` | (none) | GitHub webhook secret for HMAC-SHA256 verification |
 | `--secret-env` | (none) | Environment variable name containing the webhook secret |
+| `--debug` | off | Enable debug-level logging |
 
 The `--config` path must match the one used by `propagate run` — it determines the ZeroMQ socket address.
 

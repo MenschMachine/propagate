@@ -1,20 +1,26 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
+
+logger = logging.getLogger("propagate.webhook")
 
 SUPPORTED_EVENT_TYPES = {"pull_request", "push", "issue_comment"}
 
 
 def parse_github_event(event_type: str, body: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
     if event_type not in SUPPORTED_EVENT_TYPES:
+        logger.debug("Event type '%s' not in supported types; skipping.", event_type)
         return None
     action = body.get("action")
     signal_name = f"{event_type}.{action}" if action else event_type
     extractor = _EXTRACTORS.get(event_type)
     if extractor is None:
+        logger.debug("No extractor for event type '%s'.", event_type)
         return None
     payload = extractor(body)
+    logger.debug("Extracted signal '%s' from event '%s'.", signal_name, event_type)
     return signal_name, payload
 
 

@@ -17,13 +17,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0).")
     parser.add_argument("--secret", help="GitHub webhook secret for HMAC-SHA256 verification.")
     parser.add_argument("--secret-env", help="Environment variable name containing the webhook secret.")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = build_parser()
     args = parser.parse_args(argv)
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(level=log_level, format="%(levelname)s %(name)s: %(message)s")
 
     try:
         secret = _resolve_secret(args.secret, args.secret_env)
