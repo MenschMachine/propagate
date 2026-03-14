@@ -86,6 +86,8 @@ def ctx(tmp_path: Path):
                     "commit": {"message_source": "commit-message"},
                     "push": {"remote": "origin"},
                 },
+                "before": ["git:branch"],
+                "after": ["git:commit", "git:push"],
                 "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
             }
         },

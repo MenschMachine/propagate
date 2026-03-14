@@ -1,22 +1,17 @@
 # Git Automation
 
-Adding a `git:` block to an execution enables automatic branch management, committing, pushing, and PR creation around the sub-task run.
+Git operations are driven by explicit hook commands (`git:branch`, `git:commit`, `git:push`, `git:pr`) placed in execution or sub-task hooks. The `git:` block on an execution declares configuration; the commands control when each operation runs.
 
-## TODO
+## Hook Commands
 
-- **PR title/description**: Both are derived by splitting the commit message on the first newline. Line 1 → title, remainder → body. No templating or generation — whatever the `message_source` command or `message_key` value produces is used verbatim.
+| Command | Effect |
+|---------|--------|
+| `git:branch` | Verify git repo, capture starting branch, ensure clean tree, create/checkout target branch |
+| `git:commit` | Stage all changes and commit; **skipped silently if the tree is clean** |
+| `git:push` | Push the current branch to the configured remote |
+| `git:pr` | Create a pull request via `gh pr create` |
 
-## Execution flow
-
-When `git:` is present, the execution follows this sequence:
-
-1. Verify the working directory is inside a git repository
-2. Capture the current (starting) branch
-3. Assert a clean working tree — dirty tree aborts
-4. Create or checkout the target branch
-5. Run sub-tasks normally
-6. If the working tree has changes: commit → push → open PR
-7. If no changes were made, skip commit/push/PR entirely
+These commands can appear in any hook list: execution `before`/`after`/`on_failure`, or sub-task `before`/`after`/`on_failure`.
 
 ## Config reference
 
@@ -51,8 +46,6 @@ git:
 
 ## Commit message
 
-The commit message is loaded at publish time, after sub-tasks complete:
-
 - `message_source` — runs the named `context_source` shell command and uses its stdout.
 - `message_key` — reads the value from the execution's context store.
 
@@ -68,7 +61,7 @@ The message is split on the first line: line 1 becomes the PR title, the rest be
 | `name` is omitted | Use `propagate/{execution-name}` as the branch name |
 | Target branch is already checked out | Use it as-is, skip checkout |
 
-## Minimal example
+## Example
 
 ```yaml
 context_sources:
@@ -78,9 +71,6 @@ context_sources:
 executions:
   update-sdk:
     repository: sdk-python
-    sub_tasks:
-      - id: implementation
-        prompt: ./prompts/implement.md
     git:
       branch:
         name: propagate/update-sdk
@@ -92,29 +82,23 @@ executions:
       pr:
         base: main
         draft: false
-```
-
-## Full example with context key
-
-```yaml
-executions:
-  update-sdk:
-    repository: sdk-python
+    before:
+      - git:branch         # prepare branch before any sub-task
     sub_tasks:
       - id: implementation
         prompt: ./prompts/implement.md
-        hooks:
-          after: |
-            propagate context set :commit-message "feat: update sdk bindings"
-    git:
-      branch:
-        name: propagate/sdk-update
-        base: main
-        reuse: true
-      commit:
-        message_key: :commit-message
-      push:
-        remote: origin
-      pr:
-        draft: true
+        after:
+          - git:commit      # commit after this sub-task
+      - id: review
+        prompt: ./prompts/review.md
+        # no git here — review runs on committed state
+    after:
+      - git:push            # push after all sub-tasks
+      - git:pr              # open PR at the end
 ```
+
+## Notes
+
+- `git:branch` must run before `git:push` or `git:pr` (it captures the branch name used by those commands).
+- `git:commit` silently skips if the working tree is clean — safe to always include after any sub-task.
+- If `git:push` is omitted from a config with `pr:`, `git:pr` will still attempt PR creation using the current branch.

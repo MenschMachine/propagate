@@ -77,6 +77,13 @@ class SubTaskConfig:
     on_failure: list[str]
 
 
+@dataclass
+class GitRunState:
+    starting_branch: str | None = None
+    selected_branch: str | None = None
+    commit_message: str | None = None
+
+
 @dataclass(frozen=True)
 class ExecutionConfig:
     name: str
@@ -85,6 +92,9 @@ class ExecutionConfig:
     signals: list[str]
     sub_tasks: list[SubTaskConfig]
     git: GitConfig | None
+    before: list[str] = field(default_factory=list)
+    after: list[str] = field(default_factory=list)
+    on_failure: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -123,6 +133,7 @@ class RuntimeContext:
     context_root: Path = field(default_factory=Path)
     execution_name: str = ""
     task_id: str = ""
+    git_state: GitRunState | None = None
 
 
 @dataclass

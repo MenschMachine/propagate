@@ -44,7 +44,7 @@ def parse_execution(
 ) -> ExecutionConfig:
     if not isinstance(execution_data, dict):
         raise PropagateError(f"Execution '{name}' must be a mapping.")
-    validate_allowed_keys(execution_data, {"repository", "depends_on", "sub_tasks", "git", "signals"}, f"Execution '{name}'")
+    validate_allowed_keys(execution_data, {"repository", "depends_on", "sub_tasks", "git", "signals", "before", "after", "on_failure"}, f"Execution '{name}'")
     sub_tasks_data = execution_data.get("sub_tasks")
     if not isinstance(sub_tasks_data, list) or not sub_tasks_data:
         raise PropagateError(f"Execution '{name}' must define a non-empty 'sub_tasks' list.")
@@ -56,6 +56,7 @@ def parse_execution(
             raise PropagateError(f"Execution '{name}' contains duplicate sub-task id '{sub_task.task_id}'.")
         seen_task_ids.add(sub_task.task_id)
         sub_tasks.append(sub_task)
+    location = f"Execution '{name}'"
     return ExecutionConfig(
         name=name,
         repository=parse_execution_repository(name, execution_data.get("repository"), repository_names),
@@ -63,6 +64,9 @@ def parse_execution(
         signals=parse_execution_signals(name, execution_data.get("signals"), signal_names),
         sub_tasks=sub_tasks,
         git=parse_git_config(name, execution_data.get("git"), context_source_names),
+        before=parse_hook_actions(execution_data.get("before"), location, "before", context_source_names),
+        after=parse_hook_actions(execution_data.get("after"), location, "after", context_source_names),
+        on_failure=parse_hook_actions(execution_data.get("on_failure"), location, "on_failure", context_source_names),
     )
 
 
@@ -142,6 +146,9 @@ def parse_sub_task(
     )
 
 
+_KNOWN_GIT_HOOK_COMMANDS = {"branch", "commit", "push", "pr"}
+
+
 def parse_hook_actions(hook_data: Any, location: str, phase: str, context_source_names: set[str]) -> list[str]:
     if hook_data is None:
         return []
@@ -156,6 +163,13 @@ def parse_hook_actions(hook_data: Any, location: str, phase: str, context_source
             source_name = action[1:]
             if source_name not in context_source_names:
                 raise PropagateError(f"{location} '{phase}' hook #{hook_index} references unknown context source '{source_name}'.")
+        elif action.startswith("git:"):
+            git_command = action[4:]
+            if git_command not in _KNOWN_GIT_HOOK_COMMANDS:
+                raise PropagateError(
+                    f"{location} '{phase}' hook #{hook_index} uses unknown git command '{action}'."
+                    f" Known commands: {', '.join(sorted(_KNOWN_GIT_HOOK_COMMANDS))}."
+                )
         actions.append(action)
     return actions
 

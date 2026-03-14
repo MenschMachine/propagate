@@ -160,6 +160,11 @@ class PropagateStage4GitTests(unittest.TestCase):
             str(self.target_file),
             agent_content,
         )
+        after_hooks: list[str] = ["git:commit"]
+        if "push" in git_config:
+            after_hooks.append("git:push")
+        if "pr" in git_config:
+            after_hooks.append("git:pr")
         config_data: dict[str, object] = {
             "version": "6",
             "agent": {"command": command},
@@ -168,6 +173,8 @@ class PropagateStage4GitTests(unittest.TestCase):
                 "default": {
                     "repository": "repo",
                     "git": git_config,
+                    "before": ["git:branch"],
+                    "after": after_hooks,
                     "sub_tasks": [
                         {
                             "id": "task",

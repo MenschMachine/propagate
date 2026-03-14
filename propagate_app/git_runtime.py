@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Callable
 
 from .constants import LOGGER
 from .errors import PropagateError
@@ -12,24 +11,47 @@ from .git_repo import (
     resolve_execution_branch_name,
     working_tree_has_changes,
 )
-from .models import ExecutionConfig, GitBranchConfig, GitCommitConfig, GitConfig, GitPushConfig, PreparedGitExecution, RuntimeContext
-from .sub_tasks import run_execution_sub_tasks
+from .models import ExecutionConfig, GitBranchConfig, GitCommitConfig, GitConfig, GitPushConfig, GitRunState, PreparedGitExecution, RuntimeContext
 
 
-def run_execution_with_git(
-    execution: ExecutionConfig,
-    runtime_context: RuntimeContext,
-    completed_task_ids: set[str] | None = None,
-    on_task_completed: Callable[[str, str], None] | None = None,
-) -> None:
-    git_config = execution.git
-    if git_config is None:
-        run_execution_sub_tasks(execution, runtime_context, completed_task_ids, on_task_completed)
+def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
+    git_state = runtime_context.git_state
+    if git_state is None:
+        raise PropagateError(f"Execution '{execution_name}' git:branch requires git configuration.")
+    prepared = prepare_git_execution(execution_name, git_config.branch, runtime_context.working_dir)
+    git_state.starting_branch = prepared.starting_branch
+    git_state.selected_branch = prepared.selected_branch
+
+
+def git_do_commit(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
+    if not working_tree_has_changes(runtime_context.working_dir):
+        LOGGER.info("No repository changes detected; skipping commit.")
         return
-    LOGGER.info("Git automation enabled for execution '%s'.", execution.name)
-    prepared_execution = prepare_git_execution(execution.name, git_config.branch, runtime_context.working_dir)
-    run_execution_sub_tasks(execution, runtime_context, completed_task_ids, on_task_completed)
-    publish_git_execution_changes(execution, git_config, runtime_context, prepared_execution)
+    commit_message = load_execution_commit_message(execution_name, git_config.commit, runtime_context)
+    create_execution_git_commit(execution_name, commit_message, runtime_context.working_dir)
+    assert runtime_context.git_state is not None
+    runtime_context.git_state.commit_message = commit_message
+
+
+def git_do_push(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
+    git_state = runtime_context.git_state
+    if git_state is None or git_state.selected_branch is None:
+        raise PropagateError(f"Execution '{execution_name}' git:push requires git:branch to have run first.")
+    push_execution_git_branch(execution_name, git_config.push, git_state.selected_branch, runtime_context.working_dir)
+
+
+def git_do_pr(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
+    git_state = runtime_context.git_state
+    if git_state is None or git_state.selected_branch is None:
+        raise PropagateError(f"Execution '{execution_name}' git:pr requires git:branch to have run first.")
+    if git_state.commit_message is None:
+        LOGGER.warning("git:pr called for execution '%s' but no commit was made; the PR will point to an unchanged branch.", execution_name)
+    commit_message = git_state.commit_message or load_execution_commit_message(execution_name, git_config.commit, runtime_context)
+    prepared = PreparedGitExecution(
+        starting_branch=git_state.starting_branch or "",
+        selected_branch=git_state.selected_branch,
+    )
+    create_execution_git_pr(execution_name, git_config, prepared, commit_message, runtime_context.working_dir)
 
 
 def prepare_git_execution(
@@ -70,21 +92,6 @@ def prepare_git_execution_branch(
         )
     except PropagateError as error:
         raise wrap_execution_git_phase_error(execution_name, "branch setup", error) from error
-
-
-def publish_git_execution_changes(
-    execution: ExecutionConfig,
-    git_config: GitConfig,
-    runtime_context: RuntimeContext,
-    prepared_execution: PreparedGitExecution,
-) -> None:
-    if not working_tree_has_changes(runtime_context.working_dir):
-        LOGGER.info("No repository changes detected after execution '%s'; skipping commit, push, and PR steps.", execution.name)
-        return
-    commit_message = load_execution_commit_message(execution.name, git_config.commit, runtime_context)
-    create_execution_git_commit(execution.name, commit_message, runtime_context.working_dir)
-    push_execution_git_branch(execution.name, git_config.push, prepared_execution.selected_branch, runtime_context.working_dir)
-    create_execution_git_pr(execution.name, git_config, prepared_execution, commit_message, runtime_context.working_dir)
 
 
 def load_execution_commit_message(execution_name: str, commit_config: GitCommitConfig, runtime_context: RuntimeContext) -> str:
