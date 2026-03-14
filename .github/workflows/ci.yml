@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.10"
       - run: pip install ruff
-      - run: ruff check propagate_app/ tests/
+      - run: ruff check propagate_app/ tests/ propagate_webhook/
 
   test:
     runs-on: ubuntu-latest
