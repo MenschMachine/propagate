@@ -4,11 +4,16 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = ["pyzmq>=26.0"]
 
+[project.optional-dependencies]
+webhook = ["fastapi>=0.100", "uvicorn[standard]>=0.20"]
+dev = ["pytest", "httpx", "anyio", "pytest-anyio"]
+
 [project.scripts]
 propagate = "propagate_app.cli:main"
+propagate-webhook = "propagate_webhook.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["propagate_app*"]
+include = ["propagate_app*", "propagate_webhook*"]
 
 [build-system]
 requires = ["setuptools"]
