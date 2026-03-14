@@ -6,3 +6,4 @@
 .propagate-state-*.yaml
 /propagate.egg-info
 /.claude
+.smee.json

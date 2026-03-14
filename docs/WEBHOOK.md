@@ -147,6 +147,60 @@ When a PR is labeled in GitHub, the webhook fires, the signal is delivered, and 
 
 ---
 
+## Local Development with Smee.io
+
+For local development, GitHub can't reach `localhost`. [Smee.io](https://smee.io) acts as a proxy: GitHub sends webhooks to a public Smee URL, and a local client forwards them to your `propagate-webhook` server.
+
+### Prerequisites
+
+- `npm` (for installing `smee-client`)
+- `gh` CLI (authenticated — for creating/deleting webhooks)
+- `jq`
+
+### Setup
+
+`smee-setup.sh` does the following, in order:
+
+1. Checks that `gh` (authenticated), `npm`, `python3`, and `jq` are available
+2. Refuses to run if `.smee.json` already exists (run teardown first)
+3. Installs `smee-client` globally via npm if the `smee` command isn't found
+4. Creates a new Smee channel by hitting `https://smee.io/new` — this gives you a unique public URL that Smee will relay to your local machine
+5. Reads your propagate config and extracts every GitHub `owner/repo` — for `url:` repos it parses the URL directly, for `path:` repos it reads the git origin remote
+6. For each repo, creates a GitHub webhook (via `gh api`) pointing at the Smee channel URL, subscribed to the `--events` types (`push,pull_request,issue_comment` by default)
+7. Writes `.smee.json` with the channel URL, port, secret, and a list of webhook IDs so teardown knows what to clean up
+
+```bash
+# 1. Create a Smee channel and configure GitHub webhooks
+scripts/smee-setup.sh --config config/propagate.yaml
+
+# 2. Start the Smee forwarder (Terminal 1)
+scripts/smee-start.sh
+
+# 3. Start propagate-webhook without --secret (Terminal 2)
+propagate-webhook --config config/propagate.yaml --port 8080
+```
+
+Options for `smee-setup.sh`:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config` | (required) | Path to propagate YAML config |
+| `--port` | `8080` | Port for the local webhook server (stored in `.smee.json` for `smee-start.sh`) |
+| `--events` | `push,pull_request,issue_comment` | Comma-separated GitHub event types to subscribe to |
+| `--secret` | (random) | Webhook secret for HMAC verification. Auto-generated if omitted |
+
+### Teardown
+
+```bash
+scripts/smee-teardown.sh
+```
+
+This deletes the GitHub webhooks and removes `.smee.json`.
+
+> **Note:** The secret is stored in `.smee.json`. Pass it to `propagate-webhook` via `--secret` if you want HMAC verification during local dev. Smee forwards the `X-Hub-Signature-256` header as-is, so verification works.
+
+---
+
 ## GitHub Setup
 
 1. Go to your repository's **Settings → Webhooks → Add webhook**
