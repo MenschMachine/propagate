@@ -86,7 +86,7 @@ def _rebase_and_retry_push(push_config: GitPushConfig, branch_name: str, working
         ["rebase", f"{remote}/{branch_name}"],
         working_dir,
         failure_message=f"Rebase onto '{remote}/{branch_name}' failed.",
-        start_failure_message=f"Failed to start rebase: {{error}}",
+        start_failure_message="Failed to start rebase: {error}",
         check=False,
     )
     if rebase.returncode != 0:
@@ -152,3 +152,64 @@ def create_pull_request(
 def split_commit_message(commit_message: str) -> tuple[str, str]:
     lines = commit_message.splitlines()
     return lines[0].strip(), "\n".join(lines[1:])
+
+
+def add_pr_labels(labels: list[str], working_dir: Path) -> None:
+    LOGGER.debug("Adding PR labels: %s", labels)
+    run_process_command(
+        ["gh", "pr", "edit", "--add-label", ",".join(labels)],
+        working_dir,
+        failure_message=f"Failed to add PR labels: {', '.join(labels)}.",
+        start_failure_message="Failed to start gh pr edit --add-label: {error}",
+        capture_output=True,
+    )
+
+
+def remove_pr_labels(labels: list[str], working_dir: Path) -> None:
+    LOGGER.debug("Removing PR labels: %s", labels)
+    run_process_command(
+        ["gh", "pr", "edit", "--remove-label", ",".join(labels)],
+        working_dir,
+        failure_message=f"Failed to remove PR labels: {', '.join(labels)}.",
+        start_failure_message="Failed to start gh pr edit --remove-label: {error}",
+        capture_output=True,
+    )
+
+
+def list_pr_labels(working_dir: Path) -> str:
+    LOGGER.debug("Listing PR labels.")
+    result = run_process_command(
+        ["gh", "pr", "view", "--json", "labels"],
+        working_dir,
+        failure_message="Failed to list PR labels.",
+        start_failure_message="Failed to start gh pr view --json labels: {error}",
+        capture_output=True,
+    )
+    return result.stdout
+
+
+def add_pr_comment(body: str, working_dir: Path) -> None:
+    LOGGER.debug("Adding PR comment.")
+    body_path = write_temp_text(body, prefix="propagate-pr-comment-", suffix=".txt")
+    try:
+        run_process_command(
+            ["gh", "pr", "comment", "--body-file", str(body_path)],
+            working_dir,
+            failure_message="Failed to add PR comment.",
+            start_failure_message="Failed to start gh pr comment: {error}",
+            capture_output=True,
+        )
+    finally:
+        cleanup_temp_file(body_path, "PR comment body file")
+
+
+def list_pr_comments(working_dir: Path) -> str:
+    LOGGER.debug("Listing PR comments.")
+    result = run_process_command(
+        ["gh", "pr", "view", "--json", "comments"],
+        working_dir,
+        failure_message="Failed to list PR comments.",
+        start_failure_message="Failed to start gh pr view --json comments: {error}",
+        capture_output=True,
+    )
+    return result.stdout

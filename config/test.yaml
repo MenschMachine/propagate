@@ -28,21 +28,13 @@ executions:
       - id: plan
         #prompt: ./prompts/test/plan-backend.md
         before:
-          - sleep 3
           - echo planning...
-          - sleep 3
-          - :pwd
-          - :commit_message
           - propagate context set :date "$(date -u)" --local
           - propagate context dump
       - id: implementation
         prompt: ./prompts/test/do-nothing.md
         before:
           - echo implementing...
-          - sleep 3
-          - :pwd
-          - :date
-          - propagate context set whoami $(whoami)
           - propagate context dump
   test-frontend:
     repository: test-propagation-frontend

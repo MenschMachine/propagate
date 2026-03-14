@@ -13,7 +13,6 @@ import yaml
 from propagate_app.config_load import load_config
 from propagate_app.errors import PropagateError
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
 CLI_PYTHON = REPO_ROOT / "venv" / "bin" / "python"

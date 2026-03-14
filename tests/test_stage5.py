@@ -9,8 +9,8 @@ import unittest
 from pathlib import Path
 
 import yaml
-from conftest import inject_test_repository
 
+from conftest import inject_test_repository
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"

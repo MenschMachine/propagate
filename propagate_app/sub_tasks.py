@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, NoReturn
+from typing import NoReturn
 
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER
 from .context_sources import run_context_source
 from .errors import PropagateError
-from .git_runtime import git_do_branch, git_do_commit, git_do_pr, git_do_push
+from .git_runtime import (
+    git_do_branch,
+    git_do_commit,
+    git_do_pr,
+    git_do_pr_comment_add,
+    git_do_pr_comments_list,
+    git_do_pr_labels_add,
+    git_do_pr_labels_list,
+    git_do_pr_labels_remove,
+    git_do_push,
+)
 from .models import ExecutionConfig, GitConfig, RuntimeContext, SubTaskConfig
 from .processes import build_agent_command, run_agent_command, run_shell_command
 from .prompts import build_sub_task_prompt
@@ -134,11 +145,16 @@ def run_hook_phase(
         )
 
 
+_PR_INTERACTION_COMMANDS = {"pr-labels-add", "pr-labels-remove", "pr-labels-list", "pr-comment-add", "pr-comments-list"}
+
+
 def run_git_hook_command(action: str, git_config: GitConfig | None, runtime_context: RuntimeContext) -> None:
     execution_name = runtime_context.execution_name
-    if git_config is None:
+    parts = action[4:].split()
+    command = parts[0]
+    args = parts[1:]
+    if command not in _PR_INTERACTION_COMMANDS and git_config is None:
         raise PropagateError(f"Execution '{execution_name}' uses '{action}' but has no git configuration.")
-    command = action[4:]
     if command == "branch":
         git_do_branch(execution_name, git_config, runtime_context)
     elif command == "commit":
@@ -147,6 +163,16 @@ def run_git_hook_command(action: str, git_config: GitConfig | None, runtime_cont
         git_do_push(execution_name, git_config, runtime_context)
     elif command == "pr":
         git_do_pr(execution_name, git_config, runtime_context)
+    elif command == "pr-labels-add":
+        git_do_pr_labels_add(execution_name, args, runtime_context)
+    elif command == "pr-labels-remove":
+        git_do_pr_labels_remove(execution_name, args, runtime_context)
+    elif command == "pr-labels-list":
+        git_do_pr_labels_list(execution_name, args[0], runtime_context)
+    elif command == "pr-comment-add":
+        git_do_pr_comment_add(execution_name, args[0], runtime_context)
+    elif command == "pr-comments-list":
+        git_do_pr_comments_list(execution_name, args[0], runtime_context)
 
 
 def build_hook_failure_message(phase: str, hook_index: int, context_id: str, exit_code: int | str) -> str:

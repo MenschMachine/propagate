@@ -7,7 +7,6 @@ import yaml
 
 from propagate import load_config
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 

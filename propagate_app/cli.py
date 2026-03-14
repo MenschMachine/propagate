@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from .config_load import load_config
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, configure_logging

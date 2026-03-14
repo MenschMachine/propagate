@@ -10,8 +10,8 @@ import unittest
 from pathlib import Path
 
 import yaml
-from propagate_app.run_state import state_file_path
 
+from propagate_app.run_state import state_file_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"

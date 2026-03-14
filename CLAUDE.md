@@ -23,6 +23,12 @@ signals (typed events), propagation triggers, and a 3-tier context store.
 # Install locally (editable)
 ./venv/bin/pip install -e .
 
+# Lint
+./venv/bin/ruff check propagate_app/ tests/
+
+# Lint with auto-fix
+./venv/bin/ruff check --fix propagate_app/ tests/
+
 # Run CLI
 ./venv/bin/propagate --config config/propagate.yaml
 ```

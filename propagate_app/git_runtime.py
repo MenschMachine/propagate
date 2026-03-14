@@ -1,9 +1,21 @@
+from collections.abc import Callable
 from pathlib import Path
 
 from .constants import LOGGER
+from .context_store import ensure_context_dir, read_context_value, resolve_execution_context_dir, write_context_value
 from .errors import PropagateError
-from .context_store import read_context_value, resolve_execution_context_dir
-from .git_publish import create_execution_commit, create_pull_request, load_commit_message, push_branch, split_commit_message
+from .git_publish import (
+    add_pr_comment,
+    add_pr_labels,
+    create_execution_commit,
+    create_pull_request,
+    list_pr_comments,
+    list_pr_labels,
+    load_commit_message,
+    push_branch,
+    remove_pr_labels,
+    split_commit_message,
+)
 from .git_repo import (
     ensure_clean_working_tree,
     ensure_git_repository,
@@ -12,7 +24,15 @@ from .git_repo import (
     resolve_execution_branch_name,
     working_tree_has_changes,
 )
-from .models import ExecutionConfig, GitBranchConfig, GitCommitConfig, GitConfig, GitPrConfig, GitPushConfig, GitRunState, PreparedGitExecution, RuntimeContext
+from .models import (
+    GitBranchConfig,
+    GitCommitConfig,
+    GitConfig,
+    GitPrConfig,
+    GitPushConfig,
+    PreparedGitExecution,
+    RuntimeContext,
+)
 
 
 def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
@@ -158,6 +178,73 @@ def create_execution_git_pr(
         )
     except PropagateError as error:
         raise wrap_execution_git_phase_error(execution_name, "PR creation", error) from error
+
+
+def _run_pr_interaction(execution_name: str, phase: str, runtime_context: RuntimeContext, action: Callable[[Path, Path], None]) -> None:
+    context_dir = resolve_execution_context_dir(runtime_context)
+    try:
+        action(context_dir, runtime_context.working_dir)
+    except PropagateError as error:
+        raise wrap_execution_git_phase_error(execution_name, phase, error) from error
+
+
+def resolve_label_args(args: list[str], context_dir: Path) -> list[str]:
+    resolved: list[str] = []
+    for arg in args:
+        if arg.startswith(":"):
+            value = read_context_value(context_dir, arg[1:])
+            validate_resolved_label(value, arg)
+            resolved.append(value)
+        else:
+            resolved.append(arg)
+    return resolved
+
+
+def validate_resolved_label(value: str, key: str) -> None:
+    stripped = value.strip()
+    if not stripped:
+        raise PropagateError(f"Context key '{key}' resolved to an empty label.")
+    if "\n" in stripped or "," in stripped:
+        raise PropagateError(f"Context key '{key}' resolved to a label containing invalid characters (commas or newlines).")
+
+
+def git_do_pr_labels_add(execution_name: str, args: list[str], runtime_context: RuntimeContext) -> None:
+    def action(context_dir: Path, working_dir: Path) -> None:
+        labels = resolve_label_args(args, context_dir)
+        add_pr_labels(labels, working_dir)
+    _run_pr_interaction(execution_name, "PR label add", runtime_context, action)
+
+
+def git_do_pr_labels_remove(execution_name: str, args: list[str], runtime_context: RuntimeContext) -> None:
+    def action(context_dir: Path, working_dir: Path) -> None:
+        labels = resolve_label_args(args, context_dir)
+        remove_pr_labels(labels, working_dir)
+    _run_pr_interaction(execution_name, "PR label remove", runtime_context, action)
+
+
+def git_do_pr_labels_list(execution_name: str, store_key: str, runtime_context: RuntimeContext) -> None:
+    def action(context_dir: Path, working_dir: Path) -> None:
+        output = list_pr_labels(working_dir)
+        ensure_context_dir(context_dir)
+        write_context_value(context_dir, store_key[1:], output)
+        LOGGER.debug("Stored PR labels JSON to context key '%s'.", store_key)
+    _run_pr_interaction(execution_name, "PR labels list", runtime_context, action)
+
+
+def git_do_pr_comment_add(execution_name: str, body_key: str, runtime_context: RuntimeContext) -> None:
+    def action(context_dir: Path, working_dir: Path) -> None:
+        body = read_context_value(context_dir, body_key[1:])
+        add_pr_comment(body, working_dir)
+    _run_pr_interaction(execution_name, "PR comment add", runtime_context, action)
+
+
+def git_do_pr_comments_list(execution_name: str, store_key: str, runtime_context: RuntimeContext) -> None:
+    def action(context_dir: Path, working_dir: Path) -> None:
+        output = list_pr_comments(working_dir)
+        ensure_context_dir(context_dir)
+        write_context_value(context_dir, store_key[1:], output)
+        LOGGER.debug("Stored PR comments JSON to context key '%s'.", store_key)
+    _run_pr_interaction(execution_name, "PR comments list", runtime_context, action)
 
 
 def cannot_start_execution_git_automation(execution_name: str, error: PropagateError) -> PropagateError:

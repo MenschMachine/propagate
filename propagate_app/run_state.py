@@ -10,6 +10,7 @@ from .constants import LOGGER
 from .errors import PropagateError
 from .models import ActiveSignal, ExecutionScheduleState, RunState
 
+
 def state_file_path(config_path: Path) -> Path:
     resolved = config_path.resolve()
     return resolved.parent / f".propagate-state-{resolved.stem}.yaml"

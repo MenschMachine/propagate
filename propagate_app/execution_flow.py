@@ -1,5 +1,5 @@
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Callable
 
 from .constants import LOGGER
 from .errors import PropagateError

@@ -10,7 +10,6 @@ from propagate_app.errors import PropagateError
 from propagate_app.git_runtime import load_pr_title_body
 from propagate_app.models import GitPrConfig, GitRunState, RuntimeContext
 
-
 # ---------------------------------------------------------------------------
 # Parse tests
 # ---------------------------------------------------------------------------

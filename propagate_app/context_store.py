@@ -6,8 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .errors import PropagateError
 from .constants import LOGGER
+from .errors import PropagateError
 from .validation import validate_context_key
 
 if TYPE_CHECKING:

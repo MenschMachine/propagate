@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from .errors import PropagateError
 

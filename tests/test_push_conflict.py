@@ -10,7 +10,6 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
 CLI_PYTHON = REPO_ROOT / "venv" / "bin" / "python"
@@ -131,13 +130,13 @@ def test_push_conflict_rebases_and_retries(ctx: SimpleNamespace) -> None:
         ["git", "log", "--oneline", "propagate/conflict-test"],
         cwd=ctx.repo, text=True, capture_output=True, check=True,
     )
-    assert len([l for l in log.stdout.strip().splitlines() if l]) == 3
+    assert len([line for line in log.stdout.strip().splitlines() if line]) == 3
 
     remote_log = subprocess.run(
         ["git", "log", "--oneline", "refs/heads/propagate/conflict-test"],
         cwd=ctx.remote_repo, text=True, capture_output=True, check=True,
     )
-    assert len([l for l in remote_log.stdout.strip().splitlines() if l]) == 3
+    assert len([line for line in remote_log.stdout.strip().splitlines() if line]) == 3
 
     # Remote branch contains the agent's content
     remote_content = subprocess.run(

@@ -11,6 +11,20 @@ Git operations are driven by explicit hook commands (`git:branch`, `git:commit`,
 | `git:push` | Push the current branch to the configured remote |
 | `git:pr` | Create a pull request via `gh pr create` |
 
+### PR Label and Comment Commands
+
+These commands manage labels and comments on the current PR via `gh`. They operate on whatever PR exists for the current branch and do not require `git:branch`. Arguments are passed inline after the command name.
+
+| Command | Args | Effect |
+|---------|------|--------|
+| `git:pr-labels-add` | `<label\|:key> [...]` | Add one or more labels to the PR |
+| `git:pr-labels-remove` | `<label\|:key> [...]` | Remove one or more labels from the PR |
+| `git:pr-labels-list` | `<:key>` | Read current PR labels (JSON) into context key |
+| `git:pr-comment-add` | `<:key>` | Add a comment; body read from context key |
+| `git:pr-comments-list` | `<:key>` | Read PR comments (JSON) into context key |
+
+Plain label strings are used as-is. `:key` args are resolved from the execution context store at runtime.
+
 These commands can appear in any hook list: execution `before`/`after`/`on_failure`, or sub-task `before`/`after`/`on_failure`.
 
 ## Config reference
@@ -111,8 +125,57 @@ executions:
       - git:pr              # open PR at the end
 ```
 
+## PR label and comment examples
+
+Labels accept plain strings or `:key` context references. Comment and list commands always use `:key`.
+
+```yaml
+after:
+  - git:push
+  - git:pr
+  - git:pr-labels-add bug enhancement :extra-label  # mix of fixed and dynamic
+  - git:pr-labels-remove in-progress                 # remove a label
+  - git:pr-comment-add :review-summary               # post comment from context
+  - git:pr-labels-list :current-labels               # read labels into context
+  - git:pr-comments-list :all-comments               # read comments into context
+```
+
+### Full workflow: create PR, label it, post a summary comment
+
+```yaml
+executions:
+  update-sdk:
+    repository: sdk-python
+    git:
+      branch:
+        name: propagate/update-sdk
+        base: main
+      commit:
+        message_source: commit-msg
+      push:
+        remote: origin
+      pr:
+        base: main
+    before:
+      - git:branch
+    sub_tasks:
+      - id: implement
+        prompt: ./prompts/implement.md
+        after:
+          - git:commit
+      - id: summarize
+        prompt: ./prompts/summarize.md
+    after:
+      - git:push
+      - git:pr
+      - git:pr-labels-add :pr-label
+      - git:pr-comment-add :pr-summary
+```
+
 ## Notes
 
 - `git:branch` must run before `git:push` or `git:pr` (it captures the branch name used by those commands).
+- `git:pr-*` commands don't require `git:branch` — they operate on whatever PR exists for the current branch via `gh`.
 - `git:commit` silently skips if the working tree is clean — safe to always include after any sub-task.
 - If `git:push` is omitted from a config with `pr:`, `git:pr` will still attempt PR creation using the current branch.
+- Resolved label values are validated at runtime — empty strings and values containing commas or newlines are rejected.

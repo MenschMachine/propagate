@@ -146,7 +146,12 @@ def parse_sub_task(
     )
 
 
-_KNOWN_GIT_HOOK_COMMANDS = {"branch", "commit", "push", "pr"}
+_KNOWN_GIT_HOOK_COMMANDS = {"branch", "commit", "push", "pr",
+    "pr-labels-add", "pr-labels-remove", "pr-labels-list",
+    "pr-comment-add", "pr-comments-list"}
+
+_GIT_COMMANDS_REQUIRING_ARGS = {"pr-labels-add", "pr-labels-remove"}
+_GIT_COMMANDS_SINGLE_KEY_ARG = {"pr-labels-list", "pr-comment-add", "pr-comments-list"}
 
 
 def parse_hook_actions(hook_data: Any, location: str, phase: str, context_source_names: set[str]) -> list[str]:
@@ -164,12 +169,33 @@ def parse_hook_actions(hook_data: Any, location: str, phase: str, context_source
             if source_name not in context_source_names:
                 raise PropagateError(f"{location} '{phase}' hook #{hook_index} references unknown context source '{source_name}'.")
         elif action.startswith("git:"):
-            git_command = action[4:]
+            parts = action[4:].split()
+            git_command = parts[0]
+            args = parts[1:]
             if git_command not in _KNOWN_GIT_HOOK_COMMANDS:
                 raise PropagateError(
                     f"{location} '{phase}' hook #{hook_index} uses unknown git command '{action}'."
                     f" Known commands: {', '.join(sorted(_KNOWN_GIT_HOOK_COMMANDS))}."
                 )
+            if git_command in _GIT_COMMANDS_REQUIRING_ARGS:
+                if not args:
+                    raise PropagateError(
+                        f"{location} '{phase}' hook #{hook_index} 'git:{git_command}' requires at least one label argument."
+                    )
+                for arg in args:
+                    if not arg:
+                        raise PropagateError(
+                            f"{location} '{phase}' hook #{hook_index} 'git:{git_command}' arguments must be non-empty."
+                        )
+            elif git_command in _GIT_COMMANDS_SINGLE_KEY_ARG:
+                if len(args) != 1:
+                    raise PropagateError(
+                        f"{location} '{phase}' hook #{hook_index} 'git:{git_command}' requires exactly one argument."
+                    )
+                if not args[0].startswith(":"):
+                    raise PropagateError(
+                        f"{location} '{phase}' hook #{hook_index} 'git:{git_command}' argument must be a ':'-prefixed context key."
+                    )
         actions.append(action)
     return actions
 
