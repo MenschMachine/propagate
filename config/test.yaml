@@ -18,12 +18,32 @@ context_sources:
 
 signals:
   run:
-    payload: {}
+    payload: { }
+  pull_request.labeled:
+    payload:
+      repository:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
+      label:
+        type: string
+        required: true
+      head_ref:
+        type: string
+      base_ref:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+
 
 executions:
   test-backend:
     repository: test-propagation-backend
-    signals: [run]
+    signals: [ run ]
     sub_tasks:
       - id: plan
         #prompt: ./prompts/test/plan-backend.md
