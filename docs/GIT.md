@@ -36,6 +36,8 @@ git:
     base: main                # optional override for PR base branch
                               # defaults to: pr.base → branch.base → starting branch
     draft: false              # default: false
+    title_key: :pr-title      # optional ':'-prefixed context key for PR title
+    body_key: :pr-body        # optional ':'-prefixed context key for PR body
 ```
 
 ### Constraints
@@ -49,7 +51,19 @@ git:
 - `message_source` — runs the named `context_source` shell command and uses its stdout.
 - `message_key` — reads the value from the execution's context store.
 
-The message is split on the first line: line 1 becomes the PR title, the rest becomes the PR body.
+By default the message is split on the first line: line 1 becomes the PR title, the rest becomes the PR body.
+
+### PR title and body overrides
+
+Set `title_key` and/or `body_key` in the `pr:` block to read title/body from the execution context store instead:
+
+```yaml
+pr:
+  title_key: :pr-title   # reads PR title from the execution context store
+  body_key: :pr-body     # reads PR body from the execution context store
+```
+
+Both are optional `:` -prefixed context keys. When omitted the commit-message split applies as before.
 
 ## Branch selection
 

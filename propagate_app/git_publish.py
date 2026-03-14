@@ -116,10 +116,10 @@ def create_pull_request(
     pr_config: GitPrConfig,
     base_branch: str,
     head_branch: str,
-    commit_message: str,
+    title: str,
+    body: str,
     working_dir: Path,
 ) -> None:
-    title, body = split_commit_message(commit_message)
     LOGGER.info("Creating pull request from '%s' into '%s'.", head_branch, base_branch)
     body_path = write_temp_text(body, prefix="propagate-pr-", suffix=".md")
     try:

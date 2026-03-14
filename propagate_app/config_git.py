@@ -83,8 +83,25 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
     location = f"Execution '{execution_name}' git.pr"
     if not isinstance(pr_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(pr_data, {"base", "draft"}, location)
+    validate_allowed_keys(pr_data, {"base", "draft", "title_key", "body_key"}, location)
     draft = pr_data.get("draft", False)
     if not isinstance(draft, bool):
         raise PropagateError(f"{location}.draft must be a boolean when provided.")
-    return GitPrConfig(base=optional_non_empty_string(pr_data.get("base"), f"{location}.base"), draft=draft)
+    title_key = None
+    if "title_key" in pr_data:
+        validated = validate_context_key(pr_data["title_key"])
+        if not validated.startswith(":"):
+            raise PropagateError(f"{location}.title_key must use a reserved ':'-prefixed context key.")
+        title_key = validated
+    body_key = None
+    if "body_key" in pr_data:
+        validated = validate_context_key(pr_data["body_key"])
+        if not validated.startswith(":"):
+            raise PropagateError(f"{location}.body_key must use a reserved ':'-prefixed context key.")
+        body_key = validated
+    return GitPrConfig(
+        base=optional_non_empty_string(pr_data.get("base"), f"{location}.base"),
+        draft=draft,
+        title_key=title_key,
+        body_key=body_key,
+    )

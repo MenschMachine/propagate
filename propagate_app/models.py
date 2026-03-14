@@ -58,6 +58,8 @@ class GitPushConfig:
 class GitPrConfig:
     base: str | None
     draft: bool
+    title_key: str | None = None
+    body_key: str | None = None
 
 
 @dataclass(frozen=True)

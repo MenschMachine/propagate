@@ -2,7 +2,8 @@ from pathlib import Path
 
 from .constants import LOGGER
 from .errors import PropagateError
-from .git_publish import create_execution_commit, create_pull_request, load_commit_message, push_branch
+from .context_store import read_context_value, resolve_execution_context_dir
+from .git_publish import create_execution_commit, create_pull_request, load_commit_message, push_branch, split_commit_message
 from .git_repo import (
     ensure_clean_working_tree,
     ensure_git_repository,
@@ -11,7 +12,7 @@ from .git_repo import (
     resolve_execution_branch_name,
     working_tree_has_changes,
 )
-from .models import ExecutionConfig, GitBranchConfig, GitCommitConfig, GitConfig, GitPushConfig, GitRunState, PreparedGitExecution, RuntimeContext
+from .models import ExecutionConfig, GitBranchConfig, GitCommitConfig, GitConfig, GitPrConfig, GitPushConfig, GitRunState, PreparedGitExecution, RuntimeContext
 
 
 def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
@@ -51,7 +52,7 @@ def git_do_pr(execution_name: str, git_config: GitConfig, runtime_context: Runti
         starting_branch=git_state.starting_branch or "",
         selected_branch=git_state.selected_branch,
     )
-    create_execution_git_pr(execution_name, git_config, prepared, commit_message, runtime_context.working_dir)
+    create_execution_git_pr(execution_name, git_config, prepared, commit_message, runtime_context)
 
 
 def prepare_git_execution(
@@ -122,22 +123,38 @@ def push_execution_git_branch(
         raise wrap_execution_git_phase_error(execution_name, "push", error) from error
 
 
+def load_pr_title_body(pr_config: GitPrConfig, commit_message: str, runtime_context: RuntimeContext) -> tuple[str, str]:
+    title, body = split_commit_message(commit_message)
+    if pr_config.title_key is None and pr_config.body_key is None:
+        return title, body
+    context_dir = resolve_execution_context_dir(runtime_context)
+    if pr_config.title_key is not None:
+        title = read_context_value(context_dir, pr_config.title_key)
+        LOGGER.debug("Loaded PR title from context key '%s'.", pr_config.title_key)
+    if pr_config.body_key is not None:
+        body = read_context_value(context_dir, pr_config.body_key)
+        LOGGER.debug("Loaded PR body from context key '%s'.", pr_config.body_key)
+    return title, body
+
+
 def create_execution_git_pr(
     execution_name: str,
     git_config: GitConfig,
     prepared_execution: PreparedGitExecution,
     commit_message: str,
-    working_dir: Path,
+    runtime_context: RuntimeContext,
 ) -> None:
     if git_config.pr is None:
         return
     try:
+        title, body = load_pr_title_body(git_config.pr, commit_message, runtime_context)
         create_pull_request(
             git_config.pr,
             git_config.pr.base or git_config.branch.base or prepared_execution.starting_branch,
             prepared_execution.selected_branch,
-            commit_message,
-            working_dir,
+            title,
+            body,
+            runtime_context.working_dir,
         )
     except PropagateError as error:
         raise wrap_execution_git_phase_error(execution_name, "PR creation", error) from error
