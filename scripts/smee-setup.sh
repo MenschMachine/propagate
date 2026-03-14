@@ -68,9 +68,12 @@ if [[ -z "$REPOS" ]]; then
     exit 1
 fi
 
-# Build events array for GitHub API
+# Build events flags for gh api
 IFS=',' read -ra EVENT_LIST <<< "$EVENTS"
-EVENTS_JSON=$(printf '%s\n' "${EVENT_LIST[@]}" | jq -R . | jq -s .)
+EVENT_FLAGS=()
+for evt in "${EVENT_LIST[@]}"; do
+    EVENT_FLAGS+=(-f "events[]=$evt")
+done
 
 # Create webhooks
 WEBHOOKS="[]"
@@ -80,9 +83,9 @@ while IFS= read -r repo; do
         -f "config[url]=$CHANNEL_URL" \
         -f "config[content_type]=json" \
         -f "config[secret]=$SECRET" \
-        --argjson active true \
-        --argjson events "$EVENTS_JSON" \
-        --jq '.id')
+        -F "active=true" \
+        "${EVENT_FLAGS[@]}" \
+        -q '.id')
     echo "  Hook ID: $HOOK_ID"
     WEBHOOKS=$(echo "$WEBHOOKS" | jq --arg repo "$repo" --argjson id "$HOOK_ID" '. + [{"repo": $repo, "hook_id": $id}]')
 done <<< "$REPOS"
