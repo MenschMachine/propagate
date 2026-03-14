@@ -1,4 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import replace
+from typing import Any
+
+import zmq
 
 from .constants import LOGGER
 from .context_store import clear_execution_context, get_context_root
@@ -9,6 +14,8 @@ from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, Execu
 from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
 from .run_state import clear_run_state, save_run_state
+from .signal_transport import receive_signal
+from .signals import validate_signal_payload
 
 
 def run_execution_schedule(
@@ -16,8 +23,14 @@ def run_execution_schedule(
     initial_execution_name: str,
     runtime_context: RuntimeContext,
     run_state: RunState | None = None,
+    signal_socket: zmq.Socket | None = None,
 ) -> None:
     execution_graph = build_execution_graph(config)
+    received_signal_types: set[str] = set()
+    if run_state is not None:
+        received_signal_types.update(run_state.received_signal_types)
+    if runtime_context.active_signal is not None:
+        received_signal_types.add(runtime_context.active_signal.signal_type)
     has_prior_progress = run_state is not None and (run_state.schedule.completed_names or run_state.schedule.completed_tasks or run_state.schedule.completed_execution_phases)
     if has_prior_progress:
         LOGGER.info("Resuming execution schedule; %d executions already completed.", len(run_state.schedule.completed_names))
@@ -32,10 +45,15 @@ def run_execution_schedule(
         LOGGER.info("Starting execution schedule with initial execution '%s'.", initial_execution_name)
         activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
     if run_state is not None:
-        _sync_and_save(run_state, schedule_state, runtime_context)
+        _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
     while True:
+        if signal_socket is not None:
+            _drain_incoming_signals(signal_socket, config, execution_graph, schedule_state, received_signal_types)
         execution_name = select_next_runnable_execution(config, execution_graph, schedule_state)
         if execution_name is None:
+            if signal_socket is not None and has_pending_signal_triggers(config, execution_graph, schedule_state, received_signal_types):
+                _wait_for_signal(signal_socket, config, execution_graph, schedule_state, received_signal_types)
+                continue
             if schedule_state.completed_names == schedule_state.active_names:
                 if run_state is not None:
                     clear_run_state(run_state.config_path)
@@ -56,7 +74,7 @@ def run_execution_schedule(
             else:
                 schedule_state.completed_execution_phases[exec_name] = phase
             if run_state is not None:
-                _sync_and_save(run_state, schedule_state, runtime_context)
+                _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
 
         try:
             run_configured_execution(execution, execution_runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase)
@@ -72,7 +90,7 @@ def run_execution_schedule(
             schedule_state.completed_names,
         )
         if run_state is not None:
-            _sync_and_save(run_state, schedule_state, runtime_context)
+            _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
 
 
 def _ensure_repo_cloned(config: Config, repo_name: str, run_state: RunState | None) -> Config:
@@ -88,7 +106,12 @@ def _ensure_repo_cloned(config: Config, repo_name: str, run_state: RunState | No
     return replace(config, repositories=updated_repos)
 
 
-def _sync_and_save(run_state: RunState, schedule_state: ExecutionScheduleState, runtime_context: RuntimeContext) -> None:
+def _sync_and_save(
+    run_state: RunState,
+    schedule_state: ExecutionScheduleState,
+    runtime_context: RuntimeContext,
+    received_signal_types: set[str] | None = None,
+) -> None:
     run_state.schedule = ExecutionScheduleState(
         active_names=set(schedule_state.active_names),
         completed_names=set(schedule_state.completed_names),
@@ -96,6 +119,8 @@ def _sync_and_save(run_state: RunState, schedule_state: ExecutionScheduleState, 
         completed_execution_phases=dict(schedule_state.completed_execution_phases),
     )
     run_state.initialized_signal_context_dirs = set(runtime_context.initialized_signal_context_dirs)
+    if received_signal_types is not None:
+        run_state.received_signal_types = set(received_signal_types)
     save_run_state(run_state)
 
 
@@ -170,3 +195,94 @@ def execution_is_runnable(execution: ExecutionConfig, schedule_state: ExecutionS
     if execution.name not in schedule_state.active_names or execution.name in schedule_state.completed_names:
         return False
     return all(dependency_name in schedule_state.completed_names for dependency_name in execution.depends_on)
+
+
+def has_pending_signal_triggers(
+    config: Config,
+    execution_graph: ExecutionGraph,
+    schedule_state: ExecutionScheduleState,
+    received_signal_types: set[str],
+) -> bool:
+    return bool(_pending_signal_types(execution_graph, schedule_state, received_signal_types))
+
+
+def _drain_incoming_signals(
+    signal_socket: zmq.Socket,
+    config: Config,
+    execution_graph: ExecutionGraph,
+    schedule_state: ExecutionScheduleState,
+    received_signal_types: set[str],
+) -> None:
+    while True:
+        result = receive_signal(signal_socket, block=False)
+        if result is None:
+            return
+        _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
+
+
+def _wait_for_signal(
+    signal_socket: zmq.Socket,
+    config: Config,
+    execution_graph: ExecutionGraph,
+    schedule_state: ExecutionScheduleState,
+    received_signal_types: set[str],
+) -> None:
+    pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
+    LOGGER.info("Waiting for external signal (%s)...", ", ".join(sorted(pending)))
+    while True:
+        result = receive_signal(signal_socket, block=True, timeout_ms=1000)
+        if result is None:
+            continue
+        _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
+        new_pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
+        if new_pending != pending:
+            return
+
+
+def _process_received_signal(
+    result: tuple[str, dict[str, Any]],
+    config: Config,
+    execution_graph: ExecutionGraph,
+    schedule_state: ExecutionScheduleState,
+    received_signal_types: set[str],
+) -> None:
+    signal_type, payload = result
+    if signal_type not in config.signals:
+        LOGGER.warning("Received unknown signal '%s'; ignoring.", signal_type)
+        return
+    signal_config = config.signals[signal_type]
+    try:
+        validate_signal_payload(signal_config, payload)
+    except PropagateError as error:
+        LOGGER.warning("Received signal '%s' with invalid payload: %s; ignoring.", signal_type, error)
+        return
+    LOGGER.info("Received external signal '%s'.", signal_type)
+    received_signal_types.add(signal_type)
+    active_signal = ActiveSignal(signal_type=signal_type, payload=payload, source="external")
+    for completed_name in list(schedule_state.completed_names):
+        activate_matching_triggers(
+            config,
+            execution_graph,
+            completed_name,
+            active_signal,
+            schedule_state.active_names,
+            schedule_state.completed_names,
+        )
+
+
+def _pending_signal_types(
+    execution_graph: ExecutionGraph,
+    schedule_state: ExecutionScheduleState,
+    received_signal_types: set[str],
+) -> set[str]:
+    pending = set()
+    for completed_name in schedule_state.completed_names:
+        for trigger in execution_graph.triggers_by_after[completed_name]:
+            if trigger.on_signal is None:
+                continue
+            if trigger.on_signal in received_signal_types:
+                continue
+            if trigger.run in schedule_state.completed_names or trigger.run in schedule_state.active_names:
+                continue
+            pending.add(trigger.on_signal)
+    return pending

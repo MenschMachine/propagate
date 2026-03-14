@@ -2,6 +2,7 @@
 name = "propagate"
 version = "0.1.0"
 requires-python = ">=3.10"
+dependencies = ["pyzmq>=26.0"]
 
 [project.scripts]
 propagate = "propagate_app.cli:main"

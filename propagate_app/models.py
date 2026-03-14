@@ -155,6 +155,7 @@ class RunState:
     active_signal: ActiveSignal | None
     cloned_repos: dict[str, Path]
     initialized_signal_context_dirs: set[Path]
+    received_signal_types: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)

@@ -15,9 +15,10 @@ from .context_store import (
     resolve_context_dir_for_write,
 )
 from .errors import PropagateError
-from .models import ExecutionScheduleState, RunState, RuntimeContext
+from .models import Config, ExecutionScheduleState, RunState, RuntimeContext
 from .run_state import load_run_state, state_file_path
 from .scheduler import run_execution_schedule
+from .signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, send_signal, socket_address
 from .signals import log_active_signal, parse_active_signal, select_initial_execution
 
 
@@ -31,6 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--signal-payload", help="Signal payload as a YAML or JSON mapping. Requires --signal.")
     run_parser.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
     run_parser.add_argument("--resume", action="store_true", default=False, help="Resume a previously interrupted run.")
+    send_signal_parser = subparsers.add_parser("send-signal", help="Send a signal to a running propagate instance.")
+    send_signal_parser.add_argument("--config", required=True, help="Config path (used to determine socket address).")
+    send_signal_source = send_signal_parser.add_mutually_exclusive_group(required=True)
+    send_signal_source.add_argument("--signal", help="Signal type name.")
+    send_signal_source.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
+    send_signal_parser.add_argument("--signal-payload", help="Signal payload as a YAML or JSON mapping. Requires --signal.")
     context_parser = subparsers.add_parser("context", help="Manage local context values.")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
     set_parser = context_subparsers.add_parser("set", help="Store a local context value.")
@@ -75,6 +82,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "run":
         return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume)
+    if args.command == "send-signal":
+        return send_signal_command(args.config, args.signal, args.signal_payload, args.signal_file)
     if args.command == "context":
         context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
         execution_env = os.environ.get(ENV_EXECUTION, "")
@@ -124,12 +133,18 @@ def run_command(
 
 
 def _run_resume(config_path: Path) -> int:
+    signal_socket = None
+    address = None
     try:
         run_state = load_run_state(config_path)
         config = load_config(config_path)
         active_signal = run_state.active_signal
         log_active_signal(active_signal)
         initialized_dirs = set(run_state.initialized_signal_context_dirs)
+        address = socket_address(config.config_path)
+        if _has_signal_gated_triggers(config):
+            signal_socket = bind_pull_socket(address)
+            LOGGER.info("Listening for external signals on %s", address)
         run_execution_schedule(
             config,
             run_state.initial_execution,
@@ -140,6 +155,7 @@ def _run_resume(config_path: Path) -> int:
                 initialized_signal_context_dirs=initialized_dirs,
             ),
             run_state=run_state,
+            signal_socket=signal_socket,
         )
         return 0
     except PropagateError as error:
@@ -149,6 +165,9 @@ def _run_resume(config_path: Path) -> int:
     except KeyboardInterrupt:
         _log_resume_hint(config_path)
         return 130
+    finally:
+        if signal_socket is not None:
+            close_pull_socket(signal_socket, address)
 
 
 def _run_fresh(
@@ -171,7 +190,12 @@ def _run_fresh(
         initialized_signal_context_dirs=set(),
     )
     initialized_dirs: set[Path] = set()
+    signal_socket = None
+    address = socket_address(config.config_path)
     try:
+        if _has_signal_gated_triggers(config):
+            signal_socket = bind_pull_socket(address)
+            LOGGER.info("Listening for external signals on %s", address)
         run_execution_schedule(
             config,
             initial_execution.name,
@@ -182,6 +206,7 @@ def _run_fresh(
                 initialized_signal_context_dirs=initialized_dirs,
             ),
             run_state=run_state,
+            signal_socket=signal_socket,
         )
         return 0
     except PropagateError as error:
@@ -191,6 +216,34 @@ def _run_fresh(
     except KeyboardInterrupt:
         _log_resume_hint(config_path)
         return 130
+    finally:
+        if signal_socket is not None:
+            close_pull_socket(signal_socket, address)
+
+
+def send_signal_command(
+    config_value: str,
+    signal_name: str,
+    signal_payload: str | None,
+    signal_file: str | None,
+) -> int:
+    config_path = Path(config_value).expanduser()
+    config = load_config(config_path)
+    active_signal = parse_active_signal(signal_name, signal_payload, signal_file, config.signals)
+    if active_signal is None:
+        raise PropagateError("Signal type is required for send-signal.")
+    address = socket_address(config.config_path)
+    push = connect_push_socket(address)
+    try:
+        send_signal(push, active_signal.signal_type, active_signal.payload)
+        LOGGER.info("Sent signal '%s' to %s", active_signal.signal_type, address)
+    finally:
+        close_push_socket(push)
+    return 0
+
+
+def _has_signal_gated_triggers(config: Config) -> bool:
+    return any(trigger.on_signal is not None for trigger in config.propagation_triggers)
 
 
 def _log_resume_hint(config_path: Path) -> None:

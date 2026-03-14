@@ -190,3 +190,67 @@ propagation:
 ```
 
 This trigger only fires if the active signal for the run is `deploy`. If `on_signal` is omitted, the trigger fires unconditionally after the `after` execution completes.
+
+---
+
+## External signal delivery
+
+Signals can be sent to a running propagate instance from outside the process. When the scheduler has no runnable executions but signal-gated propagation triggers exist, it waits for external signals instead of exiting.
+
+### How it works
+
+When a config has propagation triggers with `on_signal`, the `propagate run` command opens a ZeroMQ IPC socket at `ipc:///tmp/propagate-{hash}.sock` (where `{hash}` is derived from the full resolved config path). The scheduler polls this socket for incoming signals between executions and blocks on it when waiting.
+
+### Sending a signal with `send-signal`
+
+```bash
+propagate send-signal --config config/propagate.yaml \
+  --signal deploy \
+  --signal-payload '{branch: main}'
+```
+
+Or via signal file:
+
+```bash
+propagate send-signal --config config/propagate.yaml \
+  --signal-file ./signal.yaml
+```
+
+The `--config` path must match the one used by the running `propagate run` instance — it determines the socket address.
+
+The signal is validated against the config's signal definitions before sending. Unknown signal types, missing required fields, and type mismatches are rejected.
+
+### Example: wait for external approval
+
+```yaml
+signals:
+  approved:
+    payload: {}
+
+executions:
+  build:
+    repository: app
+    sub_tasks:
+      - id: compile
+        prompt: ./prompts/build.md
+
+  deploy:
+    repository: app
+    sub_tasks:
+      - id: ship
+        prompt: ./prompts/deploy.md
+
+propagation:
+  triggers:
+    - after: build
+      run: deploy
+      on_signal: approved
+```
+
+```bash
+# Terminal 1: start the run — builds, then waits for "approved" signal
+propagate run --config config/propagate.yaml --execution build
+
+# Terminal 2: send the signal when ready
+propagate send-signal --config config/propagate.yaml --signal approved
+```
