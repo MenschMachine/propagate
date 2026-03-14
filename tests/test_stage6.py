@@ -525,11 +525,10 @@ class PropagateStage6DagTests(unittest.TestCase):
     def _create_bare_repo(self, name: str, branch: str = "main") -> Path:
         bare_dir = self.workspace / name
         bare_dir.mkdir()
-        subprocess.run(["git", "init", "--bare", str(bare_dir)], check=True, capture_output=True)
+        subprocess.run(["git", "-c", f"init.defaultBranch={branch}", "init", "--bare", str(bare_dir)], check=True, capture_output=True)
         work_dir = self.workspace / f"{name}-work"
         work_dir.mkdir()
         subprocess.run(["git", "clone", str(bare_dir), str(work_dir)], check=True, capture_output=True)
-        subprocess.run(["git", "checkout", "-b", branch], cwd=str(work_dir), check=True, capture_output=True)
         dummy = work_dir / "README.md"
         dummy.write_text("init\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=str(work_dir), check=True, capture_output=True)
@@ -866,11 +865,10 @@ class PropagateResumeTests(unittest.TestCase):
     def _create_bare_repo(self, name: str, branch: str = "main") -> Path:
         bare_dir = self.workspace / name
         bare_dir.mkdir()
-        subprocess.run(["git", "init", "--bare", str(bare_dir)], check=True, capture_output=True)
+        subprocess.run(["git", "-c", f"init.defaultBranch={branch}", "init", "--bare", str(bare_dir)], check=True, capture_output=True)
         work_dir = self.workspace / f"{name}-work"
         work_dir.mkdir()
         subprocess.run(["git", "clone", str(bare_dir), str(work_dir)], check=True, capture_output=True)
-        subprocess.run(["git", "checkout", "-b", branch], cwd=str(work_dir), check=True, capture_output=True)
         dummy = work_dir / "README.md"
         dummy.write_text("init\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=str(work_dir), check=True, capture_output=True)

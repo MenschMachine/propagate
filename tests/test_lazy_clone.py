@@ -63,7 +63,7 @@ class LazyCloneTests(unittest.TestCase):
     def _create_bare_repo(self, name: str) -> Path:
         bare_dir = self.workspace / name
         bare_dir.mkdir()
-        subprocess.run(["git", "init", "--bare", str(bare_dir)], check=True, capture_output=True)
+        subprocess.run(["git", "-c", "init.defaultBranch=main", "init", "--bare", str(bare_dir)], check=True, capture_output=True)
         work_dir = self.workspace / f"{name}-work"
         work_dir.mkdir()
         subprocess.run(["git", "clone", str(bare_dir), str(work_dir)], check=True, capture_output=True)
