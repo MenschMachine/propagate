@@ -14,6 +14,7 @@
         type: string
       action:
         type: string
+    check: "gh pr view {pr_number} --repo {repository} --json state --jq '.state' | grep -q '^OPEN$'"
 
   pull_request.closed:
     payload:
@@ -31,6 +32,7 @@
         type: string
       action:
         type: string
+    check: "gh pr view {pr_number} --repo {repository} --json state --jq '.state' | grep -q '^CLOSED$\\|^MERGED$'"
 
   pull_request.reopened:
     payload:
@@ -48,6 +50,7 @@
         type: string
       action:
         type: string
+    check: "gh pr view {pr_number} --repo {repository} --json state --jq '.state' | grep -q '^OPEN$'"
 
   pull_request.labeled:
     payload:
@@ -89,3 +92,4 @@
         type: string
       action:
         type: string
+    check: "! gh pr view {pr_number} --repo {repository} --json labels --jq '.labels[].name' | grep -q '^{label}$'"
