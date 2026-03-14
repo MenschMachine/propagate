@@ -48,3 +48,10 @@ executions:
     repository: test-propagation-frontend
     sub_tasks:
       - id: noop
+        before:
+          - propagate context dump
+
+propagation:
+  triggers:
+    - after: test-backend
+      run: test-frontend
