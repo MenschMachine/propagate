@@ -90,6 +90,27 @@ def test_multiple_signals_received_in_order():
         close_pull_socket(pull, address)
 
 
+def test_receive_signal_ignores_non_json_bytes():
+    import time
+
+    address = "ipc:///tmp/propagate-test-raw-bytes.sock"
+    pull = bind_pull_socket(address)
+    push = connect_push_socket(address)
+    try:
+        # Send raw bytes that aren't valid JSON
+        push.send(b"\x80\x81\x82 not json")
+        time.sleep(0.05)
+        result = receive_signal(pull, block=True, timeout_ms=2000)
+        assert result is None
+        # Socket still works for valid messages after
+        send_signal(push, "test", {})
+        result = receive_signal(pull, block=True, timeout_ms=2000)
+        assert result == ("test", {})
+    finally:
+        close_push_socket(push)
+        close_pull_socket(pull, address)
+
+
 def test_stale_socket_file_cleaned_on_bind(tmp_path):
     address = "ipc:///tmp/propagate-test-stale.sock"
     # Create a stale file

@@ -21,7 +21,6 @@ signals:
   run:
     payload: { }
 
-
 executions:
   test-backend:
     repository: test-propagation-backend

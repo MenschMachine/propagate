@@ -30,7 +30,10 @@ signals (typed events), propagation triggers, and a 3-tier context store.
 ./venv/bin/ruff check --fix propagate_app/ tests/
 
 # Run CLI
-./venv/bin/propagate --config config/propagate.yaml
+./venv/bin/propagate run --config config/propagate.yaml
+
+# Run as long-lived server
+./venv/bin/propagate serve --config config/propagate.yaml
 ```
 
 ## Architecture

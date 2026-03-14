@@ -365,9 +365,14 @@ This trigger only fires if the active signal for the run is `deploy`. If `on_sig
 
 Signals can be sent to a running propagate instance from outside the process. When the scheduler has no runnable executions but signal-gated propagation triggers exist, it waits for external signals instead of exiting.
 
+### One-shot vs serve mode
+
+- **`propagate run`** — opens the ZMQ socket only when signal-gated propagation triggers exist. Runs the DAG once and exits.
+- **`propagate serve`** — opens the ZMQ socket unconditionally and stays alive, processing each incoming signal as a separate DAG run. See [SERVE.md](SERVE.md) for details.
+
 ### How it works
 
-When a config has propagation triggers with `on_signal`, the `propagate run` command opens a ZeroMQ IPC socket at `ipc:///tmp/propagate-{hash}.sock` (where `{hash}` is derived from the full resolved config path). The scheduler polls this socket for incoming signals between executions and blocks on it when waiting.
+When a config has propagation triggers with `on_signal`, the `propagate run` command opens a ZeroMQ IPC socket at `ipc:///tmp/propagate-{hash}.sock` (where `{hash}` is derived from the full resolved config path). The scheduler polls this socket for incoming signals between executions and blocks on it when waiting. The `propagate serve` command uses the same socket but always binds it.
 
 ### Sending a signal with `send-signal`
 

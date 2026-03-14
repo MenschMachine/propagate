@@ -38,15 +38,22 @@ def send_signal(socket: zmq.Socket, signal_type: str, payload: dict) -> None:
 
 
 def receive_signal(socket: zmq.Socket, *, block: bool = False, timeout_ms: int = 1000) -> tuple[str, dict] | None:
-    if block:
-        if socket.poll(timeout_ms) == 0:
-            return None
-        data = socket.recv_json()
-    else:
-        try:
-            data = socket.recv_json(flags=zmq.NOBLOCK)
-        except zmq.Again:
-            return None
+    try:
+        if block:
+            if socket.poll(timeout_ms) == 0:
+                return None
+            data = socket.recv_json()
+        else:
+            try:
+                data = socket.recv_json(flags=zmq.NOBLOCK)
+            except zmq.Again:
+                return None
+    except (ValueError, KeyError):
+        LOGGER.warning("Received non-JSON message; ignoring.")
+        return None
+    if not isinstance(data, dict) or "signal_type" not in data or "payload" not in data:
+        LOGGER.warning("Received malformed signal message; ignoring.")
+        return None
     return data["signal_type"], data["payload"]
 
 

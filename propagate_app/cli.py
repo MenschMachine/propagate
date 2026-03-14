@@ -18,6 +18,7 @@ from .errors import PropagateError
 from .models import Config, ExecutionScheduleState, RunState, RuntimeContext
 from .run_state import load_run_state, state_file_path
 from .scheduler import run_execution_schedule
+from .serve import serve_command
 from .signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, send_signal, socket_address
 from .signals import log_active_signal, parse_active_signal, select_initial_execution
 
@@ -48,6 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
     get_parser.add_argument("key")
     _add_read_scope_flags(get_parser)
     context_subparsers.add_parser("dump", help="Dump all context keys as YAML.")
+    serve_parser = subparsers.add_parser("serve", help="Run as a long-lived server, listening for signals.")
+    serve_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     return parser
 
 
@@ -84,6 +87,8 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
         return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume)
     if args.command == "send-signal":
         return send_signal_command(args.config, args.signal, args.signal_payload, args.signal_file)
+    if args.command == "serve":
+        return serve_command(args.config)
     if args.command == "context":
         context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
         execution_env = os.environ.get(ENV_EXECUTION, "")
