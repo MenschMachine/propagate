@@ -14,6 +14,7 @@ from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, Execu
 from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
 from .run_state import clear_run_state, save_run_state
+from .signal_reconcile import reconcile_pending_signals
 from .signal_transport import receive_signal
 from .signals import signal_payload_matches_when, validate_signal_payload
 
@@ -46,11 +47,14 @@ def run_execution_schedule(
         activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
     if run_state is not None:
         _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
+    reconciled_triggers: set[tuple[str, str, str]] = set()
     while True:
         if signal_socket is not None:
             _drain_incoming_signals(signal_socket, config, execution_graph, schedule_state, received_signal_types)
         execution_name = select_next_runnable_execution(config, execution_graph, schedule_state)
         if execution_name is None:
+            if reconcile_pending_signals(config, execution_graph, schedule_state, received_signal_types, reconciled_triggers):
+                continue
             if signal_socket is not None and has_pending_signal_triggers(config, execution_graph, schedule_state, received_signal_types):
                 _wait_for_signal(signal_socket, config, execution_graph, schedule_state, received_signal_types)
                 continue

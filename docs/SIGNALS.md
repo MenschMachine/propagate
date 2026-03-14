@@ -273,6 +273,78 @@ The trigger only fires when `pull_request.labeled` is the active signal **and** 
 
 ---
 
+## State checking with `check`
+
+Propagation triggers with `on_signal` + `when` normally wait for an external webhook event. But the condition described by `when` may already be true (e.g., a PR already has the required label). Instead of waiting indefinitely, you can add a `check` command to the signal definition. The scheduler runs this command — templated with the trigger's `when` values — before waiting. If it exits 0, the condition is already met and the trigger fires immediately.
+
+### Defining a check command
+
+Add a `check` string to the signal definition. Use `{field_name}` placeholders that correspond to keys in the trigger's `when` clause:
+
+```yaml
+signals:
+  pull_request.labeled:
+    payload:
+      repository: { type: string, required: true }
+      pr_number: { type: number, required: true }
+      label: { type: string, required: true }
+    check: "gh pr view {pr_number} --repo {repository} --json labels --jq '.labels[].name' | grep -q '^{label}$'"
+```
+
+### How it works
+
+1. When the scheduler has no runnable executions, it checks all pending signal triggers (those with `on_signal` + `when` where the target execution is not yet active)
+2. For each pending trigger, if the signal definition has a `check` command:
+   - All `{placeholder}` names in the command must have corresponding keys in `when` — otherwise the check is skipped
+   - Each `when` value is shell-escaped via `shlex.quote()` before substitution
+   - The command runs via `subprocess.run(shell=True)`
+3. If the command exits 0: the condition is already met. A synthetic signal is created with the `when` values as payload, and matching triggers are activated
+4. If the command exits non-zero or raises an `OSError`: the condition is not met, and the scheduler continues to wait for a real webhook event
+
+### Example
+
+```yaml
+signals:
+  pull_request.labeled:
+    payload:
+      repository: { type: string, required: true }
+      label: { type: string, required: true }
+    check: "gh pr list --repo {repository} --label {label} --state open --json number --jq 'length > 0'"
+
+executions:
+  build:
+    repository: app
+    sub_tasks:
+      - id: compile
+        prompt: ./prompts/build.md
+
+  deploy:
+    repository: app
+    sub_tasks:
+      - id: ship
+        prompt: ./prompts/deploy.md
+
+propagation:
+  triggers:
+    - after: build
+      run: deploy
+      on_signal: pull_request.labeled
+      when:
+        repository: "myorg/myrepo"
+        label: "deploy"
+```
+
+After `build` completes, the scheduler runs the check command. If a PR with the `deploy` label already exists, `deploy` is activated immediately without waiting for a webhook.
+
+### Limitations
+
+- `check` only runs for triggers that have both `on_signal` and `when` — triggers without `when` cannot template the command
+- If the check command has placeholders not present in `when`, it is silently skipped
+- A failed check (non-zero exit) is retried on subsequent scheduler iterations until it passes or a real webhook arrives
+- A successful check (exit 0) is not re-run for the same trigger
+
+---
+
 ## Propagation triggers with signals
 
 A propagation trigger can be conditioned on a signal using `on_signal`:

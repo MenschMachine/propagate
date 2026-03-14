@@ -64,7 +64,7 @@ def parse_signal_configs(signals_data: Any) -> dict[str, SignalConfig]:
 def parse_signal_config(signal_name: str, signal_data: Any) -> SignalConfig:
     if not isinstance(signal_data, dict):
         raise PropagateError(f"Signal '{signal_name}' must be a mapping.")
-    validate_allowed_keys(signal_data, {"payload"}, f"Signal '{signal_name}'")
+    validate_allowed_keys(signal_data, {"payload", "check"}, f"Signal '{signal_name}'")
     payload_data = signal_data.get("payload")
     if not isinstance(payload_data, dict):
         raise PropagateError(f"Signal '{signal_name}' must define a 'payload' mapping.")
@@ -76,7 +76,10 @@ def parse_signal_config(signal_name: str, signal_data: Any) -> SignalConfig:
         )
         for field_name, field_data in payload_data.items()
     }
-    return SignalConfig(name=signal_name, payload=payload)
+    check = signal_data.get("check")
+    if check is not None and not isinstance(check, str):
+        raise PropagateError(f"Signal '{signal_name}' check must be a string.")
+    return SignalConfig(name=signal_name, payload=payload, check=check)
 
 
 def parse_signal_field_config(signal_name: str, field_name: str, field_data: Any) -> SignalFieldConfig:

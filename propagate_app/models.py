@@ -34,6 +34,7 @@ class SignalFieldConfig:
 class SignalConfig:
     name: str
     payload: dict[str, SignalFieldConfig]
+    check: str | None = None
 
 
 @dataclass(frozen=True)
