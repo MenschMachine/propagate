@@ -65,7 +65,8 @@ def create_app(config_signals: dict[str, Any], zmq_address: str, secret: str | N
         logger.debug("Parsed signal '%s' with payload: %s", signal_name, payload)
 
         if signal_name not in app.state.config_signals:
-            logger.info("Signal '%s' not defined in config; ignoring.", signal_name)
+            defined = ", ".join(sorted(app.state.config_signals))
+            logger.info("Signal '%s' not defined in config (defined: %s); ignoring.", signal_name, defined)
             return {"status": "ignored", "reason": "unknown_signal"}
 
         if app.state.push_socket is None:

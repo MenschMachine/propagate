@@ -271,4 +271,4 @@ async def test_webhook_logs_unknown_signal(app, caplog):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
 
-    assert any("Signal 'pull_request.opened' not defined in config; ignoring." in r.message for r in caplog.records)
+    assert any("not defined in config" in r.message and "pull_request.opened" in r.message and "defined:" in r.message for r in caplog.records)
