@@ -11,6 +11,49 @@ Git operations are driven by explicit hook commands (`git:branch`, `git:commit`,
 | `git:push` | Push the current branch to the configured remote |
 | `git:pr` | Create a pull request via `gh pr create` |
 
+### PR Checks Command
+
+| Command | Args | Effect |
+|---------|------|--------|
+| `git:pr-checks-wait` | `<:result-key> <:status-key> [interval] [timeout]` | Poll GitHub Actions checks until complete, store results and pass/fail status in context keys |
+
+Polls `gh pr checks`, filters to GitHub Actions only (entries with a non-empty `workflow.name`), and waits until all are completed.
+
+- `:result-key` — stores filtered checks as JSON
+- `:status-key` — writes `"true"` if all checks passed, `""` (empty string) if any failed
+- `interval` — poll interval in seconds (default: 10)
+- `timeout` — max wait in seconds (default: 1800 = 30 minutes)
+
+The command **never raises** on check failures — use the `when` field on subtasks to branch based on the status key. Timeout still raises `PropagateError` (that's a real error, not a branch condition).
+
+If the repository has no GitHub Actions workflows, no action checks will ever appear and the command will wait until timeout.
+
+```yaml
+sub_tasks:
+  - id: wait-ci
+    before:
+      - git:pr-checks-wait :check-results :checks-passed 10 1800
+
+  - id: handle-success
+    when: ":checks-passed"
+    prompt: ./prompts/on-pass.md
+
+  - id: handle-failure
+    when: "!:checks-passed"
+    prompt: ./prompts/on-fail.md
+```
+
+### Conditional Subtask Execution (`when`)
+
+Subtasks support a `when` field that references a context key. The subtask is skipped if the condition is falsy.
+
+- `when: ":key"` — run if key exists and has a non-empty value
+- `when: "!:key"` — run if key is missing or has an empty value
+
+The `when` condition resolves against **execution-scoped** context only (keys written to the execution's context directory). Global or task-scoped keys are not checked.
+
+On resume, skipped-via-`when` subtasks are re-evaluated — the condition is checked again against the current context state.
+
 ### PR Label and Comment Commands
 
 These commands manage labels and comments on the current PR via `gh`. They operate on whatever PR exists for the current branch and do not require `git:branch`. Arguments are passed inline after the command name.

@@ -12,6 +12,7 @@ from .git_publish import (
     list_pr_comments,
     list_pr_labels,
     load_commit_message,
+    poll_pr_action_checks,
     push_branch,
     remove_pr_labels,
     split_commit_message,
@@ -245,6 +246,18 @@ def git_do_pr_comments_list(execution_name: str, store_key: str, runtime_context
         write_context_value(context_dir, store_key[1:], output)
         LOGGER.debug("Stored PR comments JSON to context key '%s'.", store_key)
     _run_pr_interaction(execution_name, "PR comments list", runtime_context, action)
+
+
+def git_do_pr_checks_wait(execution_name: str, store_key: str, status_key: str, interval: int, timeout: int, runtime_context: RuntimeContext) -> None:
+    def action(context_dir: Path, working_dir: Path) -> None:
+        filtered_json, all_passed = poll_pr_action_checks(working_dir, interval, timeout)
+        ensure_context_dir(context_dir)
+        write_context_value(context_dir, store_key[1:], filtered_json)
+        LOGGER.debug("Stored PR checks JSON to context key '%s'.", store_key)
+        status_value = "true" if all_passed else ""
+        write_context_value(context_dir, status_key[1:], status_value)
+        LOGGER.debug("Stored PR checks status '%s' to context key '%s'.", status_value, status_key)
+    _run_pr_interaction(execution_name, "PR checks wait", runtime_context, action)
 
 
 def cannot_start_execution_git_automation(execution_name: str, error: PropagateError) -> PropagateError:

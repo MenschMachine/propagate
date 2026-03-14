@@ -7,11 +7,13 @@ from typing import NoReturn
 
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
 from .context_sources import run_context_source
+from .context_store import resolve_execution_context_dir
 from .errors import PropagateError
 from .git_runtime import (
     git_do_branch,
     git_do_commit,
     git_do_pr,
+    git_do_pr_checks_wait,
     git_do_pr_comment_add,
     git_do_pr_comments_list,
     git_do_pr_labels_add,
@@ -45,7 +47,19 @@ def run_execution_sub_tasks(
         if task_phase == PHASE_AFTER:
             LOGGER.info("Skipping already completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution.name)
             continue
+        if sub_task.when is not None and not evaluate_when_condition(sub_task.when, runtime_context):
+            LOGGER.info("Skipping sub-task '%s' for execution '%s': 'when' condition '%s' is not met.", sub_task.task_id, execution.name, sub_task.when)
+            continue
         run_sub_task(execution.name, sub_task, runtime_context, execution.git, task_phase, on_phase_completed)
+
+
+def evaluate_when_condition(when: str, runtime_context: RuntimeContext) -> bool:
+    negated = when.startswith("!")
+    key = when[2:] if negated else when[1:]
+    context_dir = resolve_execution_context_dir(runtime_context)
+    key_path = context_dir / key
+    truthy = key_path.is_file() and key_path.read_text(encoding="utf-8") != ""
+    return not truthy if negated else truthy
 
 
 def run_sub_task(
@@ -166,7 +180,7 @@ def run_hook_phase(
         )
 
 
-_PR_INTERACTION_COMMANDS = {"pr-labels-add", "pr-labels-remove", "pr-labels-list", "pr-comment-add", "pr-comments-list"}
+_PR_INTERACTION_COMMANDS = {"pr-labels-add", "pr-labels-remove", "pr-labels-list", "pr-comment-add", "pr-comments-list", "pr-checks-wait"}
 
 
 def run_git_hook_command(action: str, git_config: GitConfig | None, runtime_context: RuntimeContext) -> None:
@@ -194,6 +208,10 @@ def run_git_hook_command(action: str, git_config: GitConfig | None, runtime_cont
         git_do_pr_comment_add(execution_name, args[0], runtime_context)
     elif command == "pr-comments-list":
         git_do_pr_comments_list(execution_name, args[0], runtime_context)
+    elif command == "pr-checks-wait":
+        interval = int(args[2]) if len(args) > 2 else 10
+        timeout = int(args[3]) if len(args) > 3 else 1800
+        git_do_pr_checks_wait(execution_name, args[0], args[1], interval, timeout, runtime_context)
 
 
 def build_hook_failure_message(phase: str, hook_index: int, context_id: str, exit_code: int | str) -> str:

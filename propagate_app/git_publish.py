@@ -1,3 +1,5 @@
+import json
+import time
 from pathlib import Path
 
 from .constants import LOGGER
@@ -213,3 +215,32 @@ def list_pr_comments(working_dir: Path) -> str:
         capture_output=True,
     )
     return result.stdout
+
+
+_FAILURE_CONCLUSIONS = {"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STALE"}
+
+
+def poll_pr_action_checks(working_dir: Path, interval: int, timeout: int) -> tuple[str, bool]:
+    LOGGER.debug("Polling PR action checks (interval=%ds, timeout=%ds).", interval, timeout)
+    deadline = time.monotonic() + timeout
+    while True:
+        result = run_process_command(
+            ["gh", "pr", "checks", "--json", "name,status,conclusion,workflow,detailsUrl"],
+            working_dir,
+            failure_message="Failed to fetch PR checks.",
+            start_failure_message="Failed to start gh pr checks: {error}",
+            capture_output=True,
+        )
+        try:
+            all_checks = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise PropagateError(f"Failed to parse PR checks output as JSON: {exc}") from exc
+        filtered = [c for c in all_checks if isinstance(c.get("workflow"), dict) and c["workflow"].get("name")]
+        if filtered and all(c.get("status") == "COMPLETED" for c in filtered):
+            filtered_json = json.dumps(filtered)
+            all_passed = not any(c.get("conclusion") in _FAILURE_CONCLUSIONS for c in filtered)
+            return filtered_json, all_passed
+        if time.monotonic() >= deadline:
+            raise PropagateError(f"Timed out after {timeout}s waiting for PR checks to complete.")
+        LOGGER.debug("PR checks not yet complete, waiting %ds.", interval)
+        time.sleep(interval)

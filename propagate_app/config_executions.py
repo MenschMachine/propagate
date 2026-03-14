@@ -129,7 +129,7 @@ def parse_sub_task(
     if not isinstance(sub_task_data, dict):
         raise PropagateError(f"Execution '{name}' sub-task #{index} must be a mapping.")
     location = f"Execution '{name}' sub-task #{index}"
-    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure"}, location)
+    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when"}, location)
     task_id = sub_task_data.get("id")
     prompt_value = sub_task_data.get("prompt")
     if not isinstance(task_id, str) or not task_id.strip():
@@ -137,18 +137,20 @@ def parse_sub_task(
     if prompt_value is not None and (not isinstance(prompt_value, str) or not prompt_value.strip()):
         raise PropagateError(f"Execution '{name}' sub-task '{task_id}' 'prompt' must be a non-empty string when provided.")
     prompt_path = resolve_prompt_path(prompt_value, config_dir) if prompt_value else None
+    when_value = parse_when_condition(sub_task_data.get("when"), location)
     return SubTaskConfig(
         task_id=task_id,
         prompt_path=prompt_path,
         before=parse_hook_actions(sub_task_data.get("before"), location, "before", context_source_names),
         after=parse_hook_actions(sub_task_data.get("after"), location, "after", context_source_names),
         on_failure=parse_hook_actions(sub_task_data.get("on_failure"), location, "on_failure", context_source_names),
+        when=when_value,
     )
 
 
 _KNOWN_GIT_HOOK_COMMANDS = {"branch", "commit", "push", "pr",
     "pr-labels-add", "pr-labels-remove", "pr-labels-list",
-    "pr-comment-add", "pr-comments-list"}
+    "pr-comment-add", "pr-comments-list", "pr-checks-wait"}
 
 _GIT_COMMANDS_REQUIRING_ARGS = {"pr-labels-add", "pr-labels-remove"}
 _GIT_COMMANDS_SINGLE_KEY_ARG = {"pr-labels-list", "pr-comment-add", "pr-comments-list"}
@@ -196,8 +198,38 @@ def parse_hook_actions(hook_data: Any, location: str, phase: str, context_source
                     raise PropagateError(
                         f"{location} '{phase}' hook #{hook_index} 'git:{git_command}' argument must be a ':'-prefixed context key."
                     )
+            elif git_command == "pr-checks-wait":
+                if len(args) < 2 or not args[0].startswith(":") or not args[1].startswith(":"):
+                    raise PropagateError(
+                        f"{location} '{phase}' hook #{hook_index} 'git:pr-checks-wait' requires two ':'-prefixed context key arguments (result key, status key)."
+                    )
+                if len(args) > 4:
+                    raise PropagateError(
+                        f"{location} '{phase}' hook #{hook_index} 'git:pr-checks-wait' accepts at most 4 arguments (result key, status key, interval, timeout)."
+                    )
+                for extra_arg in args[2:]:
+                    if not extra_arg.isdigit() or int(extra_arg) <= 0:
+                        raise PropagateError(
+                            f"{location} '{phase}' hook #{hook_index} 'git:pr-checks-wait' interval and timeout must be positive integers."
+                        )
         actions.append(action)
     return actions
+
+
+def parse_when_condition(when_value: Any, location: str) -> str | None:
+    if when_value is None:
+        return None
+    if not isinstance(when_value, str) or not when_value.strip():
+        raise PropagateError(f"{location} 'when' must be a non-empty string when provided.")
+    stripped = when_value.strip()
+    if stripped.startswith("!:"):
+        key_part = stripped[1:]
+    elif stripped.startswith(":"):
+        key_part = stripped
+    else:
+        raise PropagateError(f"{location} 'when' must be a ':key' or '!:key' context reference.")
+    validate_context_key(key_part)
+    return stripped
 
 
 def resolve_prompt_path(prompt_value: str, config_dir: Path) -> Path:

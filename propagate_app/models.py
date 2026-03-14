@@ -77,6 +77,7 @@ class SubTaskConfig:
     before: list[str]
     after: list[str]
     on_failure: list[str]
+    when: str | None = None
 
 
 @dataclass
