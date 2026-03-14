@@ -37,6 +37,12 @@ class SignalConfig:
 
 
 @dataclass(frozen=True)
+class ExecutionSignalConfig:
+    signal_name: str
+    when: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
 class GitBranchConfig:
     name: str | None
     base: str | None
@@ -92,7 +98,7 @@ class ExecutionConfig:
     name: str
     repository: str
     depends_on: list[str]
-    signals: list[str]
+    signals: list[ExecutionSignalConfig]
     sub_tasks: list[SubTaskConfig]
     git: GitConfig | None
     before: list[str] = field(default_factory=list)
@@ -105,6 +111,7 @@ class PropagationTriggerConfig:
     after: str
     run: str
     on_signal: str | None
+    when: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

@@ -15,7 +15,7 @@ from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
 from .run_state import clear_run_state, save_run_state
 from .signal_transport import receive_signal
-from .signals import validate_signal_payload
+from .signals import signal_payload_matches_when, validate_signal_payload
 
 
 def run_execution_schedule(
@@ -133,10 +133,12 @@ def activate_matching_triggers(
     completed_execution_names: set[str],
 ) -> None:
     LOGGER.info("Evaluating propagation triggers after execution '%s'.", completed_execution_name)
-    active_signal_type = None if active_signal is None else active_signal.signal_type
     for trigger in execution_graph.triggers_by_after[completed_execution_name]:
-        if trigger.on_signal is not None and trigger.on_signal != active_signal_type:
-            continue
+        if trigger.on_signal is not None:
+            if active_signal is None or trigger.on_signal != active_signal.signal_type:
+                continue
+            if not signal_payload_matches_when(active_signal.payload, trigger.when):
+                continue
         if trigger.run in completed_execution_names:
             LOGGER.info("Skipping activation of '%s' because it already completed in this run.", trigger.run)
             continue

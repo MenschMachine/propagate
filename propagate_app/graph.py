@@ -1,14 +1,15 @@
 from typing import Any
 
+from .constants import LOGGER
 from .errors import PropagateError
-from .models import Config, ExecutionConfig, ExecutionGraph, PropagationTriggerConfig
+from .models import Config, ExecutionConfig, ExecutionGraph, PropagationTriggerConfig, SignalConfig
 from .validation import validate_allowed_keys
 
 
 def parse_propagation_triggers(
     propagation_data: Any,
     execution_names: set[str],
-    signal_names: set[str],
+    signal_configs: dict[str, SignalConfig],
 ) -> list[PropagationTriggerConfig]:
     if propagation_data is None:
         return []
@@ -19,7 +20,7 @@ def parse_propagation_triggers(
     if not isinstance(triggers_data, list) or not triggers_data:
         raise PropagateError("Config 'propagation.triggers' must be a non-empty list.")
     return [
-        parse_propagation_trigger(index, trigger_data, execution_names, signal_names)
+        parse_propagation_trigger(index, trigger_data, execution_names, signal_configs)
         for index, trigger_data in enumerate(triggers_data, start=1)
     ]
 
@@ -28,12 +29,12 @@ def parse_propagation_trigger(
     index: int,
     trigger_data: Any,
     execution_names: set[str],
-    signal_names: set[str],
+    signal_configs: dict[str, SignalConfig],
 ) -> PropagationTriggerConfig:
     location = f"Propagation trigger #{index}"
     if not isinstance(trigger_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(trigger_data, {"after", "run", "on_signal"}, location)
+    validate_allowed_keys(trigger_data, {"after", "run", "on_signal", "when"}, location)
     after = trigger_data.get("after")
     run = trigger_data.get("run")
     on_signal = trigger_data.get("on_signal")
@@ -48,9 +49,19 @@ def parse_propagation_trigger(
     if on_signal is not None:
         if not isinstance(on_signal, str) or not on_signal.strip():
             raise PropagateError(f"{location}.on_signal must be a non-empty string when provided.")
-        if on_signal not in signal_names:
+        if on_signal not in signal_configs:
             raise PropagateError(f"{location}.on_signal references unknown signal '{on_signal}'.")
-    return PropagationTriggerConfig(after=after, run=run, on_signal=on_signal)
+    when = trigger_data.get("when")
+    if when is not None:
+        if not isinstance(when, dict):
+            raise PropagateError(f"{location}.when must be a mapping when provided.")
+        if on_signal is None:
+            raise PropagateError(f"{location}.when requires on_signal to be set.")
+        if not when:
+            LOGGER.debug("%s has an empty 'when' clause — it matches any payload, same as omitting 'when'.", location)
+        else:
+            _validate_trigger_when_keys(when, signal_configs[on_signal], location)
+    return PropagationTriggerConfig(after=after, run=run, on_signal=on_signal, when=when)
 
 
 def validate_execution_graph_is_acyclic(
@@ -107,3 +118,12 @@ def visit_execution_graph(
         visit_execution_graph(next_execution_name, adjacency, visit_state, stack)
     stack.pop()
     visit_state[execution_name] = "done"
+
+
+def _validate_trigger_when_keys(when: dict, signal_config: SignalConfig, location: str) -> None:
+    unknown_keys = sorted(set(when) - set(signal_config.payload))
+    if unknown_keys:
+        raise PropagateError(
+            f"{location}.when references unknown payload field '{unknown_keys[0]}'."
+            f" Signal '{signal_config.name}' declares: {', '.join(sorted(signal_config.payload))}."
+        )

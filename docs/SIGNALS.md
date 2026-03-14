@@ -107,6 +107,16 @@ An execution can accept multiple signals:
 signals: [deploy, rollback]
 ```
 
+Each entry can be a plain string or a mapping with `signal` and optional `when` for payload filtering (see [Payload filtering with `when`](#payload-filtering-with-when)):
+
+```yaml
+signals:
+  - signal: pull_request.labeled
+    when:
+      label: "deploy"
+  - run
+```
+
 If exactly one execution accepts the given signal, `--execution` is not needed — the execution is selected automatically.
 
 ---
@@ -218,15 +228,61 @@ The `:signal` namespace is written once per execution working directory, the fir
 
 ---
 
+## Payload filtering with `when`
+
+You can filter on signal payload values using a `when` clause. This enables multiple executions to listen to the same signal but activate only when specific payload fields match.
+
+### On execution signals
+
+```yaml
+executions:
+  deploy-frontend:
+    repository: frontend
+    signals:
+      - signal: pull_request.labeled
+        when:
+          label: "deploy"
+      - run                          # plain string still works
+    sub_tasks:
+      - id: deploy
+        prompt: ./prompts/deploy.md
+```
+
+The execution only activates for `pull_request.labeled` when the payload's `label` field equals `"deploy"`. Plain string entries (like `run`) continue to work and match without any payload filtering.
+
+### On propagation triggers
+
+```yaml
+propagation:
+  triggers:
+    - after: test-backend
+      run: deploy-frontend
+      on_signal: pull_request.labeled
+      when:
+        label: "deploy"
+```
+
+The trigger only fires when `pull_request.labeled` is the active signal **and** the payload's `label` field equals `"deploy"`. `when` requires `on_signal` to be set.
+
+### Matching rules
+
+- All fields in `when` must match exactly (logical AND)
+- Missing payload fields do not match
+- `when` with no fields (`when: {}`) matches any payload
+- If `when` is omitted, the signal matches regardless of payload
+
+---
+
 ## Propagation triggers with signals
 
 A propagation trigger can be conditioned on a signal using `on_signal`:
 
 ```yaml
 propagation:
-  - after: deploy-backend
-    run: run-integration-tests
-    on_signal: deploy
+  triggers:
+    - after: deploy-backend
+      run: run-integration-tests
+      on_signal: deploy
 ```
 
 This trigger only fires if the active signal for the run is `deploy`. If `on_signal` is omitted, the trigger fires unconditionally after the `after` execution completes.

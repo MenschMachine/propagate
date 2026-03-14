@@ -46,9 +46,9 @@ def load_config(config_path: Path) -> Config:
         resolved_config_path.parent,
         set(repositories),
         set(context_sources),
-        set(signals),
+        signals,
     )
-    propagation_triggers = parse_propagation_triggers(raw_data.get("propagation"), set(executions), set(signals))
+    propagation_triggers = parse_propagation_triggers(raw_data.get("propagation"), set(executions), signals)
     validate_execution_graph_is_acyclic(executions, propagation_triggers)
     config = Config(
         version=version,

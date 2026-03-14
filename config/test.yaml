@@ -50,3 +50,7 @@ propagation:
   triggers:
     - after: test-backend
       run: test-frontend
+      on_signal: pull_request.labeled
+      when:
+        label: "bug"
+        repository: test-frontend

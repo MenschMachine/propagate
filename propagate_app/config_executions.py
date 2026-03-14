@@ -4,8 +4,9 @@ from pathlib import Path
 from typing import Any
 
 from .config_git import parse_git_config
+from .constants import LOGGER
 from .errors import PropagateError
-from .models import ExecutionConfig, SubTaskConfig
+from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
 
 
@@ -14,7 +15,7 @@ def parse_executions(
     config_dir: Path,
     repository_names: set[str],
     context_source_names: set[str],
-    signal_names: set[str],
+    signal_configs: dict[str, SignalConfig],
 ) -> dict[str, ExecutionConfig]:
     if not isinstance(executions_data, dict) or not executions_data:
         raise PropagateError("Config must include at least one execution in 'executions'.")
@@ -27,7 +28,7 @@ def parse_executions(
             repository_names,
             execution_names,
             context_source_names,
-            signal_names,
+            signal_configs,
         )
         for execution_name, execution_data in executions_data.items()
     }
@@ -40,7 +41,7 @@ def parse_execution(
     repository_names: set[str],
     execution_names: set[str],
     context_source_names: set[str],
-    signal_names: set[str],
+    signal_configs: dict[str, SignalConfig],
 ) -> ExecutionConfig:
     if not isinstance(execution_data, dict):
         raise PropagateError(f"Execution '{name}' must be a mapping.")
@@ -61,7 +62,7 @@ def parse_execution(
         name=name,
         repository=parse_execution_repository(name, execution_data.get("repository"), repository_names),
         depends_on=parse_execution_dependencies(name, execution_data.get("depends_on"), execution_names),
-        signals=parse_execution_signals(name, execution_data.get("signals"), signal_names),
+        signals=parse_execution_signals(name, execution_data.get("signals"), signal_configs),
         sub_tasks=sub_tasks,
         git=parse_git_config(name, execution_data.get("git"), context_source_names),
         before=parse_hook_actions(execution_data.get("before"), location, "before", context_source_names),
@@ -101,22 +102,53 @@ def parse_execution_dependencies(execution_name: str, depends_on_data: Any, exec
     return dependencies
 
 
-def parse_execution_signals(execution_name: str, signals_data: Any, signal_names: set[str]) -> list[str]:
+def parse_execution_signals(
+    execution_name: str,
+    signals_data: Any,
+    signal_configs: dict[str, SignalConfig],
+) -> list[ExecutionSignalConfig]:
     if signals_data is None:
         return []
     if not isinstance(signals_data, list) or not signals_data:
         raise PropagateError(f"Execution '{execution_name}' signals must be a non-empty list when provided.")
-    resolved_signals: list[str] = []
+    resolved_signals: list[ExecutionSignalConfig] = []
     seen_signals: set[str] = set()
-    for signal_name in signals_data:
-        validated_name = validate_context_source_name(signal_name)
-        if validated_name not in signal_names:
+    for index, entry in enumerate(signals_data, start=1):
+        location = f"Execution '{execution_name}' signal #{index}"
+        if isinstance(entry, str):
+            validated_name = validate_context_source_name(entry)
+            when = None
+        elif isinstance(entry, dict):
+            validate_allowed_keys(entry, {"signal", "when"}, location)
+            raw_name = entry.get("signal")
+            if not isinstance(raw_name, str) or not raw_name.strip():
+                raise PropagateError(f"{location} must include a non-empty 'signal' key.")
+            validated_name = validate_context_source_name(raw_name)
+            when = entry.get("when")
+            if when is not None and not isinstance(when, dict):
+                raise PropagateError(f"{location} 'when' must be a mapping when provided.")
+            if isinstance(when, dict) and not when:
+                LOGGER.debug("%s has an empty 'when' clause — it matches any payload, same as omitting 'when'.", location)
+        else:
+            raise PropagateError(f"{location} must be a string or a mapping.")
+        if validated_name not in signal_configs:
             raise PropagateError(f"Execution '{execution_name}' references unknown signal '{validated_name}'.")
+        if when:
+            _validate_when_keys(when, signal_configs[validated_name], location)
         if validated_name in seen_signals:
             raise PropagateError(f"Execution '{execution_name}' declares duplicate signal '{validated_name}'.")
         seen_signals.add(validated_name)
-        resolved_signals.append(validated_name)
+        resolved_signals.append(ExecutionSignalConfig(signal_name=validated_name, when=when))
     return resolved_signals
+
+
+def _validate_when_keys(when: dict[str, Any], signal_config: SignalConfig, location: str) -> None:
+    unknown_keys = sorted(set(when) - set(signal_config.payload))
+    if unknown_keys:
+        raise PropagateError(
+            f"{location} 'when' references unknown payload field '{unknown_keys[0]}'."
+            f" Signal '{signal_config.name}' declares: {', '.join(sorted(signal_config.payload))}."
+        )
 
 
 def parse_sub_task(

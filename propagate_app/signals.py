@@ -111,6 +111,12 @@ def describe_signal_field_type(field_type: str) -> str:
     return descriptions.get(field_type, "a valid value")
 
 
+def signal_payload_matches_when(payload: dict[str, Any], when: dict[str, Any] | None) -> bool:
+    if when is None:
+        return True
+    return all(payload.get(key) == value for key, value in when.items())
+
+
 def log_active_signal(active_signal: ActiveSignal | None) -> None:
     if active_signal is None:
         LOGGER.info("No signal supplied for this run.")
@@ -128,11 +134,22 @@ def select_initial_execution(
         ensure_execution_accepts_signal(execution, active_signal)
         return execution
     if active_signal is not None:
-        matching_executions = [execution for execution in config.executions.values() if active_signal.signal_type in execution.signals]
+        matching_executions = [
+            execution for execution in config.executions.values()
+            if any(
+                es.signal_name == active_signal.signal_type
+                and signal_payload_matches_when(active_signal.payload, es.when)
+                for es in execution.signals
+            )
+        ]
         if not matching_executions:
             raise PropagateError(f"No execution accepts signal '{active_signal.signal_type}'.")
         if len(matching_executions) > 1:
-            raise PropagateError(f"Multiple executions accept signal '{active_signal.signal_type}'; specify --execution.")
+            names = ", ".join(e.name for e in matching_executions)
+            raise PropagateError(
+                f"Multiple executions accept signal '{active_signal.signal_type}'"
+                f" with the given payload: {names}. Specify --execution or narrow 'when' filters."
+            )
         execution = matching_executions[0]
         LOGGER.info("Auto-selected execution '%s' for signal '%s'.", execution.name, active_signal.signal_type)
         return execution
@@ -159,12 +176,31 @@ def select_execution(config: Config, requested_name: str | None) -> ExecutionCon
 def ensure_execution_accepts_signal(execution: ExecutionConfig, active_signal: ActiveSignal | None) -> None:
     if not execution.signals:
         return
-    if active_signal is not None and active_signal.signal_type in execution.signals:
+    if active_signal is not None and any(
+        es.signal_name == active_signal.signal_type
+        and signal_payload_matches_when(active_signal.payload, es.when)
+        for es in execution.signals
+    ):
         return
+    signal_names = [es.signal_name for es in execution.signals]
     if active_signal is None:
         raise PropagateError(
-            f"Execution '{execution.name}' requires a signal. Accepted signals: {', '.join(execution.signals)}."
+            f"Execution '{execution.name}' requires a signal. Accepted signals: {', '.join(signal_names)}."
         )
+    type_matches = any(es.signal_name == active_signal.signal_type for es in execution.signals)
+    if type_matches:
+        # If type matched but we got here, a 'when' filter must have rejected the payload —
+        # entries without 'when' would have matched unconditionally in the any() above.
+        when_clauses = [
+            es.when for es in execution.signals
+            if es.signal_name == active_signal.signal_type and es.when is not None
+        ]
+        if when_clauses:
+            raise PropagateError(
+                f"Execution '{execution.name}' accepts signal '{active_signal.signal_type}'"
+                f" but the payload does not match its 'when' filter."
+            )
     raise PropagateError(
-        f"Execution '{execution.name}' does not accept signal '{active_signal.signal_type}'. Allowed signals: {', '.join(execution.signals)}."
+        f"Execution '{execution.name}' does not accept signal '{active_signal.signal_type}'."
+        f" Allowed signals: {', '.join(signal_names)}."
     )
