@@ -282,9 +282,12 @@ def _pending_signal_types(
         for trigger in execution_graph.triggers_by_after[completed_name]:
             if trigger.on_signal is None:
                 continue
-            if trigger.on_signal in received_signal_types:
-                continue
             if trigger.run in schedule_state.completed_names or trigger.run in schedule_state.active_names:
+                continue
+            # Triggers with 'when' stay pending even after receiving the signal type,
+            # because the payload may not have matched. Only triggers without 'when'
+            # are satisfied by any reception of their signal type.
+            if trigger.when is None and trigger.on_signal in received_signal_types:
                 continue
             pending.add(trigger.on_signal)
     return pending

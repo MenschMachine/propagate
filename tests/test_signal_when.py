@@ -11,6 +11,7 @@ from propagate_app.models import (
     Config,
     ExecutionConfig,
     ExecutionGraph,
+    ExecutionScheduleState,
     ExecutionSignalConfig,
     PropagationTriggerConfig,
     RepositoryConfig,
@@ -18,7 +19,7 @@ from propagate_app.models import (
     SignalFieldConfig,
     SubTaskConfig,
 )
-from propagate_app.scheduler import activate_matching_triggers
+from propagate_app.scheduler import activate_matching_triggers, has_pending_signal_triggers
 from propagate_app.signals import ensure_execution_accepts_signal, select_initial_execution, signal_payload_matches_when
 
 # --- signal_payload_matches_when ---
@@ -256,6 +257,37 @@ def test_activate_triggers_when_none_still_fires(tmp_path):
     completed_names: set[str] = {"a"}
     activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
     assert "b" in active_names
+
+
+# --- has_pending_signal_triggers with when ---
+
+
+def test_pending_trigger_with_when_stays_pending_after_signal_received(tmp_path):
+    """A trigger with 'when' should remain pending even after receiving the signal type,
+    because the payload may not have matched."""
+    trigger = PropagationTriggerConfig(after="a", run="b", on_signal="sig", when={"label": "deploy"})
+    config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger])
+    graph = ExecutionGraph(
+        execution_order=("a", "b"),
+        triggers_by_after={"a": (trigger,), "b": ()},
+    )
+    schedule = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    # Signal type was received but payload didn't match — trigger should still be pending
+    received = {"sig"}
+    assert has_pending_signal_triggers(config, graph, schedule, received) is True
+
+
+def test_pending_trigger_without_when_resolved_after_signal_received(tmp_path):
+    """A trigger without 'when' should be resolved once the signal type is received."""
+    trigger = PropagationTriggerConfig(after="a", run="b", on_signal="sig", when=None)
+    config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger])
+    graph = ExecutionGraph(
+        execution_order=("a", "b"),
+        triggers_by_after={"a": (trigger,), "b": ()},
+    )
+    schedule = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    received = {"sig"}
+    assert has_pending_signal_triggers(config, graph, schedule, received) is False
 
 
 # --- select_initial_execution with when ---
