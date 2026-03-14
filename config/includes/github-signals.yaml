@@ -68,6 +68,7 @@
         type: string
       action:
         type: string
+    check: "gh pr view {pr_number} --repo {repository} --json labels --jq '.labels[].name' | grep -q '^{label}$'"
 
   pull_request.unlabeled:
     payload:

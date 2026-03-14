@@ -53,5 +53,5 @@ propagation:
       on_signal: pull_request.labeled
       when:
         label: "bug"
-        pr_number: 11
-        repository: test-frontend
+        pr_number: 4
+        repository: MenschMachine/test-propagation-frontend
