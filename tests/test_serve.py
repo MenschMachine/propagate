@@ -435,6 +435,7 @@ def test_serve_keyboard_interrupt_during_run_exits_cleanly(tmp_path):
 def test_serve_forced_shutdown_on_second_signal(tmp_path):
     """Second shutdown signal raises KeyboardInterrupt to force exit."""
     import signal as signal_module
+
     from propagate_app.serve import serve_command
 
     exec_a = make_execution(
