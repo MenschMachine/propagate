@@ -73,7 +73,7 @@ def run_shell_command(
             env=env,
         )
     except subprocess.CalledProcessError as error:
-        raise PropagateError(failure_message.format(exit_code=error.returncode)) from error
+        raise PropagateError(build_process_failure_message(failure_message, error)) from error
     except OSError as error:
         raise PropagateError(start_failure_message.format(error=error)) from error
 

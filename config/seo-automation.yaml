@@ -31,7 +31,7 @@
 version: "6"
 
 agent:
-  command: "claude -p {prompt_file}"
+  command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} and follow its instructions."'
 
 repositories:
   pdfdancer-marketing-data:
@@ -74,6 +74,9 @@ executions:
       push:
         remote: origin
     sub_tasks:
+      - id: install-deps
+        before:
+          - pip install -r requirements.txt
       - id: fetch-data
         before:
           - :gsc-data-path
