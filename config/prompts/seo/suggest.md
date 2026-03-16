@@ -19,6 +19,14 @@ Follow these rules:
 - **Build on successes**: If a type of change (e.g., meta title rewrites) consistently improved metrics across multiple pages, favor that approach for similar cases.
 - **Note history when re-suggesting**: When suggesting changes for a page after the cool-down period, mention what was tried before and explain why the new suggestion takes a different approach.
 
+## Grounding rules
+
+Your only source of truth is `:findings`. Do not fabricate observations you did not make.
+
+- **No invented evidence**: Do not claim to have fetched, inspected, or tested live pages unless `:findings` explicitly contains that data. Statements like "live fetches showed…" or "the HTML response contains…" are forbidden unless the analyze step actually performed and reported those checks.
+- **Technical suggestions require evidence**: If you want to suggest a technical fix (missing tags, broken redirects, canonical issues), the underlying problem must be stated in `:findings`. If the findings only contain GSC performance data, your suggestions must be scoped to what that data supports — CTR copy improvements, content gaps, intent mismatches — not speculative infrastructure problems.
+- **Say what you don't know**: If a technical issue seems plausible but isn't confirmed in the data, say so explicitly (e.g., "worth verifying whether the `<title>` tag is rendered server-side") instead of asserting it as fact.
+
 ## Suggestion types
 
 ### meta
