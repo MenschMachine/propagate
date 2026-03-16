@@ -73,6 +73,8 @@ executions:
         message_source: seo-data-commit
       push:
         remote: origin
+    before:
+      - git:branch
     sub_tasks:
       - id: install-deps
         before:
@@ -84,6 +86,9 @@ executions:
           - :posthog-data-path
       - id: summarize-pull
         prompt: ./prompts/seo/pull-data-summary.md
+    after:
+      - git:commit
+      - git:push
 
   analyze:
     repository: pdfdancer-marketing-data
@@ -96,9 +101,14 @@ executions:
         message_source: seo-report-commit
       push:
         remote: origin
+    before:
+      - git:branch
     sub_tasks:
       - id: analyze
         prompt: ./prompts/seo/analyze.md
+    after:
+      - git:commit
+      - git:push
 
   suggest:
     repository: pdfdancer-marketing-data
