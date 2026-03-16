@@ -22,6 +22,7 @@ def prepare_execution_runtime_context(
         initialized_signal_context_dirs=runtime_context.initialized_signal_context_dirs,
         context_root=context_root,
         execution_name=execution.name,
+        signal_socket=runtime_context.signal_socket,
     )
     prepare_signal_context_for_working_dir(execution_runtime_context)
     return execution_runtime_context

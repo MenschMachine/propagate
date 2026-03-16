@@ -361,6 +361,31 @@ This trigger only fires if the active signal for the run is `deploy`. If `on_sig
 
 ---
 
+## Signal-gated sub-tasks
+
+Sub-tasks can wait for signals within an execution using `wait_for_signal` and `routes`. This enables review loops and approval gates without separate executions or propagation triggers.
+
+```yaml
+sub_tasks:
+  - id: code
+    prompt: ./prompts/implement.md
+  - id: wait-for-verdict
+    wait_for_signal: pull_request.labeled
+    routes:
+      - when: { label: "changes_required" }
+        goto: code
+      - when: { label: "approved" }
+        continue: true
+```
+
+When the sub-task runner reaches a `wait_for_signal` task, it blocks on the ZMQ socket until a matching signal arrives. The signal payload is matched against each route's `when` clause. If a route with `goto` matches, execution jumps back to that sub-task (clearing completed state for all tasks from the target onward). If a route with `continue` matches, execution proceeds to the next sub-task.
+
+Signal-gated sub-tasks require `propagate serve` (they need a ZMQ socket). The `:signal.*` context keys are updated with the new signal payload when a route matches.
+
+See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full syntax.
+
+---
+
 ## External signal delivery
 
 Signals can be sent to a running propagate instance from outside the process. When the scheduler has no runnable executions but signal-gated propagation triggers exist, it waits for external signals instead of exiting.

@@ -276,8 +276,38 @@ sub_tasks:
 | `before` | list of strings | No | `[]` | Hook actions run before the agent. |
 | `after` | list of strings | No | `[]` | Hook actions run after the agent succeeds. |
 | `on_failure` | list of strings | No | `[]` | Hook actions run if the task fails. |
+| `wait_for_signal` | string | No | `null` | Signal name to wait for. Requires `routes`. Must not have `prompt`, `before`, or `after`. |
+| `routes` | list | No | `[]` | Route definitions for signal-gated sub-tasks. Requires `wait_for_signal`. |
 
 Task IDs must be unique within an execution.
+
+#### Signal-gated sub-tasks (`wait_for_signal` + `routes`)
+
+A sub-task with `wait_for_signal` blocks until a matching signal arrives, then routes based on the payload. This enables review loops within a single execution.
+
+```yaml
+- id: wait-for-verdict
+  wait_for_signal: pull_request.labeled
+  routes:
+    - when: { label: "changes_required" }
+      goto: code                          # jump back to sub-task "code"
+    - when: { label: "approved" }
+      continue: true                      # proceed to next sub-task
+```
+
+Each route has:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `when` | mapping | Yes | Payload field-value pairs to match against the received signal. |
+| `goto` | string | No | Sub-task ID to jump to (must be defined earlier in the list). Mutually exclusive with `continue`. |
+| `continue` | boolean | No | If `true`, proceed to the next sub-task. Mutually exclusive with `goto`. |
+
+Each route must have exactly one of `goto` or `continue`.
+
+When `goto` fires, all sub-tasks from the target onward are re-run (their completed state is cleared). This creates a loop back through those sub-tasks until a `continue` route matches.
+
+Signal-gated sub-tasks require `propagate serve` (they need a ZMQ socket to receive signals).
 
 When `prompt` is set, the prompt file is read, merged context (global + execution + task) is appended as a
 `## Context` section, and the result is written to a temporary file passed to the agent command.
@@ -311,7 +341,8 @@ Controls branch creation and checkout before sub-tasks run.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `name` | string | No | `propagate/{execution_name}` | Branch name. |
+| `name` | string | No | `propagate/{execution_name}` | Branch name. Mutually exclusive with `name_key`. |
+| `name_key` | string | No | — | Context key (must start with `:`) whose value becomes the branch name. Mutually exclusive with `name`. |
 | `base` | string | No | Current branch | Base ref to branch from when creating a new branch. |
 | `reuse` | boolean | No | `true` | Reuse an existing branch if it already exists. If `false` and the branch exists, the run fails. |
 
@@ -346,6 +377,7 @@ Creates a pull request. Optional. **Requires `push` to be configured.**
 | `draft` | boolean | No | `false` | Create the PR as a draft. |
 | `title_key` | string | No | First line of commit message | Context key (must start with `:`) for the PR title. |
 | `body_key` | string | No | Remaining commit message lines | Context key (must start with `:`) for the PR body. |
+| `number_key` | string | No | — | Context key (must start with `:`) where the PR number is stored after creation. |
 
 PRs are created via `gh pr create`.
 
@@ -499,8 +531,12 @@ Signal payloads are written to context under the `:signal` namespace (e.g. `:sig
 
 - `git.pr` requires `git.push` to be configured.
 - `git.commit` requires exactly one of `message_source` or `message_key`.
-- `git.commit.message_key`, `git.pr.title_key`, and `git.pr.body_key` must start with `:`.
+- `git.branch.name` and `git.branch.name_key` are mutually exclusive.
+- `git.branch.name_key`, `git.commit.message_key`, `git.pr.title_key`, `git.pr.body_key`, and `git.pr.number_key` must start with `:`.
 - `git.commit.message_source` must reference a defined context source.
+- `wait_for_signal` and `routes` must both be present together on a sub-task.
+- Sub-tasks with `wait_for_signal` must not have `prompt`, `before`, or `after`.
+- Route `goto` targets must reference a sub-task ID defined earlier in the same execution.
 - Propagation `when` requires `on_signal` to be set.
 - `when` field names must exist in the referenced signal's payload definition.
 - `depends_on` entries must reference defined executions and cannot self-reference.

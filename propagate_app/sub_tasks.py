@@ -7,7 +7,7 @@ from typing import NoReturn
 
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
 from .context_sources import run_context_source
-from .context_store import resolve_execution_context_dir
+from .context_store import ensure_context_dir, resolve_execution_context_dir
 from .errors import PropagateError
 from .git_runtime import (
     git_do_branch,
@@ -21,9 +21,12 @@ from .git_runtime import (
     git_do_pr_labels_remove,
     git_do_push,
 )
-from .models import ExecutionConfig, GitConfig, RuntimeContext, SubTaskConfig
+from .models import ActiveSignal, ExecutionConfig, GitConfig, RuntimeContext, SubTaskConfig
 from .processes import build_agent_command, run_agent_command, run_shell_command
 from .prompts import build_sub_task_prompt
+from .signal_context import store_active_signal_context
+from .signal_transport import receive_signal
+from .signals import signal_payload_matches_when
 from .temp_files import cleanup_temp_file, write_temp_text
 
 
@@ -42,15 +45,28 @@ def run_execution_sub_tasks(
     completed_task_phases: dict[str, str] | None = None,
     on_phase_completed: Callable[[str, str, str], None] | None = None,
 ) -> None:
-    for sub_task in execution.sub_tasks:
-        task_phase = (completed_task_phases or {}).get(sub_task.task_id)
+    task_phases = dict(completed_task_phases or {})
+    task_index = 0
+    while task_index < len(execution.sub_tasks):
+        sub_task = execution.sub_tasks[task_index]
+        task_phase = task_phases.get(sub_task.task_id)
         if task_phase == PHASE_AFTER:
             LOGGER.info("Skipping already completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution.name)
+            task_index += 1
             continue
         if sub_task.when is not None and not evaluate_when_condition(sub_task.when, runtime_context):
             LOGGER.info("Skipping sub-task '%s' for execution '%s': 'when' condition '%s' is not met.", sub_task.task_id, execution.name, sub_task.when)
+            task_index += 1
+            continue
+        if sub_task.wait_for_signal is not None:
+            goto_index = _handle_wait_for_signal(execution, sub_task, runtime_context, task_phases, on_phase_completed)
+            if goto_index is not None:
+                task_index = goto_index
+            else:
+                task_index += 1
             continue
         run_sub_task(execution.name, sub_task, runtime_context, execution.git, task_phase, on_phase_completed)
+        task_index += 1
 
 
 def evaluate_when_condition(when: str, runtime_context: RuntimeContext) -> bool:
@@ -60,6 +76,78 @@ def evaluate_when_condition(when: str, runtime_context: RuntimeContext) -> bool:
     key_path = context_dir / key
     truthy = key_path.is_file() and key_path.read_text(encoding="utf-8") != ""
     return not truthy if negated else truthy
+
+
+def _handle_wait_for_signal(
+    execution: ExecutionConfig,
+    sub_task: SubTaskConfig,
+    runtime_context: RuntimeContext,
+    task_phases: dict[str, str],
+    on_phase_completed: Callable[[str, str, str], None] | None,
+) -> int | None:
+    """Handle a wait_for_signal sub-task. Returns goto index or None to continue."""
+    LOGGER.info(
+        "Sub-task '%s' waiting for signal '%s' for execution '%s'.",
+        sub_task.task_id, sub_task.wait_for_signal, execution.name,
+    )
+    # Build task index lookup
+    task_id_to_index = {t.task_id: i for i, t in enumerate(execution.sub_tasks)}
+
+    # Block on ZMQ socket for incoming signal
+    matched_route = _wait_for_matching_signal(sub_task, runtime_context)
+
+    # Mark this sub-task as completed
+    if on_phase_completed is not None:
+        on_phase_completed(execution.name, sub_task.task_id, PHASE_AFTER)
+
+    if matched_route.continue_flow:
+        LOGGER.info("Route matched with 'continue' for sub-task '%s'.", sub_task.task_id)
+        return None
+
+    # goto — reset task phases from the target onward
+    goto_id = matched_route.goto
+    goto_index = task_id_to_index[goto_id]
+    LOGGER.info("Route matched with 'goto: %s' (index %d) for sub-task '%s'.", goto_id, goto_index, sub_task.task_id)
+    for i in range(goto_index, len(execution.sub_tasks)):
+        tid = execution.sub_tasks[i].task_id
+        task_phases.pop(tid, None)
+    return goto_index
+
+
+def _wait_for_matching_signal(sub_task: SubTaskConfig, runtime_context: RuntimeContext):
+    """Block on the ZMQ socket waiting for a signal that matches a route."""
+    signal_socket = runtime_context.signal_socket
+    if signal_socket is None:
+        raise PropagateError(
+            f"Sub-task '{sub_task.task_id}' uses 'wait_for_signal' but no signal socket is available. "
+            "Use 'propagate serve' to enable signal waiting."
+        )
+    signal_name = sub_task.wait_for_signal
+    LOGGER.info("Waiting for signal '%s' on ZMQ socket...", signal_name)
+    unmatched_count = 0
+    while True:
+        result = receive_signal(signal_socket, block=True, timeout_ms=1000)
+        if result is None:
+            continue
+        received_type, payload = result
+        if received_type != signal_name:
+            LOGGER.debug("Received signal '%s' but waiting for '%s'; ignoring.", received_type, signal_name)
+            continue
+        LOGGER.info("Received signal '%s' with payload %s.", received_type, payload)
+        # Update signal context with new payload
+        context_dir = resolve_execution_context_dir(runtime_context)
+        active_signal = ActiveSignal(signal_type=received_type, payload=payload, source="external")
+        ensure_context_dir(context_dir)
+        store_active_signal_context(context_dir, active_signal)
+        # Match payload against routes
+        for route in sub_task.routes:
+            if signal_payload_matches_when(payload, route.when):
+                return route
+        unmatched_count += 1
+        LOGGER.warning(
+            "Signal '%s' payload matched no route (%d unmatched so far); continuing to wait.",
+            signal_name, unmatched_count,
+        )
 
 
 def run_sub_task(

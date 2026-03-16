@@ -121,7 +121,7 @@ def create_pull_request(
     title: str,
     body: str,
     working_dir: Path,
-) -> None:
+) -> str:
     LOGGER.info("Creating pull request from '%s' into '%s'.", head_branch, base_branch)
     body_path = write_temp_text(body, prefix="propagate-pr-", suffix=".md")
     try:
@@ -140,15 +140,36 @@ def create_pull_request(
         ]
         if pr_config.draft:
             command.append("--draft")
-        run_process_command(
+        result = run_process_command(
             command,
             working_dir,
             failure_message=f"Failed to create pull request for branch '{head_branch}'.",
             start_failure_message="Failed to start pull request creation: {error}",
             capture_output=True,
+            check=False,
         )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").lower()
+            # Heuristic: gh outputs "already exists" when a PR is open for this branch.
+            # This depends on gh's English error message wording.
+            if "already exists" in stderr:
+                LOGGER.info("Pull request already exists for branch '%s'; skipping creation.", head_branch)
+                return _get_existing_pr_url(working_dir)
+            raise PropagateError(f"Failed to create pull request for branch '{head_branch}'. stderr: {result.stderr}")
+        return result.stdout.strip()
     finally:
         cleanup_temp_file(body_path, "pull request body file")
+
+
+def _get_existing_pr_url(working_dir: Path) -> str:
+    result = run_process_command(
+        ["gh", "pr", "view", "--json", "url", "--jq", ".url"],
+        working_dir,
+        failure_message="Failed to get existing PR URL.",
+        start_failure_message="Failed to start gh pr view: {error}",
+        capture_output=True,
+    )
+    return result.stdout.strip()
 
 
 def split_commit_message(commit_message: str) -> tuple[str, str]:

@@ -40,7 +40,15 @@ def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: R
     git_state = runtime_context.git_state
     if git_state is None:
         raise PropagateError(f"Execution '{execution_name}' git:branch requires git configuration.")
-    prepared = prepare_git_execution(execution_name, git_config.branch, runtime_context.working_dir)
+    branch_config = git_config.branch
+    if branch_config.name_key is not None:
+        context_dir = resolve_execution_context_dir(runtime_context)
+        resolved_name = read_context_value(context_dir, branch_config.name_key)
+        LOGGER.debug("Resolved branch name from context key '%s': '%s'.", branch_config.name_key, resolved_name)
+        branch_config = GitBranchConfig(
+            name=resolved_name, base=branch_config.base, reuse=branch_config.reuse,
+        )
+    prepared = prepare_git_execution(execution_name, branch_config, runtime_context.working_dir)
     git_state.starting_branch = prepared.starting_branch
     git_state.selected_branch = prepared.selected_branch
 
@@ -169,7 +177,7 @@ def create_execution_git_pr(
         return
     try:
         title, body = load_pr_title_body(git_config.pr, commit_message, runtime_context)
-        create_pull_request(
+        pr_url = create_pull_request(
             git_config.pr,
             git_config.pr.base or git_config.branch.base or prepared_execution.starting_branch,
             prepared_execution.selected_branch,
@@ -177,6 +185,14 @@ def create_execution_git_pr(
             body,
             runtime_context.working_dir,
         )
+        if git_config.pr.number_key is not None and pr_url:
+            pr_number = pr_url.rstrip("/").split("/")[-1]
+            if not pr_number.isdigit():
+                raise PropagateError(f"Could not extract PR number from URL '{pr_url}'.")
+            context_dir = resolve_execution_context_dir(runtime_context)
+            ensure_context_dir(context_dir)
+            write_context_value(context_dir, git_config.pr.number_key, pr_number)
+            LOGGER.debug("Stored PR number '%s' to context key '%s'.", pr_number, git_config.pr.number_key)
     except PropagateError as error:
         raise wrap_execution_git_phase_error(execution_name, "PR creation", error) from error
 

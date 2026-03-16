@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import zmq
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,7 @@ class GitBranchConfig:
     name: str | None
     base: str | None
     reuse: bool
+    name_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +71,7 @@ class GitPrConfig:
     draft: bool
     title_key: str | None = None
     body_key: str | None = None
+    number_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,13 @@ class GitConfig:
 
 
 @dataclass(frozen=True)
+class SubTaskRouteConfig:
+    when: dict[str, Any]
+    goto: str | None = None
+    continue_flow: bool = False
+
+
+@dataclass(frozen=True)
 class SubTaskConfig:
     task_id: str
     prompt_path: Path | None
@@ -85,6 +97,8 @@ class SubTaskConfig:
     after: list[str]
     on_failure: list[str]
     when: str | None = None
+    wait_for_signal: str | None = None
+    routes: list[SubTaskRouteConfig] = field(default_factory=list)
 
 
 @dataclass
@@ -145,6 +159,7 @@ class RuntimeContext:
     execution_name: str = ""
     task_id: str = ""
     git_state: GitRunState | None = None
+    signal_socket: zmq.Socket | None = None
 
 
 @dataclass

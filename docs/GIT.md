@@ -76,6 +76,7 @@ These commands can appear in any hook list: execution `before`/`after`/`on_failu
 git:
   branch:
     name: my-branch-name      # optional; defaults to "propagate/{execution-name}"
+    name_key: :branch-name    # optional; read branch name from context key (mutually exclusive with name)
     base: main                # optional; base ref when creating a new branch
                               # defaults to the starting branch
     reuse: true               # default: true — reuse existing branch
@@ -95,13 +96,17 @@ git:
     draft: false              # default: false
     title_key: :pr-title      # optional ':'-prefixed context key for PR title
     body_key: :pr-body        # optional ':'-prefixed context key for PR body
+    number_key: :pr-number    # optional ':'-prefixed context key; PR number extracted from URL and stored here
 ```
 
 ### Constraints
 
+- `git.branch.name` and `git.branch.name_key` are mutually exclusive — at most one may be set.
+- `git.branch.name_key` must use a `:` prefix (reserved context key).
 - `git.commit` must define exactly one of `message_source` or `message_key` — not both, not neither.
 - `message_key` must use a `:` prefix (reserved context key).
 - `git.pr` requires `git.push` to also be configured.
+- `git.pr.number_key` must use a `:` prefix (reserved context key).
 
 ## Commit message
 
@@ -122,6 +127,30 @@ pr:
 
 Both are optional `:` -prefixed context keys. When omitted the commit-message split applies as before.
 
+### Dynamic branch name (`name_key`)
+
+Use `name_key` to read the branch name from a context key at runtime. This is useful when the branch name is generated dynamically (e.g. by an agent).
+
+```yaml
+git:
+  branch:
+    name_key: :branch-name   # agent writes this key before git:branch runs
+    base: main
+```
+
+`name_key` and `name` are mutually exclusive. When neither is set, the default `propagate/{execution-name}` is used.
+
+### PR number capture (`number_key`)
+
+Use `number_key` on `git.pr` to store the PR number in context after creation. The number is extracted from the PR URL returned by `gh pr create`.
+
+```yaml
+git:
+  pr:
+    base: main
+    number_key: :pr-number   # stores e.g. "42" after PR creation
+```
+
 ## Branch selection
 
 | Scenario | Behaviour |
@@ -129,7 +158,8 @@ Both are optional `:` -prefixed context keys. When omitted the commit-message sp
 | `name` is set and branch doesn't exist | Create branch from `base` (or starting branch) |
 | `name` is set, branch exists, `reuse: true` | Check out existing branch |
 | `name` is set, branch exists, `reuse: false` | Error |
-| `name` is omitted | Use `propagate/{execution-name}` as the branch name |
+| `name` is omitted (no `name_key` either) | Use `propagate/{execution-name}` as the branch name |
+| `name_key` is set | Read branch name from context key |
 | Target branch is already checked out | Use it as-is, skip checkout |
 
 ## Example

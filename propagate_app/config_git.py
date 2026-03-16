@@ -29,14 +29,24 @@ def parse_git_branch_config(execution_name: str, branch_data: Any) -> GitBranchC
     location = f"Execution '{execution_name}' git.branch"
     if not isinstance(branch_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(branch_data, {"name", "base", "reuse"}, location)
+    validate_allowed_keys(branch_data, {"name", "base", "reuse", "name_key"}, location)
     reuse = branch_data.get("reuse", True)
     if not isinstance(reuse, bool):
         raise PropagateError(f"{location}.reuse must be a boolean when provided.")
+    name = optional_non_empty_string(branch_data.get("name"), f"{location}.name")
+    name_key = None
+    if "name_key" in branch_data:
+        validated = validate_context_key(branch_data["name_key"])
+        if not validated.startswith(":"):
+            raise PropagateError(f"{location}.name_key must use a reserved ':'-prefixed context key.")
+        name_key = validated
+    if name is not None and name_key is not None:
+        raise PropagateError(f"{location} must define at most one of 'name' or 'name_key', not both.")
     return GitBranchConfig(
-        name=optional_non_empty_string(branch_data.get("name"), f"{location}.name"),
+        name=name,
         base=optional_non_empty_string(branch_data.get("base"), f"{location}.base"),
         reuse=reuse,
+        name_key=name_key,
     )
 
 
@@ -83,7 +93,7 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
     location = f"Execution '{execution_name}' git.pr"
     if not isinstance(pr_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(pr_data, {"base", "draft", "title_key", "body_key"}, location)
+    validate_allowed_keys(pr_data, {"base", "draft", "title_key", "body_key", "number_key"}, location)
     draft = pr_data.get("draft", False)
     if not isinstance(draft, bool):
         raise PropagateError(f"{location}.draft must be a boolean when provided.")
@@ -99,9 +109,16 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
         if not validated.startswith(":"):
             raise PropagateError(f"{location}.body_key must use a reserved ':'-prefixed context key.")
         body_key = validated
+    number_key = None
+    if "number_key" in pr_data:
+        validated = validate_context_key(pr_data["number_key"])
+        if not validated.startswith(":"):
+            raise PropagateError(f"{location}.number_key must use a reserved ':'-prefixed context key.")
+        number_key = validated
     return GitPrConfig(
         base=optional_non_empty_string(pr_data.get("base"), f"{location}.base"),
         draft=draft,
         title_key=title_key,
         body_key=body_key,
+        number_key=number_key,
     )

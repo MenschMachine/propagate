@@ -6,7 +6,7 @@ from typing import Any
 from .config_git import parse_git_config
 from .constants import LOGGER
 from .errors import PropagateError
-from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig
+from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig, SubTaskRouteConfig
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
 
 
@@ -52,7 +52,7 @@ def parse_execution(
     sub_tasks: list[SubTaskConfig] = []
     seen_task_ids: set[str] = set()
     for index, sub_task_data in enumerate(sub_tasks_data, start=1):
-        sub_task = parse_sub_task(name, index, sub_task_data, config_dir, context_source_names)
+        sub_task = parse_sub_task(name, index, sub_task_data, config_dir, context_source_names, signal_configs, seen_task_ids)
         if sub_task.task_id in seen_task_ids:
             raise PropagateError(f"Execution '{name}' contains duplicate sub-task id '{sub_task.task_id}'.")
         seen_task_ids.add(sub_task.task_id)
@@ -157,11 +157,13 @@ def parse_sub_task(
     sub_task_data: Any,
     config_dir: Path,
     context_source_names: set[str],
+    signal_configs: dict[str, SignalConfig] | None = None,
+    seen_task_ids: set[str] | None = None,
 ) -> SubTaskConfig:
     if not isinstance(sub_task_data, dict):
         raise PropagateError(f"Execution '{name}' sub-task #{index} must be a mapping.")
     location = f"Execution '{name}' sub-task #{index}"
-    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when"}, location)
+    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when", "wait_for_signal", "routes"}, location)
     task_id = sub_task_data.get("id")
     prompt_value = sub_task_data.get("prompt")
     if not isinstance(task_id, str) or not task_id.strip():
@@ -170,6 +172,21 @@ def parse_sub_task(
         raise PropagateError(f"Execution '{name}' sub-task '{task_id}' 'prompt' must be a non-empty string when provided.")
     prompt_path = resolve_prompt_path(prompt_value, config_dir) if prompt_value else None
     when_value = parse_when_condition(sub_task_data.get("when"), location)
+    wait_for_signal = sub_task_data.get("wait_for_signal")
+    routes_data = sub_task_data.get("routes")
+    routes: list[SubTaskRouteConfig] = []
+    if wait_for_signal is not None or routes_data is not None:
+        if wait_for_signal is None or routes_data is None:
+            raise PropagateError(f"{location} 'wait_for_signal' and 'routes' must both be present together.")
+        if not isinstance(wait_for_signal, str) or not wait_for_signal.strip():
+            raise PropagateError(f"{location} 'wait_for_signal' must be a non-empty string.")
+        if signal_configs is not None and wait_for_signal not in signal_configs:
+            raise PropagateError(f"{location} 'wait_for_signal' references unknown signal '{wait_for_signal}'.")
+        if prompt_path is not None:
+            raise PropagateError(f"{location} with 'wait_for_signal' must not have 'prompt'.")
+        if sub_task_data.get("before") or sub_task_data.get("after") or sub_task_data.get("on_failure"):
+            raise PropagateError(f"{location} with 'wait_for_signal' must not have 'before', 'after', or 'on_failure' hooks.")
+        routes = parse_routes(routes_data, location, seen_task_ids)
     return SubTaskConfig(
         task_id=task_id,
         prompt_path=prompt_path,
@@ -177,7 +194,38 @@ def parse_sub_task(
         after=parse_hook_actions(sub_task_data.get("after"), location, "after", context_source_names),
         on_failure=parse_hook_actions(sub_task_data.get("on_failure"), location, "on_failure", context_source_names),
         when=when_value,
+        wait_for_signal=wait_for_signal,
+        routes=routes,
     )
+
+
+def parse_routes(routes_data: Any, location: str, seen_task_ids: set[str] | None) -> list[SubTaskRouteConfig]:
+    if not isinstance(routes_data, list) or not routes_data:
+        raise PropagateError(f"{location} 'routes' must be a non-empty list.")
+    routes: list[SubTaskRouteConfig] = []
+    for route_index, route_data in enumerate(routes_data, start=1):
+        route_location = f"{location} route #{route_index}"
+        if not isinstance(route_data, dict):
+            raise PropagateError(f"{route_location} must be a mapping.")
+        validate_allowed_keys(route_data, {"when", "goto", "continue"}, route_location)
+        when = route_data.get("when")
+        if not isinstance(when, dict) or not when:
+            raise PropagateError(f"{route_location} 'when' must be a non-empty mapping.")
+        goto = route_data.get("goto")
+        continue_flow = route_data.get("continue", False)
+        if goto is not None and continue_flow:
+            raise PropagateError(f"{route_location} must have exactly one of 'goto' or 'continue', not both.")
+        if goto is None and not continue_flow:
+            raise PropagateError(f"{route_location} must have exactly one of 'goto' or 'continue'.")
+        if goto is not None:
+            if not isinstance(goto, str) or not goto.strip():
+                raise PropagateError(f"{route_location} 'goto' must be a non-empty string.")
+            if seen_task_ids is not None and goto not in seen_task_ids:
+                raise PropagateError(f"{route_location} 'goto' references unknown sub-task '{goto}'.")
+        if not isinstance(continue_flow, bool):
+            raise PropagateError(f"{route_location} 'continue' must be a boolean.")
+        routes.append(SubTaskRouteConfig(when=when, goto=goto, continue_flow=continue_flow))
+    return routes
 
 
 _KNOWN_GIT_HOOK_COMMANDS = {"branch", "commit", "push", "pr",

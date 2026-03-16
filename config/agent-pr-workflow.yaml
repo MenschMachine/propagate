@@ -1,0 +1,61 @@
+version: "6"
+
+agent:
+  command: "claude -p {prompt_file}"
+
+repositories:
+  test-propagation-backend:
+    url: git@github.com:MenschMachine/test-propagation-backend.git
+
+context_sources:
+  commit_message:
+    command: gommit -A -n -I
+
+signals:
+  include:
+    - includes/default.yaml
+    - includes/github-signals.yaml
+
+executions:
+  implement:
+    repository: test-propagation-backend
+    signals: [start]
+    git:
+      branch:
+        name_key: :branch-name
+        base: main
+      commit:
+        message_source: commit_message
+      push:
+        remote: origin
+      pr:
+        base: main
+        body_key: :summary
+        number_key: :pr-number
+    sub_tasks:
+      - id: generate-branch-name
+        prompt: ./prompts/agent-pr/generate-branch-name.md
+      - id: create-branch
+        before:
+          - git:branch
+      - id: code
+        prompt: ./prompts/agent-pr/implement.md
+      - id: summarize
+        prompt: ./prompts/agent-pr/summarize.md
+      - id: publish
+        before:
+          - git:commit
+          - git:push
+          - git:pr
+      - id: review
+        prompt: ./prompts/agent-pr/review.md
+      - id: post-review
+        before:
+          - "git:pr-comment-add :review-body"
+      - id: wait-for-verdict
+        wait_for_signal: pull_request.labeled
+        routes:
+          - when: { label: "changes_required" }
+            goto: code
+          - when: { label: "approved" }
+            continue: true
