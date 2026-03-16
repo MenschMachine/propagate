@@ -62,7 +62,13 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    log_config = uvicorn.config.LOGGING_CONFIG
+    log_config["formatters"]["default"]["fmt"] = "%(asctime)s %(levelname)-8s [%(threadName)s] %(name)s: %(message)s"
+    log_config["formatters"]["default"]["datefmt"] = "%Y-%m-%d %H:%M:%S"
+    log_config["formatters"]["access"]["fmt"] = "%(asctime)s %(levelname)-8s [%(threadName)s] %(name)s: %(message)s"
+    log_config["formatters"]["access"]["datefmt"] = "%Y-%m-%d %H:%M:%S"
+
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info", log_config=log_config)
     return 0
 
 

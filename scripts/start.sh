@@ -88,7 +88,9 @@ trap cleanup SIGINT SIGTERM
 prefix_output() {
     local color="$1"
     local label="$2"
-    awk -v c="$color" -v l="$label" -v nc="$NC" '{print c "[" l "]" nc " " $0; fflush()}'
+    local width=8
+    awk -v c="$color" -v l="$label" -v nc="$NC" -v w="$width" \
+        'BEGIN { pad = sprintf("%-*s", w, l) } {print c "[" pad "]" nc " " $0; fflush()}'
 }
 
 start_service() {
@@ -118,8 +120,8 @@ if [[ "$DEBUG" == true ]]; then
 fi
 
 # --- Start services ---
-echo -e "${GREEN}[serve]${NC}    propagate serve ${SERVE_ARGS[*]}"
-echo -e "${BLUE}[webhook]${NC}  propagate-webhook ${WEBHOOK_ARGS[*]}"
+echo -e "${GREEN}[serve   ]${NC} propagate serve ${SERVE_ARGS[*]}"
+echo -e "${BLUE}[webhook ]${NC} propagate-webhook ${WEBHOOK_ARGS[*]}"
 echo -e "${YELLOW}[telegram]${NC} propagate-telegram ${TELEGRAM_ARGS[*]}"
 
 start_service "$GREEN" "serve" "$VENV/propagate" serve "${SERVE_ARGS[@]}"
@@ -127,7 +129,7 @@ start_service "$BLUE" "webhook" "$VENV/propagate-webhook" "${WEBHOOK_ARGS[@]}"
 start_service "$YELLOW" "telegram" "$VENV/propagate-telegram" "${TELEGRAM_ARGS[@]}"
 
 if [[ "$DEV" == true ]]; then
-    echo -e "${RED}[smee]${NC}     smee (dev forwarding)"
+    echo -e "${RED}[smee    ]${NC} smee (dev forwarding)"
     start_service "$RED" "smee" bash "$SCRIPT_DIR/smee-start.sh"
 fi
 
