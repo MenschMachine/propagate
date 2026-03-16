@@ -25,10 +25,14 @@ Only flag items with meaningful impact potential:
 
 Write a structured report to `reports/YYYY-MM-DD/report.md` (use today's date). The report should have sections for each category above with specific pages/queries and data points.
 
-Save the key findings to context:
-
-```
-propagate context set :findings "<structured findings>"
-```
-
 The findings should be a concise, actionable list that the suggest execution can turn into specific changes.
+
+To read the data path, run exactly:
+```bash
+propagate context get :gsc-data-path
+```
+
+To save findings, run exactly:
+```bash
+propagate context set :findings "<your structured findings>"
+```

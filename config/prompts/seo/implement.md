@@ -15,10 +15,14 @@ If there are PR comments from a previous review (visible in context), address th
 
 ## Tracking changed URLs
 
-After making changes, collect the list of URLs that were modified or created. Save them to context so the indexing step can request re-crawling:
+After making changes, collect the list of production URLs (https://pdfdancer.com/...) that were modified or created.
 
+To read the suggestions from the suggest execution, run exactly:
+```bash
+propagate context get :suggestions --task suggest
 ```
+
+To save the changed URLs, run exactly:
+```bash
 propagate context set :changed-urls '["https://pdfdancer.com/page1/", "https://pdfdancer.com/page2/"]'
 ```
-
-Use the production URLs (https://pdfdancer.com/...), not localhost.

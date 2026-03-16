@@ -29,10 +29,14 @@ Write suggestions as a structured list. For each suggestion include:
 
 ## Output
 
-Save the full suggestions list to context:
-
-```
-propagate context set :suggestions "<suggestions>"
-```
-
 Also write the suggestions into a file in the repository so they appear in the PR diff for review.
+
+To read the findings from the analyze execution, run exactly:
+```bash
+propagate context get :findings --task analyze
+```
+
+To save your suggestions, run exactly:
+```bash
+propagate context set :suggestions "<your suggestions>"
+```

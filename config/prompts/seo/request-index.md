@@ -8,3 +8,8 @@ Summarize:
 - The list of URLs that were submitted
 
 If no URLs were submitted (`:changed-urls` was empty), note that no indexing requests were needed.
+
+To read the indexing results, run exactly:
+```bash
+propagate context get :indexing-results
+```

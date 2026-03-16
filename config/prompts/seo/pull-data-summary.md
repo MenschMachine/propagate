@@ -10,8 +10,12 @@ Write a brief summary noting:
 - Top 10 pages by impressions
 - Any anomalies (zero-click pages with high impressions, position drops, etc.)
 
-Save the summary to context:
-
+To read the data path, run exactly:
+```bash
+propagate context get :gsc-data-path
 ```
-propagate context set :data-summary "<summary>"
+
+To save the summary, run exactly:
+```bash
+propagate context set :data-summary "<your summary>"
 ```
