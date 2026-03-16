@@ -209,7 +209,7 @@ def resolve_label_args(args: list[str], context_dir: Path) -> list[str]:
     resolved: list[str] = []
     for arg in args:
         if arg.startswith(":"):
-            value = read_context_value(context_dir, arg[1:])
+            value = read_context_value(context_dir, arg)
             validate_resolved_label(value, arg)
             resolved.append(value)
         else:
@@ -243,14 +243,14 @@ def git_do_pr_labels_list(execution_name: str, store_key: str, runtime_context: 
     def action(context_dir: Path, working_dir: Path) -> None:
         output = list_pr_labels(working_dir)
         ensure_context_dir(context_dir)
-        write_context_value(context_dir, store_key[1:], output)
+        write_context_value(context_dir, store_key, output)
         LOGGER.debug("Stored PR labels JSON to context key '%s'.", store_key)
     _run_pr_interaction(execution_name, "PR labels list", runtime_context, action)
 
 
 def git_do_pr_comment_add(execution_name: str, body_key: str, runtime_context: RuntimeContext) -> None:
     def action(context_dir: Path, working_dir: Path) -> None:
-        body = read_context_value(context_dir, body_key[1:])
+        body = read_context_value(context_dir, body_key)
         add_pr_comment(body, working_dir)
     _run_pr_interaction(execution_name, "PR comment add", runtime_context, action)
 
@@ -259,7 +259,7 @@ def git_do_pr_comments_list(execution_name: str, store_key: str, runtime_context
     def action(context_dir: Path, working_dir: Path) -> None:
         output = list_pr_comments(working_dir)
         ensure_context_dir(context_dir)
-        write_context_value(context_dir, store_key[1:], output)
+        write_context_value(context_dir, store_key, output)
         LOGGER.debug("Stored PR comments JSON to context key '%s'.", store_key)
     _run_pr_interaction(execution_name, "PR comments list", runtime_context, action)
 
@@ -268,10 +268,10 @@ def git_do_pr_checks_wait(execution_name: str, store_key: str, status_key: str, 
     def action(context_dir: Path, working_dir: Path) -> None:
         filtered_json, all_passed = poll_pr_action_checks(working_dir, interval, timeout)
         ensure_context_dir(context_dir)
-        write_context_value(context_dir, store_key[1:], filtered_json)
+        write_context_value(context_dir, store_key, filtered_json)
         LOGGER.debug("Stored PR checks JSON to context key '%s'.", store_key)
         status_value = "true" if all_passed else ""
-        write_context_value(context_dir, status_key[1:], status_value)
+        write_context_value(context_dir, status_key, status_value)
         LOGGER.debug("Stored PR checks status '%s' to context key '%s'.", status_value, status_key)
     _run_pr_interaction(execution_name, "PR checks wait", runtime_context, action)
 

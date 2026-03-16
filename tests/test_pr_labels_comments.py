@@ -291,7 +291,7 @@ def test_pr_labels_add_plain_label_invokes_gh(pr_ctx: SimpleNamespace) -> None:
 def test_pr_labels_add_context_key_resolves(pr_ctx: SimpleNamespace) -> None:
     # Use a before hook to write context key so it's available at runtime
     context_root = pr_ctx.config_path.parent / ".propagate-context" / "default"
-    write_cmd = f"mkdir -p {_q(context_root)} && printf 'from-context' > {_q(context_root / 'label-key')}"
+    write_cmd = f"mkdir -p {_q(context_root)} && printf 'from-context' > {_q(context_root / ':label-key')}"
 
     config = _base_config(pr_ctx, ["git:pr-labels-add :label-key"])
     config["executions"]["default"]["sub_tasks"][0]["before"] = [write_cmd]
@@ -346,7 +346,7 @@ def test_pr_labels_list_stores_to_context(pr_ctx: SimpleNamespace) -> None:
     assert result.returncode == 0, result.stderr
 
     context_root = pr_ctx.config_path.parent / ".propagate-context"
-    stored = (context_root / "default" / "stored-labels").read_text(encoding="utf-8")
+    stored = (context_root / "default" / ":stored-labels").read_text(encoding="utf-8")
     parsed = json.loads(stored)
     assert "labels" in parsed
     assert len(parsed["labels"]) == 2
@@ -359,7 +359,7 @@ def test_pr_labels_list_stores_to_context(pr_ctx: SimpleNamespace) -> None:
 
 def test_pr_comment_add_reads_body_from_context(pr_ctx: SimpleNamespace) -> None:
     context_root = pr_ctx.config_path.parent / ".propagate-context" / "default"
-    write_cmd = f"mkdir -p {_q(context_root)} && printf 'This is my comment body.' > {_q(context_root / 'body-key')}"
+    write_cmd = f"mkdir -p {_q(context_root)} && printf 'This is my comment body.' > {_q(context_root / ':body-key')}"
 
     config = _base_config(pr_ctx, ["git:pr-comment-add :body-key"])
     config["executions"]["default"]["sub_tasks"][0]["before"] = [write_cmd]
@@ -384,7 +384,7 @@ def test_pr_comments_list_stores_to_context(pr_ctx: SimpleNamespace) -> None:
     assert result.returncode == 0, result.stderr
 
     context_root = pr_ctx.config_path.parent / ".propagate-context"
-    stored = (context_root / "default" / "stored-comments").read_text(encoding="utf-8")
+    stored = (context_root / "default" / ":stored-comments").read_text(encoding="utf-8")
     parsed = json.loads(stored)
     assert "comments" in parsed
     assert parsed["comments"][0]["body"] == "hello"
@@ -397,7 +397,7 @@ def test_pr_comments_list_stores_to_context(pr_ctx: SimpleNamespace) -> None:
 
 def test_pr_labels_remove_context_key_resolves(pr_ctx: SimpleNamespace) -> None:
     context_root = pr_ctx.config_path.parent / ".propagate-context" / "default"
-    write_cmd = f"mkdir -p {_q(context_root)} && printf 'stale-label' > {_q(context_root / 'remove-key')}"
+    write_cmd = f"mkdir -p {_q(context_root)} && printf 'stale-label' > {_q(context_root / ':remove-key')}"
 
     config = _base_config(pr_ctx, ["git:pr-labels-remove :remove-key"])
     config["executions"]["default"]["sub_tasks"][0]["before"] = [write_cmd]
@@ -419,7 +419,7 @@ def test_pr_labels_remove_context_key_resolves(pr_ctx: SimpleNamespace) -> None:
 
 def test_pr_labels_add_empty_resolved_label_raises(pr_ctx: SimpleNamespace) -> None:
     context_root = pr_ctx.config_path.parent / ".propagate-context" / "default"
-    write_cmd = f"mkdir -p {_q(context_root)} && printf '' > {_q(context_root / 'empty-label')}"
+    write_cmd = f"mkdir -p {_q(context_root)} && printf '' > {_q(context_root / ':empty-label')}"
 
     config = _base_config(pr_ctx, ["git:pr-labels-add :empty-label"])
     config["executions"]["default"]["sub_tasks"][0]["before"] = [write_cmd]

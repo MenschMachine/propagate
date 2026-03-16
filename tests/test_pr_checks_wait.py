@@ -396,11 +396,11 @@ def test_do_pr_checks_wait_stores_and_succeeds(mock_run: MagicMock, mock_sleep: 
     git_do_pr_checks_wait("test-exec", ":check-results", ":checks-passed", 10, 60, runtime_context)
 
     context_dir = resolve_execution_context_dir(runtime_context)
-    stored = (context_dir / "check-results").read_text(encoding="utf-8")
+    stored = (context_dir / ":check-results").read_text(encoding="utf-8")
     result = json.loads(stored)
     assert len(result) == 1
     assert result[0]["name"] == "build"
-    status = (context_dir / "checks-passed").read_text(encoding="utf-8")
+    status = (context_dir / ":checks-passed").read_text(encoding="utf-8")
     assert status == "true"
 
 
@@ -418,10 +418,10 @@ def test_do_pr_checks_wait_failure_no_raise(mock_run: MagicMock, mock_sleep: Mag
     git_do_pr_checks_wait("test-exec", ":check-results", ":checks-passed", 10, 60, runtime_context)
 
     context_dir = resolve_execution_context_dir(runtime_context)
-    stored = (context_dir / "check-results").read_text(encoding="utf-8")
+    stored = (context_dir / ":check-results").read_text(encoding="utf-8")
     result = json.loads(stored)
     assert len(result) == 2
-    status = (context_dir / "checks-passed").read_text(encoding="utf-8")
+    status = (context_dir / ":checks-passed").read_text(encoding="utf-8")
     assert status == ""
 
 
