@@ -194,6 +194,10 @@ async def handle_help(update, context) -> None:
 
 def _format_event_reply(event: dict) -> str:
     event_type = event.get("event", "unknown")
+    if event_type == "command_failed":
+        command = event.get("command", "unknown")
+        message = event.get("message", "Command failed.")
+        return f"Command /{command} failed: {message}"
     signal_type = event.get("signal_type", "unknown")
     messages = event.get("messages") or []
     lines = [f"Run {'completed' if event_type == 'run_completed' else 'failed'} for signal '{signal_type}'."]

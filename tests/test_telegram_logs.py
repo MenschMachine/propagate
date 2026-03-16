@@ -7,7 +7,6 @@ import pytest
 
 from propagate_app.log_buffer import BufferedLogHandler, get_recent_logs
 
-
 # ---------------------------------------------------------------------------
 # BufferedLogHandler unit tests
 # ---------------------------------------------------------------------------

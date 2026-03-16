@@ -182,6 +182,12 @@ def _handle_command(
             _resume_run(config, signal_socket, pub_socket, metadata=metadata)
         else:
             LOGGER.warning("Received resume command but no state file found; nothing to resume.")
+            if pub_socket is not None:
+                publish_event(pub_socket, "command_failed", {
+                    "command": "resume",
+                    "message": "No state file found; nothing to resume.",
+                    "metadata": metadata or {},
+                })
     else:
         LOGGER.warning("Received unknown command '%s'; ignoring.", command)
 
