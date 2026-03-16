@@ -4,16 +4,21 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .constants import LOGGER
+from .constants import CLONE_DIR_PREFIX, LOGGER
 from .errors import PropagateError
 from .models import RepositoryConfig
+
+
+def is_propagate_clone(path: Path) -> bool:
+    """Check whether *path* looks like a propagate-created clone directory."""
+    return path.is_dir() and path.name.startswith(CLONE_DIR_PREFIX)
 
 
 def clone_single_repository(name: str, repo: RepositoryConfig, existing_path: Path | None = None) -> Path:
     if existing_path is not None and existing_path.exists():
         LOGGER.info("Reusing existing clone for '%s' at '%s'.", name, existing_path)
         return existing_path
-    clone_dir = Path(tempfile.mkdtemp(prefix="propagate-repo-"))
+    clone_dir = Path(tempfile.mkdtemp(prefix=CLONE_DIR_PREFIX))
     LOGGER.info("Cloning repository '%s' from '%s' into '%s'.", name, repo.url, clone_dir)
     try:
         subprocess.run(

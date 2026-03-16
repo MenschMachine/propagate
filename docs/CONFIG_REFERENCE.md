@@ -603,8 +603,9 @@ propagate clear --config config.yaml
 | Flag | Description |
 |------|-------------|
 | `--config` | Path to YAML config file. Required. |
+| `-f`, `--force` | Also delete cloned repositories recorded in the run state file. Only directories whose name starts with `propagate-repo-` are removed. |
 
-Removes the `.propagate-context/` directory and the `.propagate-state-{name}.yaml` file associated with the config.
+Removes the `.propagate-context/` directory and the `.propagate-state-{name}.yaml` file associated with the config. With `-f`, also removes cloned repository directories that were created during the run.
 
 ### `serve` options
 

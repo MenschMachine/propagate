@@ -46,6 +46,20 @@ def save_run_state(state: RunState) -> None:
     LOGGER.debug("Saved run state to '%s'.", file_path)
 
 
+def read_cloned_repos(config_path: Path) -> dict[str, Path]:
+    """Read cloned_repos from the state file without full validation."""
+    file_path = state_file_path(config_path.resolve())
+    if not file_path.exists():
+        return {}
+    try:
+        with file_path.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except (OSError, yaml.YAMLError):
+        LOGGER.warning("Could not read cloned repos from state file '%s'.", file_path)
+        return {}
+    return {name: Path(p) for name, p in (data.get("cloned_repos") or {}).items()}
+
+
 def load_run_state(config_path: Path) -> RunState:
     file_path = state_file_path(config_path.resolve())
     if not file_path.exists():

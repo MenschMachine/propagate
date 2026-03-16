@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from propagate_app.context_store import ensure_context_dir, write_context_value
+from propagate_app.context_store import write_context_value
 from propagate_app.git_runtime import (
     git_do_pr_comment_add,
     git_do_pr_comments_list,

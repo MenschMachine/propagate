@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -18,7 +19,8 @@ from .context_store import (
 )
 from .errors import PropagateError
 from .models import Config, ExecutionScheduleState, RunState, RuntimeContext
-from .run_state import clear_run_state, load_run_state, state_file_path
+from .repo_clone import is_propagate_clone
+from .run_state import clear_run_state, load_run_state, read_cloned_repos, state_file_path
 from .scheduler import run_execution_schedule
 from .serve import serve_command
 from .signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, send_signal, socket_address
@@ -55,6 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
     clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+    clear_parser.add_argument("-f", "--force", action="store_true", default=False, help="Also delete cloned repositories.")
     return parser
 
 
@@ -96,7 +99,7 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "serve":
         return serve_command(args.config)
     if args.command == "clear":
-        return clear_command(args.config)
+        return clear_command(args.config, force=args.force)
     if args.command == "context":
         context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
         execution_env = os.environ.get(ENV_EXECUTION, "")
@@ -255,7 +258,7 @@ def send_signal_command(
     return 0
 
 
-def clear_command(config_value: str) -> int:
+def clear_command(config_value: str, force: bool = False) -> int:
     config_path = Path(config_value).expanduser().resolve()
     if not config_path.exists():
         raise PropagateError(f"Config file not found: {config_path}")
@@ -265,6 +268,21 @@ def clear_command(config_value: str) -> int:
     if clear_all_context(context_root):
         cleared.append(f"context ({context_root})")
     state_path = state_file_path(config_path)
+    cloned_repos: dict[str, Path] = {}
+    if force:
+        cloned_repos = read_cloned_repos(config_path)
+    if force:
+        for name, clone_path in cloned_repos.items():
+            if not is_propagate_clone(clone_path):
+                LOGGER.warning("Skipping non-propagate directory '%s' for repo '%s'.", clone_path, name)
+                continue
+            try:
+                shutil.rmtree(clone_path)
+            except OSError as exc:
+                LOGGER.warning("Failed to delete clone '%s' at '%s': %s", name, clone_path, exc)
+                continue
+            LOGGER.debug("Deleted cloned repo '%s' at '%s'.", name, clone_path)
+            cleared.append(f"clone {name} ({clone_path})")
     if state_path.exists():
         clear_run_state(config_path)
         cleared.append(f"run state ({state_path})")
