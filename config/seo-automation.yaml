@@ -1,0 +1,189 @@
+# SEO Automation Pipeline for pdfdancer.com
+#
+# A 5-stage DAG that runs end-to-end SEO analysis and implementation:
+#
+#   pull-data → analyze → suggest → implement → request-index
+#
+# 1. pull-data:      Fetches GSC, Keyword Planner, and PostHog data into
+#                    pdfdancer-marketing-data/data/YYYY-MM-DD/, commits to main.
+# 2. analyze:        Reads the fetched data and writes an analysis report to
+#                    reports/YYYY-MM-DD/ (bounce rates, keyword gaps, traffic
+#                    sources), commits to main.
+# 3. suggest:        Opens a PR on pdfdancer-marketing-data with concrete SEO
+#                    recommendations. Waits for a label: "approved" continues,
+#                    "changes_required" loops back to revise.
+# 4. implement:      Opens a PR on pdfdancer-www applying the approved
+#                    suggestions (meta tags, content, structure). Same
+#                    label-based review loop.
+# 5. request-index:  Submits changed URLs to the Google Indexing API so
+#                    crawlers pick up the changes quickly.
+#
+# Env vars needed:
+#   GOOGLE_APPLICATION_CREDENTIALS  — service account JSON (GSC + Indexing)
+#   GOOGLE_ADS_CUSTOMER_ID          — Google Ads customer ID (Keyword Planner)
+#   POSTHOG_API_KEY                 — PostHog personal API key
+#   POSTHOG_PROJECT_ID              — PostHog project ID
+
+version: "6"
+
+agent:
+  command: "claude -p {prompt_file}"
+
+repositories:
+  pdfdancer-marketing-data:
+    url: git@github.com:MenschMachine/pdfdancer-marketing-data.git
+  pdfdancer-www:
+    url: git@github.com:MenschMachine/pdfdancer-www.git
+
+context_sources:
+  commit_message:
+    command: gommit -A -n -I
+  seo-data-commit:
+    command: 'printf "seo: data pull %s\n" "$(date -u +%Y-%m-%d)"'
+  seo-report-commit:
+    command: 'printf "seo: analysis report %s\n" "$(date -u +%Y-%m-%d)"'
+  gsc-data-path:
+    command: "python scripts/fetch_gsc.py"
+  keywords-data-path:
+    command: "python scripts/fetch_keywords.py"
+  posthog-data-path:
+    command: "python scripts/fetch_posthog.py"
+  indexing-results:
+    command: 'propagate context get :changed-urls | python scripts/request_indexing.py'
+
+signals:
+  include:
+    - includes/default.yaml
+    - includes/github-signals.yaml
+
+executions:
+  pull-data:
+    repository: pdfdancer-marketing-data
+    signals: [start]
+    git:
+      branch:
+        name: main
+        base: main
+        reuse: true
+      commit:
+        message_source: seo-data-commit
+      push:
+        remote: origin
+    sub_tasks:
+      - id: fetch-data
+        before:
+          - :gsc-data-path
+          - :posthog-data-path
+      - id: summarize-pull
+        prompt: ./prompts/seo/pull-data-summary.md
+
+  analyze:
+    repository: pdfdancer-marketing-data
+    git:
+      branch:
+        name: main
+        base: main
+        reuse: true
+      commit:
+        message_source: seo-report-commit
+      push:
+        remote: origin
+    sub_tasks:
+      - id: analyze
+        prompt: ./prompts/seo/analyze.md
+
+  suggest:
+    repository: pdfdancer-marketing-data
+    git:
+      branch:
+        name_key: :suggest-branch-name
+        base: main
+      commit:
+        message_source: commit_message
+      push:
+        remote: origin
+      pr:
+        base: main
+        body_key: :summary
+        number_key: :pr-number
+    sub_tasks:
+      - id: set-branch
+        before:
+          - 'propagate context set :suggest-branch-name "seo/suggestions-$(date -u +%Y-%m-%d)"'
+      - id: create-branch
+        before:
+          - git:branch
+      - id: code
+        prompt: ./prompts/seo/suggest.md
+      - id: summarize
+        prompt: ./prompts/seo/summarize-suggest.md
+      - id: publish
+        before:
+          - git:commit
+          - git:push
+          - git:pr
+      - id: wait-for-verdict
+        wait_for_signal: pull_request.labeled
+        routes:
+          - when: { label: "changes_required" }
+            goto: code
+          - when: { label: "approved" }
+            continue: true
+
+  implement:
+    repository: pdfdancer-www
+    git:
+      branch:
+        name_key: :implement-branch-name
+        base: main
+      commit:
+        message_source: commit_message
+      push:
+        remote: origin
+      pr:
+        base: main
+        body_key: :implement-summary
+        number_key: :implement-pr-number
+    sub_tasks:
+      - id: set-branch
+        before:
+          - 'propagate context set :implement-branch-name "seo/implement-$(date -u +%Y-%m-%d)"'
+      - id: create-branch
+        before:
+          - git:branch
+      - id: code
+        prompt: ./prompts/seo/implement.md
+      - id: summarize
+        prompt: ./prompts/seo/summarize-implement.md
+      - id: publish
+        before:
+          - git:commit
+          - git:push
+          - git:pr
+      - id: wait-for-verdict
+        wait_for_signal: pull_request.labeled
+        routes:
+          - when: { label: "changes_required" }
+            goto: code
+          - when: { label: "approved" }
+            continue: true
+
+  request-index:
+    repository: pdfdancer-www
+    sub_tasks:
+      - id: request-indexing
+        before:
+          - :indexing-results
+      - id: confirm
+        prompt: ./prompts/seo/request-index.md
+
+propagation:
+  triggers:
+    - after: pull-data
+      run: analyze
+    - after: analyze
+      run: suggest
+    - after: suggest
+      run: implement
+    - after: implement
+      run: request-index
