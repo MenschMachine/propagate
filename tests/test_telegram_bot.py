@@ -461,6 +461,33 @@ async def test_handle_signals_lists_configured_signals(push_socket):
 
 
 @pytest.mark.anyio
+async def test_handle_signals_shows_parameters(push_socket):
+    from propagate_telegram.bot import handle_signals
+
+    update = _make_update(123, "michael", "/signals")
+    context = _make_context(SIGNALS, push_socket, {123})
+
+    await handle_signals(update, context)
+
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "instructions (string)" in reply_text
+    assert "sender" not in reply_text
+
+
+@pytest.mark.anyio
+async def test_handle_signals_shows_required_marker(push_socket):
+    from propagate_telegram.bot import handle_signals
+
+    update = _make_update(123, "michael", "/signals")
+    context = _make_context(REQUIRED_FIELD_SIGNALS, push_socket, {123})
+
+    await handle_signals(update, context)
+
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "instructions (string, required)" in reply_text
+
+
+@pytest.mark.anyio
 async def test_handle_signals_ignores_unauthorized_user(push_socket):
     from propagate_telegram.bot import handle_signals
 

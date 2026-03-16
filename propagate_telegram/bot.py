@@ -120,7 +120,16 @@ async def handle_signals(update, context) -> None:
     config_signals: dict[str, Any] = context.bot_data["config_signals"]
     names = sorted(config_signals)
     if names:
-        listing = "\n".join(f"  {n}" for n in names)
+        lines: list[str] = []
+        for name in names:
+            lines.append(f"  {name}")
+            sig = config_signals[name]
+            for field_name, field_cfg in sig.payload.items():
+                if field_name == "sender":
+                    continue
+                req = ", required" if field_cfg.required else ""
+                lines.append(f"    {field_name} ({field_cfg.field_type}{req})")
+        listing = "\n".join(lines)
         await update.message.reply_text(f"Available signals:\n{listing}")
     else:
         await update.message.reply_text("No signals configured.")
