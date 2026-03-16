@@ -257,6 +257,10 @@ On `--resume`, git state is restored from the execution context store rather tha
 
 This means `git:push` and `git:pr` work correctly on resume even though `git:branch` and `git:commit` are skipped (they were already completed). Execution context written by earlier sub-tasks is also preserved — context is only cleared for fresh runs, not resumed ones.
 
+## `.env` exclusion
+
+Propagate automatically excludes `.env` files from commits. The `git:commit` command uses `git add -A -- . :!.env :!**/.env`, which prevents `.env` files at any directory level from being staged regardless of the repository's `.gitignore` settings. This protects secrets and API keys from being accidentally committed to cloned repositories.
+
 ## Notes
 
 - `git:branch` must run before `git:push` or `git:pr` (it captures the branch name used by those commands).

@@ -76,6 +76,7 @@ executions:
     sub_tasks:
       - id: install-deps
         before:
+          - cp /Users/michael/Code/TFC/pdfdancer/pdfdancer-marketing-data/.env .env
           - pip install -r requirements.txt
       - id: fetch-data
         before:

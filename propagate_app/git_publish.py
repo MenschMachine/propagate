@@ -41,7 +41,7 @@ def validate_commit_message(message: str) -> None:
 def create_execution_commit(commit_message: str, working_dir: Path) -> None:
     LOGGER.info("Creating git commit for execution changes.")
     run_git_command(
-        ["add", "-A"],
+        ["add", "-A", "--", ".", ":!.env", ":!**/.env"],
         working_dir,
         failure_message="Failed to stage execution changes for commit.",
         start_failure_message="Failed to start git add for execution changes: {error}",
