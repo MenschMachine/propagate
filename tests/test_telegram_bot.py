@@ -190,6 +190,15 @@ def _make_context(config_signals: dict, push_socket, allowed_users: set[int]) ->
     return context
 
 
+def _make_edited_update(user_id: int, username: str) -> MagicMock:
+    """Simulate an edited-message update where update.message is None."""
+    update = MagicMock()
+    update.effective_user.id = user_id
+    update.effective_user.username = username
+    update.message = None
+    return update
+
+
 SIGNALS = {"deploy": object(), "build": object()}
 
 
@@ -338,3 +347,34 @@ async def test_handle_help_includes_signals(push_socket):
     assert "deploy" in reply_text
     assert "/run" in reply_text
     assert "/signals" in reply_text
+
+
+@pytest.mark.anyio
+async def test_handle_run_ignores_edited_message(push_socket):
+    """Edited messages have update.message=None; handlers must not crash."""
+    from propagate_telegram.bot import handle_run
+
+    update = _make_edited_update(123, "michael")
+    context = _make_context(SIGNALS, push_socket, {123})
+
+    await handle_run(update, context)  # should return silently
+
+
+@pytest.mark.anyio
+async def test_handle_signals_ignores_edited_message(push_socket):
+    from propagate_telegram.bot import handle_signals
+
+    update = _make_edited_update(123, "michael")
+    context = _make_context(SIGNALS, push_socket, {123})
+
+    await handle_signals(update, context)
+
+
+@pytest.mark.anyio
+async def test_handle_help_ignores_edited_message(push_socket):
+    from propagate_telegram.bot import handle_help
+
+    update = _make_edited_update(123, "michael")
+    context = _make_context(SIGNALS, push_socket, {123})
+
+    await handle_help(update, context)

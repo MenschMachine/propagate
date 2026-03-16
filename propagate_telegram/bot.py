@@ -12,6 +12,8 @@ logger = logging.getLogger("propagate.telegram")
 
 def _is_allowed(update, allowed_users: set[int]) -> bool:
     user = update.effective_user
+    if user is None:
+        return False
     if user.id in allowed_users:
         return True
     username = user.username or str(user.id)
@@ -25,6 +27,9 @@ async def handle_run(update, context) -> None:
     allowed_users: set[int] = bot_data["allowed_users"]
 
     if not _is_allowed(update, allowed_users):
+        return
+
+    if update.message is None:
         return
 
     text: str = update.message.text
@@ -56,6 +61,9 @@ async def handle_signals(update, context) -> None:
     if not _is_allowed(update, allowed_users):
         return
 
+    if update.message is None:
+        return
+
     config_signals: dict[str, Any] = context.bot_data["config_signals"]
     names = sorted(config_signals)
     if names:
@@ -69,6 +77,9 @@ async def handle_help(update, context) -> None:
     """Handle the ``/help`` command."""
     allowed_users: set[int] = context.bot_data["allowed_users"]
     if not _is_allowed(update, allowed_users):
+        return
+
+    if update.message is None:
         return
 
     config_signals: dict[str, Any] = context.bot_data["config_signals"]
