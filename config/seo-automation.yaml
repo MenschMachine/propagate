@@ -12,11 +12,15 @@
 # 3. suggest:        Opens a PR on pdfdancer-marketing-data with concrete SEO
 #                    recommendations. Waits for a label: "approved" continues,
 #                    "changes_required" loops back to revise.
-# 4. implement:      Opens a PR on pdfdancer-www applying the approved
-#                    suggestions (meta tags, content, structure). Same
-#                    label-based review loop.
-# 5. request-index:  Submits changed URLs to the Google Indexing API so
-#                    crawlers pick up the changes quickly.
+# 4. implement:      Switches to the pdfdancer-www repo.
+#                    Reads the approved suggestions from the marketing-data
+#                    context and applies them — editing page metadata, titles,
+#                    headings, internal links, or content. Opens a PR on
+#                    pdfdancer-www with the same label-based review loop.
+# 5. request-index:  Runs in the pdfdancer-www repo after implement merges.
+#                    Reads the list of changed URL paths from context and
+#                    submits them to the Google Indexing API so crawlers
+#                    pick up the changes quickly.
 #
 # Env vars needed:
 #   GOOGLE_APPLICATION_CREDENTIALS  — service account JSON (GSC + Indexing)
