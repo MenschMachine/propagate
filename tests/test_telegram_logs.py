@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from propagate_app.log_buffer import BufferedLogHandler, get_recent_logs
+from propagate_app.log_buffer import BufferedLogHandler, ZmqLogHandler, append_line, get_recent_logs
+from propagate_app.signal_transport import (
+    bind_pub_socket,
+    close_pub_socket,
+    close_sub_socket,
+    connect_sub_socket,
+    publish_event,
+    receive_event,
+)
 
 # ---------------------------------------------------------------------------
 # BufferedLogHandler unit tests
@@ -236,3 +246,114 @@ async def test_handle_logs_ignores_edited_message():
     context = _make_context({123})
 
     await handle_logs(update, context)  # should not crash
+
+
+# ---------------------------------------------------------------------------
+# ZmqLogHandler tests
+# ---------------------------------------------------------------------------
+
+
+def test_zmq_log_handler_publishes_json():
+    pub_address = "ipc:///tmp/propagate-test-zmqlog.sock"
+    pub = bind_pub_socket(pub_address)
+    sub = connect_sub_socket(pub_address)
+    time.sleep(0.1)
+
+    handler = ZmqLogHandler(pub)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    test_logger = logging.getLogger("test.zmqlog")
+    test_logger.addHandler(handler)
+    test_logger.setLevel(logging.DEBUG)
+    try:
+        test_logger.info("hello from server")
+        event = receive_event(sub, timeout_ms=2000)
+        assert event is not None
+        assert event["event"] == "log"
+        assert event["line"] == "hello from server"
+    finally:
+        test_logger.removeHandler(handler)
+        close_sub_socket(sub)
+        close_pub_socket(pub, pub_address)
+
+
+def test_zmq_log_handler_skips_debug():
+    """ZmqLogHandler is set to INFO — DEBUG records should not be emitted."""
+    pub_address = "ipc:///tmp/propagate-test-zmqlog-debug.sock"
+    pub = bind_pub_socket(pub_address)
+    sub = connect_sub_socket(pub_address)
+    time.sleep(0.1)
+
+    handler = ZmqLogHandler(pub)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    test_logger = logging.getLogger("test.zmqlog.debug")
+    test_logger.addHandler(handler)
+    test_logger.setLevel(logging.DEBUG)
+    try:
+        test_logger.debug("should not appear")
+        event = receive_event(sub, timeout_ms=200)
+        assert event is None
+    finally:
+        test_logger.removeHandler(handler)
+        close_sub_socket(sub)
+        close_pub_socket(pub, pub_address)
+
+
+# ---------------------------------------------------------------------------
+# append_line tests
+# ---------------------------------------------------------------------------
+
+
+def test_append_line_adds_to_buffer(monkeypatch):
+    handler = BufferedLogHandler(maxlen=100)
+    monkeypatch.setattr("propagate_app.log_buffer._buffered_handler", handler)
+    append_line("pre-formatted log line")
+    assert "pre-formatted log line" in list(handler.buffer)
+
+
+def test_append_line_noop_without_handler(monkeypatch):
+    monkeypatch.setattr("propagate_app.log_buffer._buffered_handler", None)
+    append_line("should not crash")  # no error
+
+
+# ---------------------------------------------------------------------------
+# _poll_events handles log events
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"], indirect=True)
+async def test_poll_events_feeds_log_into_buffer(monkeypatch):
+    from propagate_telegram.bot import _poll_events
+
+    handler = BufferedLogHandler(maxlen=100)
+    monkeypatch.setattr("propagate_app.log_buffer._buffered_handler", handler)
+
+    pub_address = "ipc:///tmp/propagate-test-poll-log.sock"
+    pub = bind_pub_socket(pub_address)
+    sub = connect_sub_socket(pub_address)
+    time.sleep(0.1)
+
+    application = MagicMock()
+    application.bot.send_message = AsyncMock()
+
+    task = asyncio.create_task(_poll_events(application, sub))
+
+    publish_event(pub, "log", {"line": "server log line 1"})
+    publish_event(pub, "log", {"line": "server log line 2"})
+
+    await asyncio.sleep(0.5)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    close_sub_socket(sub)
+    close_pub_socket(pub, pub_address)
+
+    # Log events should NOT trigger a chat reply
+    application.bot.send_message.assert_not_called()
+    # Lines should appear in the buffer
+    buf = list(handler.buffer)
+    assert "server log line 1" in buf
+    assert "server log line 2" in buf

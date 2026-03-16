@@ -210,10 +210,16 @@ def _format_event_reply(event: dict) -> str:
 
 async def _poll_events(application, sub_socket) -> None:
     """Background task that polls the SUB socket and sends replies."""
+    from propagate_app.log_buffer import append_line
+
     loop = asyncio.get_running_loop()
     while True:
         event = await loop.run_in_executor(None, lambda: receive_event(sub_socket, timeout_ms=1000))
         if event is None:
+            continue
+        if event.get("event") == "log":
+            line = event.get("line", "")
+            append_line(line)
             continue
         metadata = event.get("metadata") or {}
         chat_id = metadata.get("chat_id")
