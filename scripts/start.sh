@@ -106,8 +106,15 @@ SERVE_ARGS=(--config "$CONFIG")
 
 WEBHOOK_ARGS=(--config "$CONFIG")
 [[ -n "$PORT" ]] && WEBHOOK_ARGS+=(--port "$PORT")
-[[ -n "$SECRET" ]] && WEBHOOK_ARGS+=(--secret "$SECRET")
-[[ -n "$SECRET_ENV" ]] && WEBHOOK_ARGS+=(--secret-env "$SECRET_ENV")
+if [[ "$DEV" == true ]]; then
+    # Skip signature verification in dev mode — smee re-serialises the body,
+    # which breaks HMAC validation.
+    echo -e "${BLUE}[webhook ]${NC} Dev mode: skipping webhook signature verification"
+elif [[ -n "$SECRET" ]]; then
+    WEBHOOK_ARGS+=(--secret "$SECRET")
+elif [[ -n "$SECRET_ENV" ]]; then
+    WEBHOOK_ARGS+=(--secret-env "$SECRET_ENV")
+fi
 
 TELEGRAM_ARGS=(--config "$CONFIG")
 [[ -n "$TOKEN" ]] && TELEGRAM_ARGS+=(--token "$TOKEN")

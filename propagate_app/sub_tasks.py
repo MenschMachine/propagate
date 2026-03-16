@@ -59,7 +59,11 @@ def run_execution_sub_tasks(
             task_index += 1
             continue
         if sub_task.wait_for_signal is not None:
+            task_runtime_context = replace(runtime_context, task_id=sub_task.task_id)
+            context_id = f"sub-task '{sub_task.task_id}'"
+            run_sub_task_hook_phase(sub_task, "before", sub_task.before, task_runtime_context, execution.git, context_id)
             goto_index = _handle_wait_for_signal(execution, sub_task, runtime_context, task_phases, on_phase_completed)
+            run_sub_task_hook_phase(sub_task, "after", sub_task.after, task_runtime_context, execution.git, context_id)
             if goto_index is not None:
                 task_index = goto_index
             else:

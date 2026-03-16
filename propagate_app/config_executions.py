@@ -184,8 +184,8 @@ def parse_sub_task(
             raise PropagateError(f"{location} 'wait_for_signal' references unknown signal '{wait_for_signal}'.")
         if prompt_path is not None:
             raise PropagateError(f"{location} with 'wait_for_signal' must not have 'prompt'.")
-        if sub_task_data.get("before") or sub_task_data.get("after") or sub_task_data.get("on_failure"):
-            raise PropagateError(f"{location} with 'wait_for_signal' must not have 'before', 'after', or 'on_failure' hooks.")
+        if sub_task_data.get("on_failure"):
+            raise PropagateError(f"{location} with 'wait_for_signal' must not have 'on_failure' hooks.")
         routes = parse_routes(routes_data, location, seen_task_ids)
     return SubTaskConfig(
         task_id=task_id,

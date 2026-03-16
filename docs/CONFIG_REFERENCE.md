@@ -535,7 +535,7 @@ Signal payloads are written to context under the `:signal` namespace (e.g. `:sig
 - `git.branch.name_key`, `git.commit.message_key`, `git.pr.title_key`, `git.pr.body_key`, and `git.pr.number_key` must start with `:`.
 - `git.commit.message_source` must reference a defined context source.
 - `wait_for_signal` and `routes` must both be present together on a sub-task.
-- Sub-tasks with `wait_for_signal` must not have `prompt`, `before`, or `after`.
+- Sub-tasks with `wait_for_signal` must not have `prompt` or `on_failure`.
 - Route `goto` targets must reference a sub-task ID defined earlier in the same execution.
 - Propagation `when` requires `on_signal` to be set.
 - `when` field names must exist in the referenced signal's payload definition.

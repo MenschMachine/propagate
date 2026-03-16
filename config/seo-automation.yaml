@@ -184,6 +184,8 @@ executions:
           - git:push
           - git:pr
       - id: wait-for-verdict
+        before:
+          - propagate context dump
         wait_for_signal: pull_request.labeled
         routes:
           - when: { label: "changes_required" }
