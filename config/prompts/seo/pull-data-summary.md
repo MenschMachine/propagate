@@ -2,15 +2,13 @@
 
 Look at the data files that were just pulled into the `data/` directory (today's date folder).
 
-Read the GSC data (path in `:gsc-data-path`) and the keywords data (path in `:keywords-data-path`).
+Read the GSC data (path in `:gsc-data-path`).
 
 Write a brief summary noting:
 - Total queries and pages in GSC data
 - Top 10 queries by clicks
 - Top 10 pages by impressions
 - Any anomalies (zero-click pages with high impressions, position drops, etc.)
-- Number of keyword ideas fetched
-- Top keyword opportunities (high volume, low competition)
 
 Save the summary to context:
 

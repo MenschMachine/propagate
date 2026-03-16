@@ -1,6 +1,6 @@
 # Analyze SEO Data
 
-Read the data files referenced in `:gsc-data-path` and `:keywords-data-path`. Cross-reference the GSC performance data with keyword research to identify actionable opportunities.
+Read the data files referenced in `:gsc-data-path`. Analyze the GSC performance data to identify actionable opportunities.
 
 ## What to analyze
 
@@ -10,7 +10,6 @@ Read the data files referenced in `:gsc-data-path` and `:keywords-data-path`. Cr
 - Queries where pdfdancer ranks 4-20 (striking distance of page 1 or top 3)
 
 ### Content gaps
-- Keyword ideas with meaningful search volume (> 100/month) that don't have a corresponding page
 - Queries from GSC that land on the wrong page (intent mismatch)
 
 ### Technical signals
@@ -20,7 +19,6 @@ Read the data files referenced in `:gsc-data-path` and `:keywords-data-path`. Cr
 ## Significance thresholds
 Only flag items with meaningful impact potential:
 - Minimum 50 impressions for CTR analysis
-- Minimum 100 monthly searches for new content suggestions
 - Position changes only matter if the page had > 20 impressions
 
 ## Output

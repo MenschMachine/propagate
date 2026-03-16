@@ -4,11 +4,11 @@
 #
 #   pull-data → analyze → suggest → implement → request-index
 #
-# 1. pull-data:      Fetches GSC, Keyword Planner, and PostHog data into
+# 1. pull-data:      Fetches GSC and PostHog data into
 #                    pdfdancer-marketing-data/data/YYYY-MM-DD/, commits to main.
 # 2. analyze:        Reads the fetched data and writes an analysis report to
-#                    reports/YYYY-MM-DD/ (bounce rates, keyword gaps, traffic
-#                    sources), commits to main.
+#                    reports/YYYY-MM-DD/ (bounce rates, traffic sources),
+#                    commits to main.
 # 3. suggest:        Opens a PR on pdfdancer-marketing-data with concrete SEO
 #                    recommendations. Waits for a label: "approved" continues,
 #                    "changes_required" loops back to revise.
@@ -24,7 +24,6 @@
 #
 # Env vars needed:
 #   GOOGLE_APPLICATION_CREDENTIALS  — service account JSON (GSC + Indexing)
-#   GOOGLE_ADS_CUSTOMER_ID          — Google Ads customer ID (Keyword Planner)
 #   POSTHOG_API_KEY                 — PostHog personal API key
 #   POSTHOG_PROJECT_ID              — PostHog project ID
 
@@ -48,8 +47,6 @@ context_sources:
     command: 'printf "seo: analysis report %s\n" "$(date -u +%Y-%m-%d)"'
   gsc-data-path:
     command: "python scripts/fetch_gsc.py"
-  keywords-data-path:
-    command: "python scripts/fetch_keywords.py"
   posthog-data-path:
     command: "python scripts/fetch_posthog.py"
   indexing-results:
