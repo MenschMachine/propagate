@@ -12,7 +12,7 @@ from .errors import PropagateError
 from .models import ActiveSignal, Config, ExecutionScheduleState, RunState, RuntimeContext
 from .run_state import load_run_state, state_file_path
 from .scheduler import run_execution_schedule
-from .signal_transport import bind_pull_socket, close_pull_socket, receive_signal, socket_address
+from .signal_transport import bind_pull_socket, close_pull_socket, receive_message, socket_address
 from .signals import log_active_signal, select_initial_execution, validate_signal_payload
 
 
@@ -74,18 +74,32 @@ def _resume_run(config: Config, signal_socket: zmq.Socket | None) -> None:
 def _serve_loop(config: Config, signal_socket: zmq.Socket, shutdown: threading.Event) -> None:
     LOGGER.info("Serve loop started, waiting for signals.")
     while not shutdown.is_set():
-        result = receive_signal(signal_socket, block=True, timeout_ms=1000)
+        result = receive_message(signal_socket, block=True, timeout_ms=1000)
         if result is None:
             continue
-        signal_type, payload = result
+        kind, name, payload = result
         try:
-            _handle_incoming_signal(config, signal_type, payload, signal_socket)
+            if kind == "command":
+                _handle_command(config, name, signal_socket)
+            else:
+                _handle_incoming_signal(config, name, payload, signal_socket)
         except KeyboardInterrupt:
             LOGGER.info("Interrupted during run, exiting serve loop.")
             return
         except PropagateError as error:
-            LOGGER.error("Run failed for signal '%s': %s", signal_type, error)
+            LOGGER.error("Run failed for %s '%s': %s", kind, name, error)
     LOGGER.info("Shutdown requested, exiting serve loop.")
+
+
+def _handle_command(config: Config, command: str, signal_socket: zmq.Socket) -> None:
+    if command == "resume":
+        if state_file_path(config.config_path).exists():
+            LOGGER.info("Received resume command, resuming previous run.")
+            _resume_run(config, signal_socket)
+        else:
+            LOGGER.warning("Received resume command but no state file found; nothing to resume.")
+    else:
+        LOGGER.warning("Received unknown command '%s'; ignoring.", command)
 
 
 def _handle_incoming_signal(

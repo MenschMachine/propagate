@@ -37,7 +37,13 @@ def send_signal(socket: zmq.Socket, signal_type: str, payload: dict) -> None:
     LOGGER.debug("Sent signal '%s' with payload %s", signal_type, payload)
 
 
-def receive_signal(socket: zmq.Socket, *, block: bool = False, timeout_ms: int = 1000) -> tuple[str, dict] | None:
+def send_command(socket: zmq.Socket, command: str) -> None:
+    socket.send_json({"command": command})
+    LOGGER.debug("Sent command '%s'", command)
+
+
+def _recv_json(socket: zmq.Socket, *, block: bool, timeout_ms: int) -> dict | None:
+    """Read one JSON object from *socket*, returning ``None`` on timeout."""
     try:
         if block:
             if socket.poll(timeout_ms) == 0:
@@ -51,10 +57,38 @@ def receive_signal(socket: zmq.Socket, *, block: bool = False, timeout_ms: int =
     except (ValueError, KeyError):
         LOGGER.warning("Received non-JSON message; ignoring.")
         return None
-    if not isinstance(data, dict) or "signal_type" not in data or "payload" not in data:
-        LOGGER.warning("Received malformed signal message; ignoring.")
+    if not isinstance(data, dict):
+        LOGGER.warning("Received malformed message; ignoring.")
+        return None
+    return data
+
+
+def receive_signal(socket: zmq.Socket, *, block: bool = False, timeout_ms: int = 1000) -> tuple[str, dict] | None:
+    data = _recv_json(socket, block=block, timeout_ms=timeout_ms)
+    if data is None:
+        return None
+    if "signal_type" not in data or "payload" not in data:
+        LOGGER.warning("Received non-signal message; ignoring.")
         return None
     return data["signal_type"], data["payload"]
+
+
+def receive_message(
+    socket: zmq.Socket, *, block: bool = False, timeout_ms: int = 1000
+) -> tuple[str, str, dict] | None:
+    """Receive a message, returning ``(kind, name, payload)``.
+
+    *kind* is ``"signal"`` or ``"command"``.  Returns ``None`` on timeout.
+    """
+    data = _recv_json(socket, block=block, timeout_ms=timeout_ms)
+    if data is None:
+        return None
+    if "command" in data and isinstance(data["command"], str):
+        return "command", data["command"], {}
+    if "signal_type" in data and "payload" in data:
+        return "signal", data["signal_type"], data["payload"]
+    LOGGER.warning("Received unrecognised message; ignoring.")
+    return None
 
 
 def close_pull_socket(socket: zmq.Socket, address: str) -> None:

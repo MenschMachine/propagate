@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from propagate_app.signal_transport import close_push_socket, connect_push_socket, send_signal
+from propagate_app.signal_transport import close_push_socket, connect_push_socket, send_command, send_signal
 
 from .message_parser import parse_run_message
 
@@ -55,6 +55,24 @@ async def handle_run(update, context) -> None:
     await update.message.reply_text(f"Signal '{signal_type}' delivered.")
 
 
+async def handle_resume(update, context) -> None:
+    """Handle the ``/resume`` command: resume a failed run."""
+    bot_data: dict[str, Any] = context.bot_data
+    allowed_users: set[int] = bot_data["allowed_users"]
+
+    if not _is_allowed(update, allowed_users):
+        return
+
+    if update.message is None:
+        return
+
+    push_socket = bot_data["push_socket"]
+    send_command(push_socket, "resume")
+    sender = update.effective_user.username or str(update.effective_user.id)
+    logger.info("Resume command from %s.", sender)
+    await update.message.reply_text("Resume command delivered.")
+
+
 async def handle_signals(update, context) -> None:
     """Handle the ``/signals`` command: list configured signals."""
     allowed_users: set[int] = context.bot_data["allowed_users"]
@@ -88,6 +106,7 @@ async def handle_help(update, context) -> None:
     await update.message.reply_text(
         "Commands:\n"
         "/run <signal> [instructions] — send a signal to propagate\n"
+        "/resume — resume a failed run\n"
         "/signals — list available signals\n"
         "/help — show this message\n"
         f"\nAvailable signals: {signals_line}"
@@ -113,6 +132,7 @@ def run_bot(config_signals: dict[str, Any], zmq_address: str, token: str, allowe
     application.bot_data["allowed_users"] = allowed_users
 
     application.add_handler(CommandHandler("run", handle_run))
+    application.add_handler(CommandHandler("resume", handle_resume))
     application.add_handler(CommandHandler("signals", handle_signals))
     application.add_handler(CommandHandler("help", handle_help))
 

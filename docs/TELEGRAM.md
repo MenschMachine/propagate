@@ -55,6 +55,14 @@ This sends signal `deploy` with payload:
 
 The signal name must match a signal defined in the propagate config. Instructions and sender are delivered as payload fields, available in prompts as `:signal.instructions` and `:signal.sender`.
 
+### `/resume`
+
+Resume a previously failed run. If a state file exists from a failed execution, propagate picks up where it left off — completed tasks are skipped, and it retries from the point of failure.
+
+```
+/resume
+```
+
 ### `/signals`
 
 List all signals defined in the propagate config.
