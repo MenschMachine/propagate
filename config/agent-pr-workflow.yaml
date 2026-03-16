@@ -1,3 +1,24 @@
+# Agent-driven implement → review → revise workflow.
+#
+# Triggered by the "start" signal with an "instructions" payload describing what to build.
+#
+# Sub-task flow:
+#   generate-branch-name  → read {:signal.instructions}, output a git-safe branch name to :branch-name
+#   create-branch         → git:branch using the dynamic :branch-name
+#   code                  → implement changes based on {:signal.instructions}
+#   summarize             → diff → write summary to :summary
+#   publish               → git:commit, git:push, git:pr (PR body from :summary, PR number stored in :pr-number)
+#   review                → review the diff, save review to :review-body
+#   post-review           → git:pr-comment-add :review-body
+#   wait-for-verdict      → block on pull_request.labeled signal:
+#                             label "changes_required" → goto code (loop: re-implement through post-review)
+#                             label "approved"         → continue (execution completes)
+#
+# The loop re-runs code → summarize → publish → review → post-review on each iteration.
+# git:pr handles "PR already exists" gracefully — it skips creation and returns the existing URL.
+#
+# Requires `propagate serve` for the signal-gated wait at wait-for-verdict.
+
 version: "6"
 
 agent:
