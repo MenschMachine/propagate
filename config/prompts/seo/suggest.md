@@ -20,12 +20,14 @@ Technical SEO fixes — canonical tags, structured data, redirects, sitemap entr
 
 ## Format
 
-Write suggestions as a structured list. For each suggestion include:
+Write suggestions as a structured list. Be detailed and explicit — a reviewer reading the PR should fully understand the reasoning and know exactly what to do without needing to look anything up. For each suggestion include:
+
 - **Type**: meta | content-edit | new-content | technical
 - **Priority**: high | medium | low
 - **Target**: URL or page path
-- **What**: specific change to make
-- **Why**: the data point that motivates this (e.g., "page has 500 impressions, 0.5% CTR")
+- **What**: the specific change to make. Write out the exact text, markup, or configuration to add/change/remove. Do not leave anything vague or implied — spell it out so someone could implement it directly from this description.
+- **Why**: explain the reasoning behind this suggestion. Reference the specific data points (e.g., "page has 500 impressions but only 0.5% CTR, well below the site average of 2.1%"), explain what the problem is, and why this particular change is expected to improve the situation. Connect the dots between the data and the recommendation.
+- **Expected impact**: describe what improvement this change should produce and how it can be measured (e.g., "should increase CTR by making the title more compelling for the target query; track impressions-to-clicks ratio in GSC over the next 2 weeks")
 
 ## Output
 
