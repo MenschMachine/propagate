@@ -6,3 +6,9 @@ start:
     sender:
       type: string
       required: false
+
+enrich:
+  payload:
+    instructions:
+      type: string
+      required: false

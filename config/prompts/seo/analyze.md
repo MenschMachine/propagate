@@ -36,3 +36,16 @@ To save findings, run exactly:
 ```bash
 propagate context set :findings "<your structured findings>"
 ```
+
+## Enrichment data (optional)
+
+Check if enrichment data exists:
+```bash
+ls -d data/enrichment/*/ 2>/dev/null | sort -r | head -1
+```
+
+If found, read the JSON files inside:
+- `competitors-*.json`: Add competitor context to striking-distance analysis — who ranks above pdfdancer, their titles/descriptions, SERP features present
+- `keyword-opportunities-*.json`: Add a "New keyword opportunities" section — keywords with search volume that pdfdancer doesn't rank for, prioritized by relevance to PDF tools/SDK/API
+
+If no enrichment directory exists, skip this section entirely.

@@ -1,6 +1,6 @@
 # SEO Automation Pipeline for pdfdancer.com
 #
-# A 5-stage DAG that runs end-to-end SEO analysis and implementation:
+# Main DAG (triggered by "start" signal):
 #
 #   pull-data → analyze → suggest → implement → request-index
 #
@@ -8,7 +8,8 @@
 #                    pdfdancer-marketing-data/data/YYYY-MM-DD/, commits to main.
 # 2. analyze:        Reads the fetched data and writes an analysis report to
 #                    reports/YYYY-MM-DD/ (bounce rates, traffic sources),
-#                    commits to main.
+#                    commits to main. If enrichment data exists, includes
+#                    competitor and keyword opportunity analysis.
 # 3. suggest:        Opens a PR on pdfdancer-marketing-data with concrete SEO
 #                    recommendations. Waits for a label: "approved" continues,
 #                    "changes_required" loops back to revise.
@@ -22,10 +23,23 @@
 #                    submits them to the Google Indexing API so crawlers
 #                    pick up the changes quickly.
 #
+# Standalone execution (triggered by "enrich" signal):
+#
+#   enrich-seo
+#
+# enrich-seo:       Fetches DataForSEO competitor SERP data and related
+#                    keyword opportunities for striking-distance keywords.
+#                    Writes to data/enrichment/YYYY-MM-DD/, commits to main.
+#                    Run weekly to keep API costs low (~$0.50/week).
+#                    Usage: propagate run --config config/seo-automation.yaml --signal enrich
+#
 # Env vars needed:
 #   GOOGLE_APPLICATION_CREDENTIALS  — service account JSON (GSC + Indexing)
 #   POSTHOG_API_KEY                 — PostHog personal API key
 #   POSTHOG_PROJECT_ID              — PostHog project ID
+#   DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD — DataForSEO API credentials
+#   DATAFORSEO_SERP_LIMIT — Max SERP lookups per run (default: 50)
+#   DATAFORSEO_SEED_LIMIT — Max related keyword seeds (default: 20)
 
 version: "6"
 
@@ -51,6 +65,10 @@ context_sources:
     command: "python scripts/fetch_posthog.py"
   indexing-results:
     command: 'propagate context get :changed-urls | python scripts/request_indexing.py'
+  dataforseo-enrichment-path:
+    command: "python scripts/fetch_dataforseo.py"
+  seo-enrichment-commit:
+    command: 'printf "seo: dataforseo enrichment %s\n" "$(date -u +%Y-%m-%d)"'
 
 signals:
   include:
@@ -83,6 +101,34 @@ executions:
           - :posthog-data-path
       - id: summarize-pull
         prompt: ./prompts/seo/pull-data-summary.md
+    after:
+      - git:commit
+      - git:push
+
+  enrich-seo:
+    repository: pdfdancer-marketing-data
+    signals: [enrich]
+    git:
+      branch:
+        name: main
+        base: main
+        reuse: true
+      commit:
+        message_source: seo-enrichment-commit
+      push:
+        remote: origin
+    before:
+      - git:branch
+    sub_tasks:
+      - id: install-deps
+        before:
+          - cp /Users/michael/Code/TFC/pdfdancer/pdfdancer-marketing-data/.env .env
+          - pip install -r requirements.txt
+      - id: fetch-enrichment
+        before:
+          - :dataforseo-enrichment-path
+      - id: summarize-enrichment
+        prompt: ./prompts/seo/enrich-summary.md
     after:
       - git:commit
       - git:push
