@@ -5,7 +5,7 @@ from typing import Any
 
 from propagate_app.signal_transport import close_push_socket, connect_push_socket, send_command, send_signal
 
-from .message_parser import parse_run_message
+from .message_parser import build_payload, parse_signal_message
 
 logger = logging.getLogger("propagate.telegram")
 
@@ -21,8 +21,8 @@ def _is_allowed(update, allowed_users: set[int]) -> bool:
     return False
 
 
-async def handle_run(update, context) -> None:
-    """Handle the ``/run`` command: parse, validate, and deliver a signal."""
+async def handle_signal(update, context) -> None:
+    """Handle the ``/signal`` command: parse, validate, and deliver a signal."""
     bot_data: dict[str, Any] = context.bot_data
     allowed_users: set[int] = bot_data["allowed_users"]
 
@@ -33,17 +33,35 @@ async def handle_run(update, context) -> None:
         return
 
     text: str = update.message.text
-    result = parse_run_message(text)
+    result = parse_signal_message(text)
     if result is None:
-        await update.message.reply_text("Usage: /run <signal> [instructions]")
+        await update.message.reply_text("Usage: /signal <signal> [param:value ...]")
         return
 
-    signal_type, payload = result
+    signal_type, remaining = result
     config_signals: dict[str, Any] = bot_data["config_signals"]
 
     if signal_type not in config_signals:
         defined = ", ".join(sorted(config_signals))
         await update.message.reply_text(f"Signal '{signal_type}' not defined in config (defined: {defined}).")
+        return
+
+    signal_config = config_signals[signal_type]
+    user_fields = [k for k in signal_config.payload if k != "sender"]
+
+    try:
+        payload = build_payload(remaining, user_fields, set(signal_config.payload))
+    except ValueError as exc:
+        await update.message.reply_text(str(exc))
+        return
+
+    # Check required fields are present.
+    missing = [
+        k for k in user_fields
+        if signal_config.payload[k].required and k not in payload
+    ]
+    if missing:
+        await update.message.reply_text(f"Missing required field(s): {', '.join(sorted(missing))}")
         return
 
     sender = update.effective_user.username or str(update.effective_user.id)
@@ -105,7 +123,7 @@ async def handle_help(update, context) -> None:
     signals_line = ", ".join(names) if names else "(none)"
     await update.message.reply_text(
         "Commands:\n"
-        "/run <signal> [instructions] — send a signal to propagate\n"
+        "/signal <signal> [param:value ...] — send a signal to propagate\n"
         "/resume — resume a failed run\n"
         "/signals — list available signals\n"
         "/help — show this message\n"
@@ -131,7 +149,7 @@ def run_bot(config_signals: dict[str, Any], zmq_address: str, token: str, allowe
     application.bot_data["config_signals"] = config_signals
     application.bot_data["allowed_users"] = allowed_users
 
-    application.add_handler(CommandHandler("run", handle_run))
+    application.add_handler(CommandHandler("signal", handle_signal))
     application.add_handler(CommandHandler("resume", handle_resume))
     application.add_handler(CommandHandler("signals", handle_signals))
     application.add_handler(CommandHandler("help", handle_help))

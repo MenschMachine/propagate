@@ -5,87 +5,118 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from propagate_app.models import SignalConfig, SignalFieldConfig
 from propagate_app.signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, receive_signal
 from propagate_telegram.cli import _parse_allowed_users, _resolve_allowed_users, _resolve_token
-from propagate_telegram.message_parser import parse_run_message
+from propagate_telegram.message_parser import parse_payload_params, parse_signal_message
 
 # ---------------------------------------------------------------------------
 # Parser tests (pure, no mocks)
 # ---------------------------------------------------------------------------
 
 
-def test_parse_run_message_with_instructions():
-    result = parse_run_message("/run deploy\nDeploy to prod.")
+def test_parse_signal_message_with_text():
+    result = parse_signal_message("/signal deploy\nDeploy to prod.")
     assert result is not None
-    signal_type, payload = result
+    signal_type, remaining = result
     assert signal_type == "deploy"
-    assert payload["instructions"] == "Deploy to prod."
+    assert remaining == "Deploy to prod."
 
 
-def test_parse_run_message_without_instructions():
-    result = parse_run_message("/run deploy")
+def test_parse_signal_message_without_text():
+    result = parse_signal_message("/signal deploy")
     assert result is not None
-    signal_type, payload = result
+    signal_type, remaining = result
     assert signal_type == "deploy"
-    assert payload == {}
+    assert remaining == ""
 
 
-def test_parse_run_message_empty():
-    result = parse_run_message("/run")
+def test_parse_signal_message_empty():
+    result = parse_signal_message("/signal")
     assert result is None
 
 
-def test_parse_run_message_empty_with_spaces():
-    result = parse_run_message("/run   ")
+def test_parse_signal_message_empty_with_spaces():
+    result = parse_signal_message("/signal   ")
     assert result is None
 
 
-def test_parse_run_message_multiline():
-    text = "/run deploy\nStep 1: pull latest.\nStep 2: run migrations.\nStep 3: restart."
-    result = parse_run_message(text)
+def test_parse_signal_message_multiline():
+    text = "/signal deploy\nStep 1: pull latest.\nStep 2: run migrations.\nStep 3: restart."
+    result = parse_signal_message(text)
     assert result is not None
-    signal_type, payload = result
+    signal_type, remaining = result
     assert signal_type == "deploy"
-    assert "Step 1" in payload["instructions"]
-    assert "Step 3" in payload["instructions"]
-    assert payload["instructions"].count("\n") == 2
+    assert "Step 1" in remaining
+    assert "Step 3" in remaining
+    assert remaining.count("\n") == 2
 
 
-def test_parse_run_message_instructions_on_first_line():
-    result = parse_run_message("/run deploy do the thing")
+def test_parse_signal_message_text_on_first_line():
+    result = parse_signal_message("/signal deploy do the thing")
     assert result is not None
-    signal_type, payload = result
+    signal_type, remaining = result
     assert signal_type == "deploy"
-    assert payload["instructions"] == "do the thing"
+    assert remaining == "do the thing"
 
 
-def test_parse_run_message_instructions_first_line_and_rest():
-    result = parse_run_message("/run deploy do the thing\nand more")
+def test_parse_signal_message_text_first_line_and_rest():
+    result = parse_signal_message("/signal deploy do the thing\nand more")
     assert result is not None
-    signal_type, payload = result
+    signal_type, remaining = result
     assert signal_type == "deploy"
-    assert payload["instructions"] == "do the thing\nand more"
+    assert remaining == "do the thing\nand more"
 
 
-def test_parse_run_message_with_bot_suffix():
-    result = parse_run_message("/run@MyPropagateBot deploy\nDeploy to prod.")
+def test_parse_signal_message_with_bot_suffix():
+    result = parse_signal_message("/signal@MyPropagateBot deploy\nDeploy to prod.")
     assert result is not None
-    signal_type, payload = result
+    signal_type, remaining = result
     assert signal_type == "deploy"
-    assert payload["instructions"] == "Deploy to prod."
+    assert remaining == "Deploy to prod."
 
 
-def test_parse_run_message_with_bot_suffix_no_instructions():
-    result = parse_run_message("/run@MyBot deploy")
+def test_parse_signal_message_with_bot_suffix_no_text():
+    result = parse_signal_message("/signal@MyBot deploy")
     assert result is not None
-    signal_type, payload = result
+    signal_type, remaining = result
     assert signal_type == "deploy"
-    assert payload == {}
+    assert remaining == ""
 
 
-def test_parse_run_message_with_bot_suffix_empty():
-    result = parse_run_message("/run@MyBot")
+def test_parse_signal_message_with_bot_suffix_empty():
+    result = parse_signal_message("/signal@MyBot")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Payload param parsing tests
+# ---------------------------------------------------------------------------
+
+
+def test_parse_payload_params_kv_pairs():
+    result = parse_payload_params("env:prod branch:main")
+    assert result == {"env": "prod", "branch": "main"}
+
+
+def test_parse_payload_params_quoted_value():
+    result = parse_payload_params('env:"prod and staging" branch:main')
+    assert result == {"env": "prod and staging", "branch": "main"}
+
+
+def test_parse_payload_params_colon_in_value():
+    result = parse_payload_params("url:http://example.com")
+    assert result == {"url": "http://example.com"}
+
+
+def test_parse_payload_params_invalid_token():
+    with pytest.raises(ValueError, match="Invalid parameter"):
+        parse_payload_params("bareword")
+
+
+def test_parse_payload_params_unclosed_quote():
+    with pytest.raises(ValueError, match="Unmatched quotes"):
+        parse_payload_params('env:"unclosed')
 
 
 # ---------------------------------------------------------------------------
@@ -199,18 +230,58 @@ def _make_edited_update(user_id: int, username: str) -> MagicMock:
     return update
 
 
-SIGNALS = {"deploy": object(), "build": object()}
+def _field(field_type: str = "string", required: bool = False) -> SignalFieldConfig:
+    return SignalFieldConfig(field_type=field_type, required=required)
+
+
+SIGNALS = {
+    "deploy": SignalConfig(
+        name="deploy",
+        payload={
+            "instructions": _field(),
+            "sender": _field(),
+        },
+    ),
+    "build": SignalConfig(
+        name="build",
+        payload={
+            "instructions": _field(),
+            "sender": _field(),
+        },
+    ),
+}
+
+MULTI_FIELD_SIGNALS = {
+    "deploy": SignalConfig(
+        name="deploy",
+        payload={
+            "env": _field(),
+            "branch": _field(),
+            "sender": _field(),
+        },
+    ),
+}
+
+REQUIRED_FIELD_SIGNALS = {
+    "deploy": SignalConfig(
+        name="deploy",
+        payload={
+            "instructions": _field(required=True),
+            "sender": _field(),
+        },
+    ),
+}
 
 
 @pytest.mark.anyio
-async def test_handle_run_delivers_signal(zmq_socket, push_socket):
-    from propagate_telegram.bot import handle_run
+async def test_handle_signal_delivers_signal(zmq_socket, push_socket):
+    from propagate_telegram.bot import handle_signal
 
     pull, _ = zmq_socket
-    update = _make_update(123, "michael", "/run deploy\nDeploy to prod.")
+    update = _make_update(123, "michael", "/signal deploy\nDeploy to prod.")
     context = _make_context(SIGNALS, push_socket, {123})
 
-    await handle_run(update, context)
+    await handle_signal(update, context)
 
     update.message.reply_text.assert_called_once()
     reply_text = update.message.reply_text.call_args[0][0]
@@ -225,15 +296,15 @@ async def test_handle_run_delivers_signal(zmq_socket, push_socket):
 
 
 @pytest.mark.anyio
-async def test_handle_run_ignores_unauthorized_user(zmq_socket, push_socket, caplog):
-    from propagate_telegram.bot import handle_run
+async def test_handle_signal_ignores_unauthorized_user(zmq_socket, push_socket, caplog):
+    from propagate_telegram.bot import handle_signal
 
     pull, _ = zmq_socket
-    update = _make_update(999, "hacker", "/run deploy\nDo bad things.")
+    update = _make_update(999, "hacker", "/signal deploy\nDo bad things.")
     context = _make_context(SIGNALS, push_socket, {123})
 
     with caplog.at_level(logging.WARNING, logger="propagate.telegram"):
-        await handle_run(update, context)
+        await handle_signal(update, context)
 
     update.message.reply_text.assert_not_called()
     result = receive_signal(pull, block=True, timeout_ms=500)
@@ -242,14 +313,14 @@ async def test_handle_run_ignores_unauthorized_user(zmq_socket, push_socket, cap
 
 
 @pytest.mark.anyio
-async def test_handle_run_rejects_unknown_signal(zmq_socket, push_socket):
-    from propagate_telegram.bot import handle_run
+async def test_handle_signal_rejects_unknown_signal(zmq_socket, push_socket):
+    from propagate_telegram.bot import handle_signal
 
     pull, _ = zmq_socket
-    update = _make_update(123, "michael", "/run unknown\nSome instructions.")
+    update = _make_update(123, "michael", "/signal unknown\nSome instructions.")
     context = _make_context(SIGNALS, push_socket, {123})
 
-    await handle_run(update, context)
+    await handle_signal(update, context)
 
     update.message.reply_text.assert_called_once()
     reply_text = update.message.reply_text.call_args[0][0]
@@ -260,14 +331,14 @@ async def test_handle_run_rejects_unknown_signal(zmq_socket, push_socket):
 
 
 @pytest.mark.anyio
-async def test_handle_run_includes_sender(zmq_socket, push_socket):
-    from propagate_telegram.bot import handle_run
+async def test_handle_signal_includes_sender(zmq_socket, push_socket):
+    from propagate_telegram.bot import handle_signal
 
     pull, _ = zmq_socket
-    update = _make_update(123, "michael", "/run deploy\nDo it.")
+    update = _make_update(123, "michael", "/signal deploy\nDo it.")
     context = _make_context(SIGNALS, push_socket, {123})
 
-    await handle_run(update, context)
+    await handle_signal(update, context)
 
     result = receive_signal(pull, block=True, timeout_ms=2000)
     assert result is not None
@@ -276,13 +347,13 @@ async def test_handle_run_includes_sender(zmq_socket, push_socket):
 
 
 @pytest.mark.anyio
-async def test_handle_run_bad_format(push_socket):
-    from propagate_telegram.bot import handle_run
+async def test_handle_signal_bad_format(push_socket):
+    from propagate_telegram.bot import handle_signal
 
-    update = _make_update(123, "michael", "/run")
+    update = _make_update(123, "michael", "/signal")
     context = _make_context(SIGNALS, push_socket, {123})
 
-    await handle_run(update, context)
+    await handle_signal(update, context)
 
     update.message.reply_text.assert_called_once()
     reply_text = update.message.reply_text.call_args[0][0]
@@ -290,19 +361,88 @@ async def test_handle_run_bad_format(push_socket):
 
 
 @pytest.mark.anyio
-async def test_handle_run_uses_user_id_when_no_username(zmq_socket, push_socket):
-    from propagate_telegram.bot import handle_run
+async def test_handle_signal_uses_user_id_when_no_username(zmq_socket, push_socket):
+    from propagate_telegram.bot import handle_signal
 
     pull, _ = zmq_socket
-    update = _make_update(123, None, "/run deploy\nDo it.")
+    update = _make_update(123, None, "/signal deploy\nDo it.")
     context = _make_context(SIGNALS, push_socket, {123})
 
-    await handle_run(update, context)
+    await handle_signal(update, context)
 
     result = receive_signal(pull, block=True, timeout_ms=2000)
     assert result is not None
     _, payload = result
     assert payload["sender"] == "123"
+
+
+@pytest.mark.anyio
+async def test_handle_signal_single_param_shorthand(zmq_socket, push_socket):
+    """Signal with 1 user field + bare text → payload uses that field."""
+    from propagate_telegram.bot import handle_signal
+
+    pull, _ = zmq_socket
+    update = _make_update(123, "michael", "/signal deploy Deploy to production please")
+    context = _make_context(SIGNALS, push_socket, {123})
+
+    await handle_signal(update, context)
+
+    result = receive_signal(pull, block=True, timeout_ms=2000)
+    assert result is not None
+    signal_type, payload = result
+    assert signal_type == "deploy"
+    assert payload["instructions"] == "Deploy to production please"
+    assert payload["sender"] == "michael"
+
+
+@pytest.mark.anyio
+async def test_handle_signal_multi_param(zmq_socket, push_socket):
+    """Signal with multiple fields, key:value pairs delivered via ZMQ."""
+    from propagate_telegram.bot import handle_signal
+
+    pull, _ = zmq_socket
+    update = _make_update(123, "michael", "/signal deploy env:prod branch:main")
+    context = _make_context(MULTI_FIELD_SIGNALS, push_socket, {123})
+
+    await handle_signal(update, context)
+
+    result = receive_signal(pull, block=True, timeout_ms=2000)
+    assert result is not None
+    signal_type, payload = result
+    assert signal_type == "deploy"
+    assert payload["env"] == "prod"
+    assert payload["branch"] == "main"
+    assert payload["sender"] == "michael"
+
+
+@pytest.mark.anyio
+async def test_handle_signal_unknown_field_rejected(push_socket):
+    """Key not in signal config → error reply."""
+    from propagate_telegram.bot import handle_signal
+
+    update = _make_update(123, "michael", "/signal deploy bogus:value")
+    context = _make_context(SIGNALS, push_socket, {123})
+
+    await handle_signal(update, context)
+
+    update.message.reply_text.assert_called_once()
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "unknown" in reply_text.lower() or "bogus" in reply_text.lower()
+
+
+@pytest.mark.anyio
+async def test_handle_signal_missing_required_field(push_socket):
+    """Signal with required field but no payload → error reply."""
+    from propagate_telegram.bot import handle_signal
+
+    update = _make_update(123, "michael", "/signal deploy")
+    context = _make_context(REQUIRED_FIELD_SIGNALS, push_socket, {123})
+
+    await handle_signal(update, context)
+
+    update.message.reply_text.assert_called_once()
+    reply_text = update.message.reply_text.call_args[0][0]
+    assert "missing" in reply_text.lower() or "required" in reply_text.lower()
 
 
 @pytest.mark.anyio
@@ -345,19 +485,19 @@ async def test_handle_help_includes_signals(push_socket):
     reply_text = update.message.reply_text.call_args[0][0]
     assert "build" in reply_text
     assert "deploy" in reply_text
-    assert "/run" in reply_text
+    assert "/signal" in reply_text
     assert "/signals" in reply_text
 
 
 @pytest.mark.anyio
-async def test_handle_run_ignores_edited_message(push_socket):
+async def test_handle_signal_ignores_edited_message(push_socket):
     """Edited messages have update.message=None; handlers must not crash."""
-    from propagate_telegram.bot import handle_run
+    from propagate_telegram.bot import handle_signal
 
     update = _make_edited_update(123, "michael")
     context = _make_context(SIGNALS, push_socket, {123})
 
-    await handle_run(update, context)  # should return silently
+    await handle_signal(update, context)  # should return silently
 
 
 @pytest.mark.anyio

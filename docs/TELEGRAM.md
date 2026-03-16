@@ -1,6 +1,6 @@
 # Telegram Bot Bridge
 
-`propagate-telegram` is a Telegram bot that forwards messages as propagate signals via ZeroMQ. Send instructions from your phone, and they arrive as `:signal.instructions` in the agent's prompt.
+`propagate-telegram` is a Telegram bot that forwards messages as propagate signals via ZeroMQ. Send instructions from your phone, and they arrive as signal payload fields in the agent's prompt.
 
 ---
 
@@ -34,12 +34,36 @@ The `--config` path must match the one used by `propagate serve` — it determin
 
 ## Bot Commands
 
-### `/run <signal> [instructions]`
+### `/signal <signal> [param:value ...]`
 
-Send a signal to propagate with optional instructions.
+Send a signal to propagate with optional payload parameters.
+
+**Key:value syntax** — each parameter is a `key:value` pair separated by spaces:
 
 ```
-/run deploy
+/signal deploy env:prod branch:main
+```
+
+This sends signal `deploy` with payload:
+
+```json
+{
+  "env": "prod",
+  "branch": "main",
+  "sender": "michael"
+}
+```
+
+**Quoted values** — use quotes for values containing spaces:
+
+```
+/signal deploy env:"prod and staging" branch:main
+```
+
+**Single-param shorthand** — when a signal has exactly one user-facing payload field (excluding `sender`), you can omit the field name:
+
+```
+/signal deploy
 Deploy branch main to staging.
 Run smoke tests after.
 ```
@@ -53,7 +77,7 @@ This sends signal `deploy` with payload:
 }
 ```
 
-The signal name must match a signal defined in the propagate config. Instructions and sender are delivered as payload fields, available in prompts as `:signal.instructions` and `:signal.sender`.
+The signal name must match a signal defined in the propagate config. The `sender` field is automatically populated from your Telegram username. Payload fields are available in prompts as `:signal.<field>` (e.g. `:signal.instructions`, `:signal.sender`).
 
 ### `/resume`
 
@@ -112,7 +136,7 @@ propagate serve --config config/propagate.yaml
 propagate-telegram --config config/propagate.yaml --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456
 ```
 
-Send `/run deploy Deploy to production.` in Telegram. The signal is delivered, the `deploy-app` execution starts, and the agent sees your instructions in its prompt.
+Send `/signal deploy Deploy to production.` in Telegram. The signal is delivered, the `deploy-app` execution starts, and the agent sees your instructions in its prompt.
 
 ---
 
