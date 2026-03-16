@@ -4,6 +4,21 @@ Read `:findings` from context. Turn each finding into a typed, actionable sugges
 
 If there are PR comments from a previous review (visible in context), address that feedback and revise your suggestions accordingly.
 
+## Past suggestions and cool-down rules
+
+Before generating suggestions, check what was previously recommended:
+
+```bash
+find reports/ -name "*suggest*" -o -name "*suggestion*" | sort -r
+```
+
+Follow these rules:
+
+- **2-week cool-down**: Do not suggest changes for any URL that had a suggestion implemented less than 14 days ago. Give changes time to show up in GSC data before re-evaluating.
+- **Don't repeat failures**: If the effectiveness review in `:findings` shows a past suggestion didn't improve the target metric, do not recommend the same approach again. Try a different angle or skip the page.
+- **Build on successes**: If a type of change (e.g., meta title rewrites) consistently improved metrics across multiple pages, favor that approach for similar cases.
+- **Note history when re-suggesting**: When suggesting changes for a page after the cool-down period, mention what was tried before and explain why the new suggestion takes a different approach.
+
 ## Suggestion types
 
 ### meta
