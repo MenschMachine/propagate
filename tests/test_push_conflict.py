@@ -155,12 +155,16 @@ def test_push_conflict_rebase_fails_on_merge_conflict(ctx: SimpleNamespace) -> N
     assert "failed" in result.stderr.lower()
     assert "conflict" in result.stderr.lower()
 
-    # Working tree is clean — rebase was aborted
+    # Working tree is clean — rebase was aborted (ignore untracked context store files)
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=ctx.repo, text=True, capture_output=True, check=True,
     )
-    assert status.stdout.strip() == ""
+    non_context_lines = [
+        line for line in status.stdout.strip().splitlines()
+        if ".propagate-context/" not in line
+    ]
+    assert non_context_lines == []
 
     assert not (ctx.repo / ".git" / "rebase-merge").exists()
     assert not (ctx.repo / ".git" / "rebase-apply").exists()

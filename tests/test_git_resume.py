@@ -1,6 +1,7 @@
 """Tests for resume with git state and execution context preservation."""
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
@@ -245,3 +246,105 @@ def test_resume_preserves_execution_context_keys(resume_ctx: SimpleNamespace) ->
     # Verify context was preserved — task2 read the key and wrote it to result_file
     assert result_file.exists(), "Task2 should have read the context key and written result"
     assert result_file.read_text(encoding="utf-8") == "my-value"
+
+
+def test_resume_preserves_commit_message_for_pr(resume_ctx: SimpleNamespace) -> None:
+    """git:pr on resume uses the commit message persisted by git:commit in the first run."""
+    ctx = resume_ctx
+    target_file = ctx.repo / "artifact.txt"
+    fail_flag = ctx.scripts_dir / "fail_flag3.txt"
+
+    # Fake gh that logs its invocation
+    bin_dir = ctx.scripts_dir / "bin"
+    bin_dir.mkdir()
+    gh_log = ctx.scripts_dir / "gh-log.json"
+
+    fake_gh = bin_dir / "gh"
+    fake_gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "body = ''\n"
+        "if '--body-file' in args:\n"
+        "    body = Path(args[args.index('--body-file') + 1]).read_text()\n"
+        "Path(os.environ['GH_LOG']).write_text(json.dumps({'args': args, 'body': body}))\n",
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+
+    # Dispatcher: task1 writes a file, task2 fails first time then succeeds.
+    dispatcher = ctx.scripts_dir / "dispatcher3.py"
+    dispatcher.write_text(
+        "import subprocess, sys\n"
+        "from pathlib import Path\n"
+        "prompt = Path(sys.argv[1]).read_text()\n"
+        "if 'TASK1' in prompt:\n"
+        f"    Path({repr(str(target_file))}).write_text('updated\\n', encoding='utf-8')\n"
+        "elif 'TASK2' in prompt:\n"
+        f"    flag = Path({repr(str(fail_flag))})\n"
+        "    if not flag.exists():\n"
+        "        flag.write_text('failed-once', encoding='utf-8')\n"
+        "        sys.exit(1)\n",
+        encoding="utf-8",
+    )
+
+    prompt1 = ctx.config_dir / "prompts" / "task1.md"
+    prompt2 = ctx.config_dir / "prompts" / "task2.md"
+    prompt1.write_text("TASK1: do something\n", encoding="utf-8")
+    prompt2.write_text("TASK2: do another thing\n", encoding="utf-8")
+
+    agent_cmd = f"{_q(CLI_PYTHON)} {_q(dispatcher)} {{prompt_file}}"
+
+    _write_config(ctx, {
+        "version": "6",
+        "agent": {"command": agent_cmd},
+        "repositories": {"repo": {"path": str(ctx.repo)}},
+        "context_sources": {"commit-msg": {"command": _emit_cmd(ctx, "feat: pr resume test\n\nPR body content")}},
+        "executions": {
+            "default": {
+                "repository": "repo",
+                "git": {
+                    "branch": {"name": "feat/pr-resume", "base": "main"},
+                    "commit": {"message_source": "commit-msg"},
+                    "push": {"remote": "origin"},
+                    "pr": {"base": "main"},
+                },
+                "before": ["git:branch"],
+                "sub_tasks": [
+                    {
+                        "id": "task1",
+                        "prompt": "./prompts/task1.md",
+                        "after": ["git:commit"],
+                    },
+                    {
+                        "id": "task2",
+                        "prompt": "./prompts/task2.md",
+                    },
+                ],
+                "after": ["git:push", "git:pr"],
+            },
+        },
+    })
+
+    # First run: task1 succeeds (git:branch + git:commit run), task2 fails
+    result1 = _run_cli("run", "--config", str(ctx.config_path), cwd=ctx.repo)
+    assert result1.returncode == 1, f"Expected failure on first run.\nstdout: {result1.stdout}\nstderr: {result1.stderr}"
+
+    # Resume with fake gh on PATH
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    env["GH_LOG"] = str(gh_log)
+    result2 = subprocess.run(
+        [str(CLI_PYTHON), str(CLI_PATH), "run", "--config", str(ctx.config_path), "--resume"],
+        cwd=ctx.repo, text=True, capture_output=True, check=False, env=env,
+    )
+    assert result2.returncode == 0, f"Resume should succeed.\nstdout: {result2.stdout}\nstderr: {result2.stderr}"
+    assert "empty" not in result2.stderr.lower(), f"Should not get empty commit message error.\nstderr: {result2.stderr}"
+
+    # Verify fake gh was invoked with correct commit message as PR title
+    assert gh_log.exists(), "fake gh should have been invoked"
+    invocation = json.loads(gh_log.read_text())
+    assert invocation["args"][:2] == ["pr", "create"]
+    assert invocation["args"][invocation["args"].index("--title") + 1] == "feat: pr resume test"
+    assert "PR body content" in invocation["body"]

@@ -1,4 +1,3 @@
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -37,6 +36,14 @@ from .models import (
     RuntimeContext,
 )
 
+_GIT_STATE_KEY_PREFIX = ":git."
+
+
+def _persist_git_state(runtime_context: RuntimeContext, field: str, value: str) -> None:
+    context_dir = resolve_execution_context_dir(runtime_context)
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, f"{_GIT_STATE_KEY_PREFIX}{field}", value)
+
 
 def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
     git_state = runtime_context.git_state
@@ -53,6 +60,8 @@ def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: R
     prepared = prepare_git_execution(execution_name, branch_config, runtime_context.working_dir)
     git_state.starting_branch = prepared.starting_branch
     git_state.selected_branch = prepared.selected_branch
+    _persist_git_state(runtime_context, "starting_branch", prepared.starting_branch)
+    _persist_git_state(runtime_context, "selected_branch", prepared.selected_branch)
 
 
 def git_do_commit(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
@@ -63,6 +72,7 @@ def git_do_commit(execution_name: str, git_config: GitConfig, runtime_context: R
     create_execution_git_commit(execution_name, commit_message, runtime_context.working_dir)
     assert runtime_context.git_state is not None
     runtime_context.git_state.commit_message = commit_message
+    _persist_git_state(runtime_context, "commit_message", commit_message)
 
 
 def git_do_push(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
@@ -286,15 +296,18 @@ def wrap_execution_git_phase_error(execution_name: str, phase: str, error: Propa
     return PropagateError(f"Execution '{execution_name}' failed during {phase}: {normalize_error_message(str(error))}.")
 
 
-def restore_git_run_state(working_dir: Path, git_config: GitConfig) -> GitRunState:
+def restore_git_run_state(runtime_context: RuntimeContext) -> GitRunState:
+    context_dir = resolve_execution_context_dir(runtime_context)
     git_state = GitRunState()
-    try:
-        branch = get_current_branch(working_dir)
-        git_state.selected_branch = branch
-        git_state.starting_branch = git_config.branch.base
-        LOGGER.debug("Restored git state from repository: branch '%s'.", branch)
-    except (PropagateError, subprocess.CalledProcessError) as exc:
-        LOGGER.debug("Could not restore git state from repository: %s", exc)
+    for field in ("starting_branch", "selected_branch", "commit_message"):
+        key = f"{_GIT_STATE_KEY_PREFIX}{field}"
+        try:
+            value = read_context_value(context_dir, key)
+            setattr(git_state, field, value)
+        except PropagateError as exc:
+            LOGGER.debug("Could not restore git field '%s': %s", field, exc)
+    if git_state.selected_branch is not None:
+        LOGGER.debug("Restored git state from context: branch '%s'.", git_state.selected_branch)
     return git_state
 
 

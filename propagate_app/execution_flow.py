@@ -17,7 +17,7 @@ def run_configured_execution(
 ) -> None:
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
     if execution.git and completed_task_phases:
-        git_state = restore_git_run_state(runtime_context.working_dir, execution.git)
+        git_state = restore_git_run_state(runtime_context)
     else:
         git_state = GitRunState() if execution.git else None
     ctx = replace(runtime_context, git_state=git_state)

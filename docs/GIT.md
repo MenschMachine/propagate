@@ -247,12 +247,15 @@ executions:
 
 ## Resume behaviour
 
-On `--resume`, git state is restored from the repository rather than re-running `git:branch`:
+On `--resume`, git state is restored from the execution context store rather than re-running `git:branch`. Three fields are persisted as context keys when set:
 
-- `selected_branch` is read from the current checked-out branch in the working directory.
-- `starting_branch` is set to `git.branch.base` from config (the configured base branch).
+| Context key | Set by | Consumed by |
+|---|---|---|
+| `:git.starting_branch` | `git:branch` | `git:pr` (as PR base fallback) |
+| `:git.selected_branch` | `git:branch` | `git:push`, `git:pr` |
+| `:git.commit_message` | `git:commit` | `git:pr` (as PR title/body source) |
 
-This means `git:push` and `git:pr` work correctly on resume even though `git:branch` is skipped (it was already completed). Execution context written by earlier sub-tasks is also preserved — context is only cleared for fresh runs, not resumed ones.
+This means `git:push` and `git:pr` work correctly on resume even though `git:branch` and `git:commit` are skipped (they were already completed). Execution context written by earlier sub-tasks is also preserved — context is only cleared for fresh runs, not resumed ones.
 
 ## Notes
 
