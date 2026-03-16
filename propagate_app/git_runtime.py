@@ -1,3 +1,4 @@
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from .models import (
     GitConfig,
     GitPrConfig,
     GitPushConfig,
+    GitRunState,
     PreparedGitExecution,
     RuntimeContext,
 )
@@ -282,6 +284,18 @@ def cannot_start_execution_git_automation(execution_name: str, error: PropagateE
 
 def wrap_execution_git_phase_error(execution_name: str, phase: str, error: PropagateError) -> PropagateError:
     return PropagateError(f"Execution '{execution_name}' failed during {phase}: {normalize_error_message(str(error))}.")
+
+
+def restore_git_run_state(working_dir: Path, git_config: GitConfig) -> GitRunState:
+    git_state = GitRunState()
+    try:
+        branch = get_current_branch(working_dir)
+        git_state.selected_branch = branch
+        git_state.starting_branch = git_config.branch.base
+        LOGGER.debug("Restored git state from repository: branch '%s'.", branch)
+    except (PropagateError, subprocess.CalledProcessError) as exc:
+        LOGGER.debug("Could not restore git state from repository: %s", exc)
+    return git_state
 
 
 def normalize_error_message(message: str) -> str:

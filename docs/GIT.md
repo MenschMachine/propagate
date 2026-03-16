@@ -245,6 +245,15 @@ executions:
       - git:pr-comment-add :pr-summary
 ```
 
+## Resume behaviour
+
+On `--resume`, git state is restored from the repository rather than re-running `git:branch`:
+
+- `selected_branch` is read from the current checked-out branch in the working directory.
+- `starting_branch` is set to `git.branch.base` from config (the configured base branch).
+
+This means `git:push` and `git:pr` work correctly on resume even though `git:branch` is skipped (it was already completed). Execution context written by earlier sub-tasks is also preserved — context is only cleared for fresh runs, not resumed ones.
+
 ## Notes
 
 - `git:branch` must run before `git:push` or `git:pr` (it captures the branch name used by those commands).

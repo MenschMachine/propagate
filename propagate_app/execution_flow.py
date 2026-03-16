@@ -3,6 +3,7 @@ from dataclasses import replace
 
 from .constants import LOGGER, PHASE_AFTER, PHASE_BEFORE
 from .errors import PropagateError
+from .git_runtime import restore_git_run_state
 from .models import ExecutionConfig, GitRunState, RuntimeContext
 from .sub_tasks import run_execution_sub_tasks, run_hook_phase
 
@@ -15,7 +16,10 @@ def run_configured_execution(
     completed_execution_phase: str | None = None,
 ) -> None:
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
-    git_state = GitRunState() if execution.git else None
+    if execution.git and completed_task_phases:
+        git_state = restore_git_run_state(runtime_context.working_dir, execution.git)
+    else:
+        git_state = GitRunState() if execution.git else None
     ctx = replace(runtime_context, git_state=git_state)
     context_id = f"execution '{execution.name}'"
     try:
