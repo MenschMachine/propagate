@@ -34,6 +34,9 @@ signals (typed events), propagation triggers, and a 3-tier context store.
 
 # Run as long-lived server
 ./venv/bin/propagate serve --config config/propagate.yaml
+
+# Clear all context and run state
+./venv/bin/propagate clear --config config/propagate.yaml
 ```
 
 ## Architecture

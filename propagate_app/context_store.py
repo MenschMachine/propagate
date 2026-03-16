@@ -82,6 +82,14 @@ def _validate_task_path(task_path: str) -> None:
             raise PropagateError(f"--task value must be 'execution' or 'execution/task', got: '{task_path}'")
 
 
+def clear_all_context(context_root: Path) -> bool:
+    if not context_root.exists():
+        return False
+    shutil.rmtree(context_root)
+    LOGGER.debug("Cleared all context at '%s'.", context_root)
+    return True
+
+
 def clear_execution_context(context_root: Path, execution_name: str) -> None:
     execution_dir = get_execution_context_dir(context_root, execution_name)
     if not execution_dir.exists():

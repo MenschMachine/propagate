@@ -573,6 +573,9 @@ propagate context dump
 
 # Run as a long-lived server
 propagate serve --config config.yaml
+
+# Clear all context and run state
+propagate clear --config config.yaml
 ```
 
 ### `run` options
@@ -594,6 +597,14 @@ propagate serve --config config.yaml
 | `--signal` | Signal type name. Mutually exclusive with `--signal-file`. |
 | `--signal-payload` | YAML/JSON payload mapping. Requires `--signal`. |
 | `--signal-file` | Path to a signal file. Mutually exclusive with `--signal`. |
+
+### `clear` options
+
+| Flag | Description |
+|------|-------------|
+| `--config` | Path to YAML config file. Required. |
+
+Removes the `.propagate-context/` directory and the `.propagate-state-{name}.yaml` file associated with the config.
 
 ### `serve` options
 

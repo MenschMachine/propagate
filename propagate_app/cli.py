@@ -8,15 +8,17 @@ from pathlib import Path
 from .config_load import load_config
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, configure_logging
 from .context_store import (
+    clear_all_context,
     context_dump_command,
     context_get_command,
     context_set_command,
+    get_context_root,
     resolve_context_dir_for_read,
     resolve_context_dir_for_write,
 )
 from .errors import PropagateError
 from .models import Config, ExecutionScheduleState, RunState, RuntimeContext
-from .run_state import load_run_state, state_file_path
+from .run_state import clear_run_state, load_run_state, state_file_path
 from .scheduler import run_execution_schedule
 from .serve import serve_command
 from .signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, send_signal, socket_address
@@ -51,6 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     context_subparsers.add_parser("dump", help="Dump all context keys as YAML.")
     serve_parser = subparsers.add_parser("serve", help="Run as a long-lived server, listening for signals.")
     serve_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+    clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
+    clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     return parser
 
 
@@ -91,6 +95,8 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
         return send_signal_command(args.config, args.signal, args.signal_payload, args.signal_file)
     if args.command == "serve":
         return serve_command(args.config)
+    if args.command == "clear":
+        return clear_command(args.config)
     if args.command == "context":
         context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
         execution_env = os.environ.get(ENV_EXECUTION, "")
@@ -246,6 +252,26 @@ def send_signal_command(
         LOGGER.info("Sent signal '%s' to %s", active_signal.signal_type, address)
     finally:
         close_push_socket(push)
+    return 0
+
+
+def clear_command(config_value: str) -> int:
+    config_path = Path(config_value).expanduser().resolve()
+    if not config_path.exists():
+        raise PropagateError(f"Config file not found: {config_path}")
+    context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
+    context_root = Path(context_root_env) if context_root_env else get_context_root(config_path)
+    cleared = []
+    if clear_all_context(context_root):
+        cleared.append(f"context ({context_root})")
+    state_path = state_file_path(config_path)
+    if state_path.exists():
+        clear_run_state(config_path)
+        cleared.append(f"run state ({state_path})")
+    if cleared:
+        LOGGER.info("Cleared: %s", ", ".join(cleared))
+    else:
+        LOGGER.info("Nothing to clear.")
     return 0
 
 
