@@ -1,0 +1,19 @@
+[Unit]
+Description=Propagate Serve - ZeroMQ event loop
+After=network.target
+
+[Service]
+Type=simple
+User=propagate
+Group=propagate
+WorkingDirectory=/opt/propagate
+EnvironmentFile=/opt/propagate/.env
+ExecStart=/opt/propagate/venv/bin/propagate serve --config /opt/propagate/${CONFIG_PATH}
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=propagate-serve
+
+[Install]
+WantedBy=propagate.target

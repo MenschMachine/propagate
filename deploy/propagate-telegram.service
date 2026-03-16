@@ -1,0 +1,21 @@
+[Unit]
+Description=Propagate Telegram - Telegram bot bridge
+After=network.target propagate-serve.service
+
+[Service]
+Type=simple
+User=propagate
+Group=propagate
+WorkingDirectory=/opt/propagate
+EnvironmentFile=/opt/propagate/.env
+ExecStart=/opt/propagate/venv/bin/propagate-telegram \
+    --config /opt/propagate/${CONFIG_PATH} \
+    --token-env TELEGRAM_BOT_TOKEN
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=propagate-telegram
+
+[Install]
+WantedBy=propagate.target

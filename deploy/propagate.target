@@ -1,0 +1,6 @@
+[Unit]
+Description=Propagate Services
+Wants=propagate-serve.service propagate-webhook.service propagate-telegram.service
+
+[Install]
+WantedBy=multi-user.target
