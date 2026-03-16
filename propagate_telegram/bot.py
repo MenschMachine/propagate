@@ -135,6 +135,40 @@ async def handle_signals(update, context) -> None:
         await update.message.reply_text("No signals configured.")
 
 
+async def handle_logs(update, context) -> None:
+    """Handle the ``/logs`` command: show recent log output."""
+    from propagate_app.log_buffer import get_recent_logs
+
+    allowed_users: set[int] = context.bot_data["allowed_users"]
+    if not _is_allowed(update, allowed_users):
+        return
+
+    if update.message is None:
+        return
+
+    text: str = update.message.text
+    parts = text.strip().split()
+    n = 20
+    if len(parts) > 1:
+        try:
+            n = int(parts[1])
+        except ValueError:
+            await update.message.reply_text("Usage: /logs [N] — N must be a number.")
+            return
+
+    lines = get_recent_logs(n)
+    if not lines:
+        await update.message.reply_text("No logs available.")
+        return
+
+    while lines:
+        body = "\n".join(lines)
+        if len(body) <= 4096:
+            break
+        lines.pop(0)
+    await update.message.reply_text(body)
+
+
 async def handle_help(update, context) -> None:
     """Handle the ``/help`` command."""
     allowed_users: set[int] = context.bot_data["allowed_users"]
@@ -152,6 +186,7 @@ async def handle_help(update, context) -> None:
         "/signal <signal> [param:value ...] — send a signal to propagate\n"
         "/resume — resume a failed run\n"
         "/signals — list available signals\n"
+        "/logs [N] — show last N log lines (default 20)\n"
         "/help — show this message\n"
         f"\nAvailable signals: {signals_line}"
     )
@@ -236,6 +271,7 @@ def run_bot(
     application.add_handler(CommandHandler("signal", handle_signal))
     application.add_handler(CommandHandler("resume", handle_resume))
     application.add_handler(CommandHandler("signals", handle_signals))
+    application.add_handler(CommandHandler("logs", handle_logs))
     application.add_handler(CommandHandler("help", handle_help))
 
     logger.info("Starting Telegram bot (allowed users: %s).", ", ".join(str(u) for u in sorted(allowed_users)))

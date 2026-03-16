@@ -1,6 +1,8 @@
 import logging
 import re
 
+from propagate_app.log_buffer import install_buffered_handler
+
 
 def configure_logging() -> None:
     logging.basicConfig(
@@ -9,6 +11,7 @@ def configure_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    install_buffered_handler()
 
 
 LOGGER = logging.getLogger("propagate")

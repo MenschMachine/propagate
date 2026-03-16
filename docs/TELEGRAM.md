@@ -79,6 +79,17 @@ This sends signal `deploy` with payload:
 
 The signal name must match a signal defined in the propagate config. The `sender` field is automatically populated from your Telegram username. Payload fields are available in prompts as `:signal.<field>` (e.g. `:signal.instructions`, `:signal.sender`).
 
+### `/logs [N]`
+
+Show the last N lines of log output (default 20). Useful for checking what propagate is doing without SSH-ing into the server.
+
+```
+/logs
+/logs 50
+```
+
+Output is truncated to Telegram's 4096 character message limit.
+
 ### `/resume`
 
 Resume a previously failed run. If a state file exists from a failed execution, propagate picks up where it left off — completed tasks are skipped, and it retries from the point of failure.
