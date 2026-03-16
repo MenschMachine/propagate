@@ -41,11 +41,12 @@ def validate_commit_message(message: str) -> None:
 def create_execution_commit(commit_message: str, working_dir: Path) -> None:
     LOGGER.info("Creating git commit for execution changes.")
     run_git_command(
-        ["add", "-A", "--", ".", ":!.env", ":!**/.env"],
+        ["add", "-A", "."],
         working_dir,
         failure_message="Failed to stage execution changes for commit.",
         start_failure_message="Failed to start git add for execution changes: {error}",
     )
+    _unstage_env_files(working_dir)
     message_path = write_temp_text(commit_message, prefix="propagate-commit-", suffix=".txt")
     try:
         run_git_command(
@@ -56,6 +57,25 @@ def create_execution_commit(commit_message: str, working_dir: Path) -> None:
         )
     finally:
         cleanup_temp_file(message_path, "commit message file")
+
+
+def _unstage_env_files(working_dir: Path) -> None:
+    """Remove any .env files from the staging area (safety net for repos without .gitignore coverage)."""
+    result = run_git_command(
+        ["diff", "--cached", "--name-only"],
+        working_dir,
+        failure_message="Failed to list staged files.",
+        start_failure_message="Failed to start git diff --cached: {error}",
+    )
+    env_files = [f for f in result.stdout.splitlines() if f == ".env" or f.endswith("/.env")]
+    if env_files:
+        LOGGER.debug("Unstaging .env files from commit: %s", env_files)
+        run_git_command(
+            ["reset", "HEAD", "--", *env_files],
+            working_dir,
+            failure_message="Failed to unstage .env files.",
+            start_failure_message="Failed to start git reset for .env files: {error}",
+        )
 
 
 def push_branch(push_config: GitPushConfig, branch_name: str, working_dir: Path) -> None:

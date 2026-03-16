@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+
+from propagate_app.git_publish import create_execution_commit
 
 
 def _run_git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -26,51 +29,50 @@ def git_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def test_git_add_excludes_env(git_repo: Path) -> None:
-    """git add -A -- . :!.env should stage normal files but not .env."""
+def test_commit_excludes_env_without_gitignore(git_repo: Path) -> None:
+    """.env should not be committed even when no .gitignore exists."""
     (git_repo / ".env").write_text("SECRET=abc123")
     (git_repo / "app.py").write_text("print('hello')")
 
-    _run_git("add", "-A", "--", ".", ":!.env", ":!**/.env", cwd=git_repo)
+    create_execution_commit("test: add app", git_repo)
 
-    result = _run_git("diff", "--cached", "--name-only", cwd=git_repo)
-    staged = result.stdout.strip().splitlines()
+    result = _run_git("show", "--name-only", "--format=", "HEAD", cwd=git_repo)
+    committed = result.stdout.strip().splitlines()
 
-    assert "app.py" in staged
-    assert ".env" not in staged
-
-
-def test_git_add_excludes_env_even_without_gitignore(git_repo: Path) -> None:
-    """The pathspec exclude works regardless of .gitignore presence."""
-    # Make sure there is no .gitignore
-    gitignore = git_repo / ".gitignore"
-    if gitignore.exists():
-        gitignore.unlink()
-
-    (git_repo / ".env").write_text("API_KEY=secret")
-    (git_repo / "main.py").write_text("import os")
-
-    _run_git("add", "-A", "--", ".", ":!.env", ":!**/.env", cwd=git_repo)
-
-    result = _run_git("diff", "--cached", "--name-only", cwd=git_repo)
-    staged = result.stdout.strip().splitlines()
-
-    assert "main.py" in staged
-    assert ".env" not in staged
+    assert "app.py" in committed
+    assert ".env" not in committed
 
 
-def test_git_add_excludes_env_in_subdirectory(git_repo: Path) -> None:
+def test_commit_excludes_env_with_gitignore(git_repo: Path) -> None:
+    """.env should not be committed when .gitignore covers it."""
+    (git_repo / ".gitignore").write_text(".env\n")
+    _run_git("add", ".gitignore", cwd=git_repo)
+    _run_git("commit", "-m", "add gitignore", cwd=git_repo)
+
+    (git_repo / ".env").write_text("SECRET=abc123")
+    (git_repo / "app.py").write_text("print('hello')")
+
+    create_execution_commit("test: add app", git_repo)
+
+    result = _run_git("show", "--name-only", "--format=", "HEAD", cwd=git_repo)
+    committed = result.stdout.strip().splitlines()
+
+    assert "app.py" in committed
+    assert ".env" not in committed
+
+
+def test_commit_excludes_env_in_subdirectory(git_repo: Path) -> None:
     """Nested .env files should also be excluded."""
     subdir = git_repo / "config"
     subdir.mkdir()
     (subdir / ".env").write_text("DB_PASSWORD=secret")
     (git_repo / "server.py").write_text("import flask")
 
-    _run_git("add", "-A", "--", ".", ":!.env", ":!**/.env", cwd=git_repo)
+    create_execution_commit("test: add server", git_repo)
 
-    result = _run_git("diff", "--cached", "--name-only", cwd=git_repo)
-    staged = result.stdout.strip().splitlines()
+    result = _run_git("show", "--name-only", "--format=", "HEAD", cwd=git_repo)
+    committed = result.stdout.strip().splitlines()
 
-    assert "server.py" in staged
-    assert ".env" not in staged
-    assert "config/.env" not in staged
+    assert "server.py" in committed
+    assert ".env" not in committed
+    assert "config/.env" not in committed
