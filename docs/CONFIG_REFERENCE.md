@@ -71,7 +71,7 @@ Each repository must use **either** `path` or `url`, not both.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `path` | string | One of path/url | Local filesystem path. `~` is expanded. Relative paths resolve from the config file directory. |
-| `url` | string | One of path/url | Git URL for cloning. |
+| `url` | string | One of path/url | Git URL for cloning. SSH URLs (`git@...`) are automatically converted to HTTPS at clone time. |
 | `ref` | string | No | Git reference (branch, tag, commit). Only valid with `url`. |
 
 **Naming:** Repository names must match `^[A-Za-z0-9][A-Za-z0-9._-]*$`.
