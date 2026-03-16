@@ -27,6 +27,7 @@ def save_run_state(state: RunState) -> None:
         "cloned_repos": {name: str(path) for name, path in state.cloned_repos.items()},
         "initialized_signal_context_dirs": sorted(str(p) for p in state.initialized_signal_context_dirs),
         "received_signal_types": sorted(state.received_signal_types),
+        "metadata": state.metadata,
     }
     if state.active_signal is not None:
         data["active_signal"] = {
@@ -103,6 +104,7 @@ def load_run_state(config_path: Path) -> RunState:
             Path(p) for p in (data.get("initialized_signal_context_dirs") or [])
         ),
         received_signal_types=set(data.get("received_signal_types") or []),
+        metadata=data.get("metadata") or {},
     )
 
 

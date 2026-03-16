@@ -51,10 +51,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         from propagate_app.config_load import load_config
-        from propagate_app.signal_transport import socket_address
+        from propagate_app.signal_transport import pub_socket_address, socket_address
 
         config = load_config(config_path)
         zmq_address = socket_address(config.config_path)
+        pub_address = pub_socket_address(config.config_path)
     except Exception as error:
         logger.error("Failed to load config: %s", error)
         return 1
@@ -69,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         zmq_address=zmq_address,
         token=token,
         allowed_users=allowed_users,
+        pub_address=pub_address,
     )
     return 0
 

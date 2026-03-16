@@ -226,7 +226,7 @@ def test_serve_auto_resumes_on_startup(tmp_path):
 
     resume_called = []
 
-    def mock_resume_run(config, signal_socket):
+    def mock_resume_run(config, signal_socket, pub_socket=None, metadata=None):
         resume_called.append(True)
 
     # Create a fake state file so serve_command detects it
@@ -234,7 +234,7 @@ def test_serve_auto_resumes_on_startup(tmp_path):
     state_path = state_file_path(config.config_path)
     state_path.touch()
 
-    def mock_serve_loop(config, signal_socket, shutdown):
+    def mock_serve_loop(config, signal_socket, shutdown, pub_socket=None):
         pass  # Exit immediately
 
     try:
@@ -447,7 +447,7 @@ def test_serve_forced_shutdown_on_second_signal(tmp_path):
 
     shutdown_event = None
 
-    def mock_serve_loop(cfg, sock, shutdown):
+    def mock_serve_loop(cfg, sock, shutdown, pub_socket=None):
         nonlocal shutdown_event
         shutdown_event = shutdown
         # Simulate first signal already received

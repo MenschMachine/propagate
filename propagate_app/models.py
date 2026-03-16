@@ -179,6 +179,9 @@ class RunState:
     cloned_repos: dict[str, Path]
     initialized_signal_context_dirs: set[Path]
     received_signal_types: set[str] = field(default_factory=set)
+    # Opaque dict forwarded from the incoming ZMQ message to published events.
+    # Telegram uses keys: chat_id, message_id (both str).
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from .constants import LOGGER
 from .errors import PropagateError
 
 
@@ -19,13 +21,32 @@ def run_agent_command(
     task_id: str,
     extra_env: dict[str, str] | None = None,
 ) -> None:
-    run_shell_command(
-        command,
-        working_dir,
-        failure_message=f"Agent command failed for sub-task '{task_id}' with exit code {{exit_code}}.",
-        start_failure_message=f"Failed to start agent command for sub-task '{task_id}': {{error}}",
-        extra_env=extra_env,
-    )
+    env = None
+    if extra_env:
+        env = {**os.environ, **extra_env}
+    try:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            cwd=working_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+    except OSError as error:
+        raise PropagateError(
+            f"Failed to start agent command for sub-task '{task_id}': {error}"
+        ) from error
+    for raw_line in process.stdout:
+        line = raw_line.decode("utf-8", errors="replace")
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        LOGGER.debug("%s", line.rstrip("\n"))
+    returncode = process.wait()
+    if returncode != 0:
+        raise PropagateError(
+            f"Agent command failed for sub-task '{task_id}' with exit code {returncode}."
+        )
 
 
 def run_shell_command(

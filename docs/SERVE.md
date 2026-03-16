@@ -70,6 +70,30 @@ If the process is killed during an active run, the scheduler saves state via `_s
 
 ---
 
+## Event Publishing (PUB/SUB)
+
+In addition to the PULL socket for receiving signals, the server binds a ZMQ PUB socket at `ipc:///tmp/propagate-pub-{hash}.sock`. After each run completes or fails, a JSON event is published:
+
+```json
+{
+  "event": "run_completed",
+  "signal_type": "deploy",
+  "metadata": {},
+  "messages": ["last", "three", "log messages"]
+}
+```
+
+- `event`: `"run_completed"` or `"run_failed"`
+- `signal_type`: the signal that triggered the run
+- `metadata`: opaque dict forwarded from the incoming ZMQ message (never touches signal validation)
+- `messages`: last 3 log messages from the `propagate` logger during the run
+
+Any ZMQ SUB client can subscribe to these events. The Telegram bot uses this to auto-reply to the chat that triggered the signal (see [TELEGRAM.md](TELEGRAM.md#auto-reply-on-run-completion)).
+
+The server knows nothing about subscribers — it publishes events regardless of whether anyone is listening.
+
+---
+
 ## Limitations
 
 - **Config is loaded once at startup.** Changes to the config file require restarting the server.

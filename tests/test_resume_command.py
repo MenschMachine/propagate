@@ -42,7 +42,7 @@ def test_send_command_and_receive_message():
 
         result = receive_message(pull, block=True, timeout_ms=2000)
         assert result is not None
-        kind, name, payload = result
+        kind, name, payload, _metadata = result
         assert kind == "command"
         assert name == "resume"
         assert payload == {}
@@ -60,7 +60,7 @@ def test_receive_message_returns_signal():
 
         result = receive_message(pull, block=True, timeout_ms=2000)
         assert result is not None
-        kind, name, payload = result
+        kind, name, payload, _metadata = result
         assert kind == "signal"
         assert name == "deploy"
         assert payload == {"branch": "main"}
@@ -137,7 +137,7 @@ def test_serve_handles_resume_command_with_state_file(tmp_path):
 
     resume_called = []
 
-    def mock_resume_run(cfg, signal_socket):
+    def mock_resume_run(cfg, signal_socket, pub_socket=None, metadata=None):
         resume_called.append(True)
 
     def send_resume_then_shutdown():
@@ -172,7 +172,7 @@ def test_serve_handles_resume_command_without_state_file(tmp_path, caplog):
 
     resume_called = []
 
-    def mock_resume_run(cfg, signal_socket):
+    def mock_resume_run(cfg, signal_socket, pub_socket=None, metadata=None):
         resume_called.append(True)
 
     def send_resume_then_shutdown():
@@ -271,7 +271,7 @@ async def test_handle_resume_delivers_command():
 
         result = receive_message(pull, block=True, timeout_ms=2000)
         assert result is not None
-        kind, name, _ = result
+        kind, name, _, _metadata = result
         assert kind == "command"
         assert name == "resume"
     finally:

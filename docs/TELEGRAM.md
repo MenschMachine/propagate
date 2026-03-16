@@ -140,6 +140,41 @@ Send `/signal deploy Deploy to production.` in Telegram. The signal is delivered
 
 ---
 
+## Auto-Reply on Run Completion
+
+When a signal is sent from Telegram, the bot automatically replies to the chat with the last 3 log messages when the run completes or fails. No extra configuration is needed — the bot subscribes to a ZMQ PUB socket that `propagate serve` publishes events on.
+
+The serve process remains Telegram-agnostic. It publishes generic events with an opaque `metadata` dict that the bot uses to route replies back to the originating chat.
+
+**Architecture:**
+
+```
+Telegram Bot                          Serve Process
+┌──────────────┐    ZMQ PUSH/PULL    ┌──────────────────┐
+│ /signal go   │ ──────────────────► │ receive signal   │
+│              │                     │ run DAG          │
+│              │    ZMQ PUB/SUB      │ capture logs     │
+│ reply to chat│ ◄────────────────── │ publish event    │
+└──────────────┘                     └──────────────────┘
+```
+
+**Event format:**
+
+```json
+{
+  "event": "run_completed",
+  "signal_type": "deploy",
+  "metadata": {"chat_id": "123", "message_id": "456"},
+  "messages": ["Setting up...", "Running agent...", "Completed run for signal 'deploy'."]
+}
+```
+
+On failure, the event type is `run_failed`.
+
+The reply is sent to the chat that triggered the signal, as a reply to the original `/signal` message.
+
+---
+
 ## Authentication
 
 Only Telegram user IDs listed in `--allowed-users` can send commands. Messages from other users are silently ignored.
