@@ -69,6 +69,14 @@ and incorporate it into `:findings` so the suggest step has:
 - Which suggestion types are working or failing (`improved` / `declined`)
 - Which URLs to deprioritize (`inconclusive` with `insufficient_volume`)
 
+**Fallback when evaluation results are unavailable:** If `:evaluation-results` is empty or the context read fails, read the ledger file directly:
+
+```bash
+cat data/feedback/implementations.yaml 2>/dev/null
+```
+
+If the ledger exists and contains entries, extract all URLs with `status: pending` and include them in `:findings` as cool-down entries. The suggest step must know about these URLs even if the evaluate step did not run. Do not attempt to evaluate entries (that is the evaluate step's job) — just pass through the pending URLs, their `date_implemented`, and their `suggestion_type` so the suggest step can skip them.
+
 Do **not** modify `data/feedback/implementations.yaml` — the evaluate-implementations execution owns all ledger writes.
 
 ## Output
