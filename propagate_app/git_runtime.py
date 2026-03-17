@@ -35,6 +35,7 @@ from .models import (
     PreparedGitExecution,
     RuntimeContext,
 )
+from .signal_transport import publish_event_if_available
 
 _GIT_STATE_KEY_PREFIX = ":git."
 
@@ -197,6 +198,12 @@ def create_execution_git_pr(
             body,
             runtime_context.working_dir,
         )
+        if pr_url:
+            publish_event_if_available(runtime_context.pub_socket, "pr_created", {
+                "execution": execution_name,
+                "pr_url": pr_url,
+                "metadata": runtime_context.metadata,
+            })
         if git_config.pr.number_key is not None and pr_url:
             pr_number = pr_url.rstrip("/").split("/")[-1]
             if not pr_number.isdigit():

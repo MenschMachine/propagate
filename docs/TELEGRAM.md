@@ -151,9 +151,9 @@ Send `/signal deploy Deploy to production.` in Telegram. The signal is delivered
 
 ---
 
-## Auto-Reply on Run Completion
+## Auto-Reply on Events
 
-When a signal is sent from Telegram, the bot automatically replies to the chat with the last 3 log messages when the run completes or fails. No extra configuration is needed — the bot subscribes to a ZMQ PUB socket that `propagate serve` publishes events on.
+When a signal is sent from Telegram, the bot automatically replies to the chat on key events. No extra configuration is needed — the bot subscribes to a ZMQ PUB socket that `propagate serve` publishes events on.
 
 The serve process remains Telegram-agnostic. It publishes generic events with an opaque `metadata` dict that the bot uses to route replies back to the originating chat.
 
@@ -169,7 +169,17 @@ Telegram Bot                          Serve Process
 └──────────────┘                     └──────────────────┘
 ```
 
-**Event format:**
+### Event types
+
+| Event | When | Message |
+|-------|------|---------|
+| `run_completed` | DAG finishes successfully | Run completed for signal 'X'. (+ last 3 log lines) |
+| `run_failed` | DAG fails with an error | Run failed for signal 'X'. (+ last 3 log lines) |
+| `waiting_for_signal` | System pauses to wait for a signal (sub-task or scheduler level) | Waiting for signal 'X' (execution 'Y'). |
+| `pr_created` | A PR is opened by a git:pr hook | PR created for 'Y':\nhttps://... |
+| `command_failed` | A command (e.g. /resume) fails | Command /resume failed: ... |
+
+**Example `run_completed` event:**
 
 ```json
 {
@@ -180,7 +190,27 @@ Telegram Bot                          Serve Process
 }
 ```
 
-On failure, the event type is `run_failed`.
+**Example `waiting_for_signal` event:**
+
+```json
+{
+  "event": "waiting_for_signal",
+  "execution": "review-code",
+  "signal": "review_done",
+  "metadata": {"chat_id": "123", "message_id": "456"}
+}
+```
+
+**Example `pr_created` event:**
+
+```json
+{
+  "event": "pr_created",
+  "execution": "deploy-app",
+  "pr_url": "https://github.com/org/repo/pull/42",
+  "metadata": {"chat_id": "123", "message_id": "456"}
+}
+```
 
 The reply is sent to the chat that triggered the signal, as a reply to the original `/signal` message.
 

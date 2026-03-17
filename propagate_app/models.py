@@ -162,6 +162,8 @@ class RuntimeContext:
     task_id: str = ""
     git_state: GitRunState | None = None
     signal_socket: zmq.Socket | None = None
+    pub_socket: zmq.Socket | None = None
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass

@@ -198,6 +198,16 @@ def _format_event_reply(event: dict) -> str:
         command = event.get("command", "unknown")
         message = event.get("message", "Command failed.")
         return f"Command /{command} failed: {message}"
+    if event_type == "waiting_for_signal":
+        signal_name = event.get("signal", "unknown")
+        execution = event.get("execution", "")
+        if execution:
+            return f"Waiting for signal '{signal_name}' (execution '{execution}')."
+        return f"Waiting for signal '{signal_name}'."
+    if event_type == "pr_created":
+        execution = event.get("execution", "unknown")
+        pr_url = event.get("pr_url", "")
+        return f"PR created for '{execution}':\n{pr_url}"
     signal_type = event.get("signal_type", "unknown")
     messages = event.get("messages") or []
     lines = [f"Run {'completed' if event_type == 'run_completed' else 'failed'} for signal '{signal_type}'."]
