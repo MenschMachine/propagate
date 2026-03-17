@@ -24,6 +24,8 @@ def prepare_execution_runtime_context(
         config_dir=runtime_context.config_dir,
         execution_name=execution.name,
         signal_socket=runtime_context.signal_socket,
+        pub_socket=runtime_context.pub_socket,
+        metadata=runtime_context.metadata,
     )
     prepare_signal_context_for_working_dir(execution_runtime_context)
     return execution_runtime_context
