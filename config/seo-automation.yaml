@@ -94,11 +94,14 @@ signals:
     - includes/github-signals.yaml
   start:
     payload:
+      sender:
+        type: string
+        required: false
 
 executions:
   pull-data:
     repository: pdfdancer-marketing-data
-    signals: [start]
+    signals: [ start ]
     git:
       branch:
         name: main
@@ -128,7 +131,7 @@ executions:
 
   enrich-seo:
     repository: pdfdancer-marketing-data
-    signals: [enrich]
+    signals: [ enrich ]
     git:
       branch:
         name: main
