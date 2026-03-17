@@ -11,6 +11,7 @@ import zmq
 from .config_load import load_config
 from .constants import LOGGER
 from .errors import PropagateError
+from .log_buffer import ZmqLogHandler
 from .models import ActiveSignal, Config, ExecutionScheduleState, RunState, RuntimeContext
 from .run_state import load_run_state, state_file_path
 from .scheduler import run_execution_schedule
@@ -82,6 +83,13 @@ def serve_command(config_value: str) -> int:
     pub_socket = bind_pub_socket(pub_address)
     LOGGER.info("Publishing events on %s", pub_address)
 
+    zmq_log_handler = ZmqLogHandler(pub_socket)
+    zmq_log_handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    logging.getLogger().addHandler(zmq_log_handler)
+
     shutdown = threading.Event()
 
     def handle_shutdown(signum: int, frame: object) -> None:
@@ -105,6 +113,7 @@ def serve_command(config_value: str) -> int:
         _serve_loop(config, signal_socket, shutdown, pub_socket)
         return 0
     finally:
+        logging.getLogger().removeHandler(zmq_log_handler)
         close_pull_socket(signal_socket, address)
         close_pub_socket(pub_socket, pub_address)
         signal_module.signal(signal_module.SIGTERM, previous_sigterm)
@@ -136,6 +145,7 @@ def _resume_run(
                 active_signal=active_signal,
                 initialized_signal_context_dirs=initialized_dirs,
                 signal_socket=signal_socket,
+                config_dir=config.config_path.parent,
             ),
             run_state=run_state,
             signal_socket=signal_socket,
@@ -233,6 +243,7 @@ def _handle_incoming_signal(
                 active_signal=active_signal,
                 initialized_signal_context_dirs=set(),
                 signal_socket=signal_socket,
+                config_dir=config.config_path.parent,
             ),
             run_state=run_state,
             signal_socket=signal_socket,

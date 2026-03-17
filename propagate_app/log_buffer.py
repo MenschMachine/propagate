@@ -3,6 +3,8 @@ from __future__ import annotations
 import collections
 import logging
 
+import zmq
+
 
 class BufferedLogHandler(logging.Handler):
     """Log handler that keeps the last *maxlen* formatted records in memory."""
@@ -15,6 +17,21 @@ class BufferedLogHandler(logging.Handler):
         self.buffer.append(self.format(record))
 
 
+class ZmqLogHandler(logging.Handler):
+    """Log handler that publishes each record as a JSON event on a ZMQ PUB socket."""
+
+    def __init__(self, socket: zmq.Socket) -> None:
+        super().__init__(level=logging.INFO)
+        self._socket = socket
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            line = self.format(record)
+            self._socket.send_json({"event": "log", "line": line})
+        except Exception:
+            self.handleError(record)
+
+
 _buffered_handler: BufferedLogHandler | None = None
 
 
@@ -24,6 +41,12 @@ def get_recent_logs(n: int = 20) -> list[str]:
         return []
     items = list(_buffered_handler.buffer)
     return items[-n:] if n < len(items) else items
+
+
+def append_line(line: str) -> None:
+    """Append a pre-formatted log line directly to the buffered handler."""
+    if _buffered_handler is not None:
+        _buffered_handler.buffer.append(line)
 
 
 def install_buffered_handler() -> None:

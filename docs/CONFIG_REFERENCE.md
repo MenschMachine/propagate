@@ -71,7 +71,7 @@ Each repository must use **either** `path` or `url`, not both.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `path` | string | One of path/url | Local filesystem path. `~` is expanded. Relative paths resolve from the config file directory. |
-| `url` | string | One of path/url | Git URL for cloning. |
+| `url` | string | One of path/url | Git URL for cloning. SSH URLs (`git@...`) are automatically converted to HTTPS at clone time. |
 | `ref` | string | No | Git reference (branch, tag, commit). Only valid with `url`. |
 
 **Naming:** Repository names must match `^[A-Za-z0-9][A-Za-z0-9._-]*$`.
@@ -478,6 +478,7 @@ These are set by Propagate when running hooks and agent commands:
 
 | Variable | Description |
 |----------|-------------|
+| `PROPAGATE_CONFIG_DIR` | Absolute path to the directory containing the config YAML file. Useful for referencing scripts relative to the config. |
 | `PROPAGATE_EXECUTION` | Current execution name. |
 | `PROPAGATE_TASK` | Current sub-task ID. Empty string during execution-level hooks. |
 
@@ -535,7 +536,7 @@ Signal payloads are written to context under the `:signal` namespace (e.g. `:sig
 - `git.branch.name_key`, `git.commit.message_key`, `git.pr.title_key`, `git.pr.body_key`, and `git.pr.number_key` must start with `:`.
 - `git.commit.message_source` must reference a defined context source.
 - `wait_for_signal` and `routes` must both be present together on a sub-task.
-- Sub-tasks with `wait_for_signal` must not have `prompt`, `before`, or `after`.
+- Sub-tasks with `wait_for_signal` must not have `prompt` or `on_failure`.
 - Route `goto` targets must reference a sub-task ID defined earlier in the same execution.
 - Propagation `when` requires `on_signal` to be set.
 - `when` field names must exist in the referenced signal's payload definition.

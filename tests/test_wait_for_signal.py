@@ -99,17 +99,27 @@ def test_parse_wait_for_signal_with_prompt_raises(tmp_path):
         )
 
 
-def test_parse_wait_for_signal_with_before_raises(tmp_path):
-    with pytest.raises(PropagateError, match="must not have 'before', 'after', or 'on_failure'"):
-        parse_sub_task(
-            "ex", 1,
-            {"id": "w", "before": ["echo hi"], "wait_for_signal": "pull_request.labeled", "routes": [{"when": {"label": "x"}, "continue": True}]},
-            tmp_path, set(), SIGNAL_CONFIGS,
-        )
+def test_parse_wait_for_signal_with_before_allowed(tmp_path):
+    result = parse_sub_task(
+        "ex", 1,
+        {"id": "w", "before": ["echo hi"], "wait_for_signal": "pull_request.labeled", "routes": [{"when": {"label": "x"}, "continue": True}]},
+        tmp_path, set(), SIGNAL_CONFIGS,
+    )
+    assert result.before == ["echo hi"]
+    assert result.wait_for_signal == "pull_request.labeled"
+
+
+def test_parse_wait_for_signal_with_after_allowed(tmp_path):
+    result = parse_sub_task(
+        "ex", 1,
+        {"id": "w", "after": ["echo done"], "wait_for_signal": "pull_request.labeled", "routes": [{"when": {"label": "x"}, "continue": True}]},
+        tmp_path, set(), SIGNAL_CONFIGS,
+    )
+    assert result.after == ["echo done"]
 
 
 def test_parse_wait_for_signal_with_on_failure_raises(tmp_path):
-    with pytest.raises(PropagateError, match="must not have 'before', 'after', or 'on_failure'"):
+    with pytest.raises(PropagateError, match="must not have 'on_failure'"):
         parse_sub_task(
             "ex", 1,
             {"id": "w", "on_failure": ["echo fail"], "wait_for_signal": "pull_request.labeled", "routes": [{"when": {"label": "x"}, "continue": True}]},
@@ -289,6 +299,59 @@ def test_wait_for_signal_goto_loops(tmp_path):
         t.join(timeout=5)
         # code, publish, [wait -> goto code], code, publish, [wait -> continue]
         assert ran_tasks == ["code", "publish", "code", "publish"]
+    finally:
+        close_pull_socket(socket, address)
+
+
+def test_wait_for_signal_runs_before_and_after_hooks(tmp_path):
+    """before/after hooks execute around the wait_for_signal pause."""
+    address = socket_address(tmp_path / "test-hooks.yaml")
+    socket = bind_pull_socket(address)
+    try:
+        marker_before = tmp_path / "before_ran"
+        marker_after = tmp_path / "after_ran"
+        sub_tasks = [
+            _make_wait_task("wait", "pull_request.labeled", [
+                SubTaskRouteConfig(when={"label": "approved"}, continue_flow=True),
+            ]),
+            _make_sub_task("done"),
+        ]
+        # Add hooks to the wait task
+        sub_tasks[0] = SubTaskConfig(
+            task_id="wait",
+            prompt_path=None,
+            before=[f"touch {marker_before}"],
+            after=[f"touch {marker_after}"],
+            on_failure=[],
+            wait_for_signal="pull_request.labeled",
+            routes=[SubTaskRouteConfig(when={"label": "approved"}, continue_flow=True)],
+        )
+        execution = ExecutionConfig(
+            name="my-exec", repository="repo", depends_on=[], signals=[],
+            sub_tasks=sub_tasks, git=None,
+        )
+        rc = _make_runtime_context(tmp_path, signal_socket=socket)
+
+        def send():
+            push = connect_push_socket(address)
+            send_signal(push, "pull_request.labeled", {"label": "approved", "repository": "org/repo", "pr_number": 1})
+            close_push_socket(push)
+
+        ran_tasks = []
+
+        def tracking_run(exec_name, sub_task, rt_ctx, git_config=None, completed_phase=None, on_phase_completed=None):
+            ran_tasks.append(sub_task.task_id)
+
+        t = threading.Thread(target=send, daemon=True)
+        t.start()
+
+        with patch("propagate_app.sub_tasks.run_sub_task", side_effect=tracking_run):
+            run_execution_sub_tasks(execution, rc)
+
+        t.join(timeout=5)
+        assert ran_tasks == ["done"]
+        assert marker_before.exists(), "before hook should have run"
+        assert marker_after.exists(), "after hook should have run"
     finally:
         close_pull_socket(socket, address)
 

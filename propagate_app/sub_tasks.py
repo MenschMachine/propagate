@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import NoReturn
 
-from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
+from .constants import ENV_CONFIG_DIR, ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
 from .context_sources import run_context_source
 from .context_store import ensure_context_dir, resolve_execution_context_dir
 from .errors import PropagateError
@@ -33,6 +33,8 @@ from .temp_files import cleanup_temp_file, write_temp_text
 def build_context_env(runtime_context: RuntimeContext) -> dict[str, str]:
     env: dict[str, str] = {}
     env[ENV_CONTEXT_ROOT] = str(runtime_context.context_root)
+    if runtime_context.config_dir != Path():
+        env[ENV_CONFIG_DIR] = str(runtime_context.config_dir)
     if runtime_context.execution_name:
         env[ENV_EXECUTION] = runtime_context.execution_name
     env[ENV_TASK] = runtime_context.task_id
@@ -59,7 +61,11 @@ def run_execution_sub_tasks(
             task_index += 1
             continue
         if sub_task.wait_for_signal is not None:
+            task_runtime_context = replace(runtime_context, task_id=sub_task.task_id)
+            context_id = f"sub-task '{sub_task.task_id}'"
+            run_sub_task_hook_phase(sub_task, "before", sub_task.before, task_runtime_context, execution.git, context_id)
             goto_index = _handle_wait_for_signal(execution, sub_task, runtime_context, task_phases, on_phase_completed)
+            run_sub_task_hook_phase(sub_task, "after", sub_task.after, task_runtime_context, execution.git, context_id)
             if goto_index is not None:
                 task_index = goto_index
             else:
@@ -252,7 +258,7 @@ def run_hook_phase(
                 total_actions,
                 context_id,
             )
-            run_context_source(runtime_context.context_sources[source_name], runtime_context, context_id)
+            run_context_source(runtime_context.context_sources[source_name], runtime_context, context_id, extra_env=extra_env)
             continue
         if action.startswith("git:"):
             LOGGER.info("Running git hook command '%s' (%s hook %d/%d) for %s.", action, phase, hook_index, total_actions, context_id)

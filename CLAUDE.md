@@ -70,6 +70,7 @@ present.
 ### Environment Variables
 
 - `PROPAGATE_CONTEXT_ROOT`: Context store root directory
+- `PROPAGATE_CONFIG_DIR`: Absolute path to config file's parent directory (set during runs)
 - `PROPAGATE_EXECUTION`: Current execution name (set during runs)
 - `PROPAGATE_TASK`: Current task ID (set during runs)
 

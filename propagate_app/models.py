@@ -156,6 +156,7 @@ class RuntimeContext:
     initialized_signal_context_dirs: set[Path]
     working_dir: Path = field(default_factory=Path)
     context_root: Path = field(default_factory=Path)
+    config_dir: Path = field(default_factory=Path)
     execution_name: str = ""
     task_id: str = ""
     git_state: GitRunState | None = None

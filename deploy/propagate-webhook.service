@@ -1,0 +1,23 @@
+[Unit]
+Description=Propagate Webhook - GitHub webhook listener
+After=network.target propagate-serve.service
+
+[Service]
+Type=simple
+User=propagate
+Group=propagate
+WorkingDirectory=/opt/propagate
+EnvironmentFile=/opt/propagate/.env
+ExecStart=/opt/propagate/venv/bin/propagate-webhook \
+    --config /opt/propagate/${CONFIG_PATH} \
+    --host 127.0.0.1 \
+    --port 8080 \
+    --secret-env GITHUB_WEBHOOK_SECRET
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=propagate-webhook
+
+[Install]
+WantedBy=propagate.target
