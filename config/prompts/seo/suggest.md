@@ -20,8 +20,17 @@ the feedback ledger. Use that data to apply these rules:
 Your only source of truth is `:findings`. Do not fabricate observations you did not make.
 
 - **No invented evidence**: Do not claim to have fetched, inspected, or tested live pages unless `:findings` explicitly contains that data. Statements like "live fetches showed…" or "the HTML response contains…" are forbidden unless the analyze step actually performed and reported those checks.
+- **Page content is factual when present**: When `:findings` contains page content diagnosis for a URL (from the analyze step's page content checks), you CAN reference the indexed title, description, content depth, and mismatches as factual observations — these come from actual fetched page data.
 - **Technical suggestions require evidence**: If you want to suggest a technical fix (missing tags, broken redirects, canonical issues), the underlying problem must be stated in `:findings`. If the findings only contain GSC performance data, your suggestions must be scoped to what that data supports — CTR copy improvements, content gaps, intent mismatches — not speculative infrastructure problems.
 - **Say what you don't know**: If a technical issue seems plausible but isn't confirmed in the data, say so explicitly (e.g., "worth verifying whether the `<title>` tag is rendered server-side") instead of asserting it as fact.
+
+### Suggestion type selection based on page content diagnosis
+
+When `:findings` includes a page content diagnosis type, use it to guide your suggestion type:
+- **Title aligns with queries but low CTR** → description-focused `meta` or `content-edit`
+- **Thin content** (low word count) → `content-edit`, not `meta` — the problem is substance, not packaging
+- **Source vs. indexed mismatch** (implementation not picked up) → `technical`
+- **Title missing query terms** → `meta` (title-focused)
 
 ## Suggestion types
 

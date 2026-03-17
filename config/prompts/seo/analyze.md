@@ -74,6 +74,40 @@ To save findings, run exactly:
 propagate context set :findings "<your structured findings>"
 ```
 
+## Page content diagnosis (optional)
+
+Check if page content data exists:
+```bash
+ls data/*/pages/*.json 2>/dev/null | head -1
+```
+
+If found, load page JSON files from the `pages/` subdirectory of the latest data directory for each GSC-flagged page. The filename derives from the URL path: strip leading/trailing slashes, replace `/` with `_`, add `.json`.
+
+### a) Title/description vs. query alignment
+
+For each flagged page, check whether the indexed `title` and `meta_description` contain the primary query terms from GSC:
+- If title aligns with queries but CTR is still low → the problem is description, competition, or content depth — not the title
+- If title doesn't contain query terms at all → flag as meta alignment issue
+
+### b) Thin content detection
+
+Use `text_content` word count as a rough signal. Threshold: ~1000 total words (we're catching 200-word pages vs 2000-word pages, not drawing a fine line).
+- Solid meta but very low word count → flag "content depth" as the issue
+- Missing H1 entirely → flag as a structural finding
+
+### c) Implementation mismatch detection
+
+If `:evaluation-results` contains a `deployment_status` list, use it directly — the evaluate-implementations script has
+already compared `indexed_at_implementation` snapshots against current page content. Do not re-derive this.
+
+- Entries with `"status": "not_yet_indexed"` → surface as a technical finding (change not picked up by search engines yet)
+- Entries with `"status": "confirmed_indexed"` → note as deployed, no action needed
+- Entries with `"status": "unknown"` → skip
+
+Include the diagnosis type per page (title-alignment, description, content-depth, structural, mismatch) in `:findings` so the suggest step can use it.
+
+If no `pages/` directory exists, skip this section entirely.
+
 ## Enrichment data (optional)
 
 Check if enrichment data exists:

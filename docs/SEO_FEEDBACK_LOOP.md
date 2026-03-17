@@ -159,6 +159,39 @@ be random."
       impressions_accumulated: 980
 ```
 
+## Deployment Detection
+
+When page content data is available (from `fetch_page_content.py`), the pipeline can detect whether meta changes have
+been picked up by search engines.
+
+### How it works
+
+1. **track-implementations** snapshots the current indexed title and description at implementation time into an
+   `indexed_at_implementation` field on each ledger entry
+2. **evaluate-implementations** compares the snapshot against the latest page content to determine deployment status
+3. **analyze** surfaces mismatches as technical findings when the indexed content still matches pre-implementation values
+
+### `indexed_at_implementation` ledger field
+
+```yaml
+indexed_at_implementation:
+  title: "Node.js PDF SDK — Free Trial"
+  description: "Build PDF apps with our Node.js SDK..."
+```
+
+Recorded by track-implementations when page content data exists. Omitted when no page content is available.
+
+### Deployment statuses
+
+| Status | Meaning |
+|---|---|
+| `confirmed_indexed` | Current indexed title or description differs from the pre-implementation snapshot — the change was picked up |
+| `not_yet_indexed` | Current indexed title and description still match the pre-implementation snapshot — change not yet reflected |
+| `unknown` | No snapshot available, non-meta suggestion type, or no page content data |
+
+Deployment status is **informational only** — it does not gate evaluation. It appears in the `deployment_status` list
+in the evaluation summary JSON and is surfaced in the analyze report as a technical finding when relevant.
+
 ## Execution: `track-implementations`
 
 Runs on pdfdancer-marketing-data. Triggers after `implement` completes. Sole owner of ledger **append** writes.
@@ -193,6 +226,9 @@ source. The script:
 ## Data flow to downstream steps
 
 - **analyze**: reads `:evaluation-results` from evaluate-implementations context. Includes an Implementation
-  Effectiveness section in the report. Passes effectiveness data through to `:findings`.
+  Effectiveness section in the report. When page content data exists, performs title/query alignment, thin content
+  detection, and implementation mismatch checks. Passes effectiveness data and page content diagnosis through to
+  `:findings`.
 - **suggest**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
-  matching (what works), and deprioritization (insufficient_volume). Does **not** read the raw ledger file.
+  matching (what works), and deprioritization (insufficient_volume). Uses page content diagnosis to select the right
+  suggestion type (meta vs content-edit vs technical). Does **not** read the raw ledger file.

@@ -44,6 +44,26 @@ baseline information.
 
 Compute `baseline.averages` as the mean across all 4 baseline weeks.
 
+### 3b. Snapshot current indexed content
+
+For each changed URL with suggestion type `meta`, check if page content data exists:
+
+```bash
+ls data/*/pages/ 2>/dev/null | head -1
+```
+
+If a `pages/` directory exists, load the page JSON for each changed URL (filename: strip leading/trailing slashes from the URL path, replace `/` with `_`, add `.json`). Record the current indexed title and description in the ledger entry:
+
+```yaml
+indexed_at_implementation:
+  title: "Current indexed title at time of tracking"
+  description: "Current indexed meta description at time of tracking"
+```
+
+This gives the evaluate step a concrete "before" snapshot to compare against when checking whether changes have been picked up by search engines.
+
+If no page content data exists for a URL, or the suggestion type is not `meta`, omit the `indexed_at_implementation` field entirely. Deployment detection only applies to meta changes (title/description).
+
 ### 4. Calculate `min_impressions_for_eval`
 
 Multiply the baseline average weekly impressions by a factor based on suggestion type:

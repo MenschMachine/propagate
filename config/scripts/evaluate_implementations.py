@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import statistics
 from datetime import date, datetime
 from pathlib import Path
@@ -36,6 +37,70 @@ METRIC_BY_TYPE = {
 
 # For these metrics, lower is better
 LOWER_IS_BETTER = {"position"}
+
+
+def load_page_content_for_url(data_dir: Path, url_path: str) -> dict | None:
+    """Load the page content JSON for a URL from the latest data dir with a pages/ subdirectory."""
+    data_dirs = list_data_dirs(data_dir)
+    # Search from most recent to oldest
+    for _, dir_path in reversed(data_dirs):
+        pages_dir = dir_path / "pages"
+        if not pages_dir.is_dir():
+            continue
+        filename = re.sub(r"[^a-zA-Z0-9]+", "_", url_path.strip("/")) + ".json"
+        page_file = pages_dir / filename
+        if page_file.exists():
+            try:
+                return json.loads(page_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+    return None
+
+
+def check_deployment_status(entry: dict, page_content: dict | None) -> dict:
+    """For meta entries with indexed_at_implementation, compare against current indexed content.
+
+    Returns {"status": "confirmed_indexed" | "not_yet_indexed" | "unknown", "detail": "..."}.
+    """
+    if entry.get("suggestion_type") != "meta":
+        return {"status": "unknown", "detail": "non-meta suggestion type"}
+
+    snapshot = entry.get("indexed_at_implementation")
+    if not snapshot:
+        return {"status": "unknown", "detail": "no indexed_at_implementation snapshot"}
+
+    if page_content is None:
+        return {"status": "unknown", "detail": "no page content available"}
+
+    old_title = snapshot.get("title", "")
+    old_desc = snapshot.get("description", "")
+    current_title = page_content.get("title", "")
+    current_desc = page_content.get("meta_description", "")
+
+    # Can't determine status without at least one non-empty field to compare
+    if not old_title and not old_desc:
+        return {"status": "unknown", "detail": "snapshot has no title or description to compare"}
+    if not current_title and not current_desc:
+        return {"status": "unknown", "detail": "page content has no title or description"}
+
+    title_changed = bool(current_title) and current_title != old_title
+    desc_changed = bool(current_desc) and current_desc != old_desc
+
+    if title_changed or desc_changed:
+        changed = []
+        if title_changed:
+            changed.append(f"title: {old_title!r} → {current_title!r}")
+        if desc_changed:
+            changed.append(f"description: {old_desc!r} → {current_desc!r}")
+        return {
+            "status": "confirmed_indexed",
+            "detail": f"changed — {'; '.join(changed)}",
+        }
+
+    return {
+        "status": "not_yet_indexed",
+        "detail": "title and description still match pre-implementation values",
+    }
 
 
 def load_ledger(path: Path) -> list[dict]:
@@ -328,7 +393,7 @@ def collect_post_impressions(entries: list[dict], data_dirs: list[tuple[date, Pa
     return totals
 
 
-def build_summary(entries: list[dict], newly_evaluated: list[dict], today: date, data_dirs: list[tuple[date, Path]]) -> dict:
+def build_summary(entries: list[dict], newly_evaluated: list[dict], today: date, data_dirs: list[tuple[date, Path]], deployment_status: list[dict] | None = None) -> dict:
     """Build a JSON-serializable summary for downstream steps."""
     evaluated = []
     for e in newly_evaluated:
@@ -372,12 +437,15 @@ def build_summary(entries: list[dict], newly_evaluated: list[dict], today: date,
         if "insufficient_volume" in reason:
             insufficient_volume.append(e["url"])
 
-    return {
+    result = {
         "newly_evaluated": evaluated,
         "pending": pending,
         "pattern_summary": type_outcomes,
         "insufficient_volume_urls": insufficient_volume,
     }
+    if deployment_status is not None:
+        result["deployment_status"] = deployment_status
+    return result
 
 
 def main(today: date | None = None, ledger_path: Path | None = None, data_dir: Path | None = None) -> str:
@@ -408,7 +476,18 @@ def main(today: date | None = None, ledger_path: Path | None = None, data_dir: P
     if newly_evaluated:
         save_ledger(ledger_path, entries)
 
-    summary = build_summary(entries, newly_evaluated, today, data_dirs)
+    # Deployment status check for pending entries with indexed_at_implementation snapshots
+    deployment_status = []
+    for entry in entries:
+        if entry.get("status") != "pending":
+            continue
+        if not entry.get("indexed_at_implementation"):
+            continue
+        page_content = load_page_content_for_url(data_dir, entry["url"])
+        status = check_deployment_status(entry, page_content)
+        deployment_status.append({"url": entry["url"], **status})
+
+    summary = build_summary(entries, newly_evaluated, today, data_dirs, deployment_status or None)
     result = json.dumps(summary)
     print(result)
     return result

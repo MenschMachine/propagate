@@ -117,6 +117,7 @@ executions:
         before:
           - :gsc-data-path
           - :posthog-data-path
+          - python scripts/fetch_page_content.py
       - id: summarize-pull
         prompt: ./prompts/seo/pull-data-summary.md
     after:

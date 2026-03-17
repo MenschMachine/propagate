@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -12,12 +13,14 @@ sys.path.insert(0, str(REPO_ROOT / "config" / "scripts"))
 
 from evaluate_implementations import (  # noqa: E402
     aggregate_by_page,
+    check_deployment_status,
     check_gates,
     classify_outcome,
     compute_baseline_std,
     evaluate_entry,
     extract_path,
     load_ledger,
+    load_page_content_for_url,
     main,
     save_ledger,
 )
@@ -401,3 +404,153 @@ def test_main_no_gsc_data_post_implementation(tmp_path):
     # Should remain pending (no volume)
     assert parsed["newly_evaluated"] == []
     assert len(parsed["pending"]) == 1
+
+
+# --- load_page_content_for_url ---
+
+def setup_page_content(tmp_path, date_str, url_path, content):
+    """Create a data/YYYY-MM-DD/pages/<filename>.json structure."""
+    pages_dir = tmp_path / "data" / date_str / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    # Match fetch_page_content.py's url_to_filename: collapse non-alphanumeric to _
+    filename = re.sub(r"[^a-zA-Z0-9]+", "_", url_path.strip("/")) + ".json"
+    (pages_dir / filename).write_text(json.dumps(content), encoding="utf-8")
+    return pages_dir / filename
+
+
+def test_load_page_content_for_url(tmp_path):
+    content = {
+        "url": "https://www.pdfdancer.com/sdk/nodejs/",
+        "title": "Node.js PDF SDK",
+        "meta_description": "Build PDF apps with Node.js",
+    }
+    setup_page_content(tmp_path, "2026-03-16", "/sdk/nodejs/", content)
+    data_dir = tmp_path / "data"
+    result = load_page_content_for_url(data_dir, "/sdk/nodejs/")
+    assert result is not None
+    assert result["title"] == "Node.js PDF SDK"
+
+
+def test_load_page_content_for_url_missing(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    result = load_page_content_for_url(data_dir, "/nonexistent/page/")
+    assert result is None
+
+
+# --- check_deployment_status ---
+
+def test_deployment_confirmed_title_changed():
+    entry = make_entry(suggestion_type="meta")
+    entry["indexed_at_implementation"] = {
+        "title": "Old Title Before Change",
+        "description": "Old description",
+    }
+    page_content = {
+        "title": "New Better Title",
+        "meta_description": "Old description",
+    }
+    result = check_deployment_status(entry, page_content)
+    assert result["status"] == "confirmed_indexed"
+    assert "title" in result["detail"]
+
+
+def test_deployment_confirmed_description_changed():
+    entry = make_entry(suggestion_type="meta")
+    entry["indexed_at_implementation"] = {
+        "title": "Same Title",
+        "description": "Old description",
+    }
+    page_content = {
+        "title": "Same Title",
+        "meta_description": "New description",
+    }
+    result = check_deployment_status(entry, page_content)
+    assert result["status"] == "confirmed_indexed"
+    assert "description" in result["detail"]
+
+
+def test_deployment_not_indexed():
+    entry = make_entry(suggestion_type="meta")
+    entry["indexed_at_implementation"] = {
+        "title": "Old Title Before Change",
+        "description": "Old description",
+    }
+    page_content = {
+        "title": "Old Title Before Change",
+        "meta_description": "Old description",
+    }
+    result = check_deployment_status(entry, page_content)
+    assert result["status"] == "not_yet_indexed"
+
+
+def test_deployment_unknown_no_snapshot():
+    entry = make_entry(suggestion_type="meta")
+    # No indexed_at_implementation field
+    page_content = {
+        "title": "Some Title",
+        "meta_description": "Some description",
+    }
+    result = check_deployment_status(entry, page_content)
+    assert result["status"] == "unknown"
+
+
+def test_deployment_unknown_empty_page_content():
+    entry = make_entry(suggestion_type="meta")
+    entry["indexed_at_implementation"] = {
+        "title": "Old Title",
+        "description": "Old desc",
+    }
+    page_content = {
+        "title": "",
+        "meta_description": "",
+    }
+    result = check_deployment_status(entry, page_content)
+    assert result["status"] == "unknown"
+
+
+def test_deployment_non_meta():
+    entry = make_entry(suggestion_type="content-edit")
+    entry["indexed_at_implementation"] = {
+        "title": "Some Title",
+        "description": "Some description",
+    }
+    page_content = {
+        "title": "Some Title",
+        "meta_description": "Some description",
+    }
+    result = check_deployment_status(entry, page_content)
+    assert result["status"] == "unknown"
+
+
+# --- summary includes deployment_status ---
+
+def test_summary_includes_deployment_status(tmp_path):
+    ledger_path = tmp_path / "data" / "feedback" / "implementations.yaml"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use recent date + high min_impressions so it stays pending
+    entry = make_entry(
+        date_implemented="2026-03-10",
+        min_impressions=99999,
+        suggestion_type="meta",
+        baseline_avgs={"ctr": 1.0, "impressions": 100, "clicks": 1, "position": 10.0},
+    )
+    entry["indexed_at_implementation"] = {
+        "title": "Old Title",
+        "description": "Old desc",
+    }
+    save_ledger(ledger_path, [entry])
+
+    # Create page content showing the title changed
+    setup_page_content(tmp_path, "2026-03-16", "/sdk/nodejs/", {
+        "url": "https://www.pdfdancer.com/sdk/nodejs/",
+        "title": "New Title After Implementation",
+        "meta_description": "New desc",
+    })
+
+    result = main(today=date(2026, 3, 27), ledger_path=ledger_path, data_dir=tmp_path / "data")
+    parsed = json.loads(result)
+    assert "deployment_status" in parsed
+    assert len(parsed["deployment_status"]) == 1
+    assert parsed["deployment_status"][0]["status"] == "confirmed_indexed"
