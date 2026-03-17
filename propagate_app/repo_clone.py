@@ -11,6 +11,7 @@ from .errors import PropagateError
 from .models import RepositoryConfig
 
 _SSH_URL_RE = re.compile(r"^git@([^:]+):(.+)$")
+_HTTPS_RE = re.compile(r"^https://([^@/]+@)?(.+)$")
 
 
 def _ssh_url_to_https(url: str) -> str:
@@ -21,6 +22,24 @@ def _ssh_url_to_https(url: str) -> str:
     host = m.group(1)
     path = m.group(2)
     return f"https://{host}/{path}"
+
+
+def _inject_token_into_url(url: str, token: str | None) -> str:
+    """Inject a GitHub token into an HTTPS URL for authentication.
+
+    Returns the URL unchanged when *token* is empty/None, the URL is not HTTPS,
+    or the URL already contains credentials.
+    """
+    if not token or not url.startswith("https://"):
+        return url
+    m = _HTTPS_RE.match(url)
+    if m is None:
+        return url
+    # Already has credentials (user:pass@ or user@)
+    if m.group(1) is not None:
+        return url
+    rest = m.group(2)
+    return f"https://x-access-token:{token}@{rest}"
 
 
 def _configure_credential_helper(repo_dir: Path) -> None:
@@ -48,6 +67,8 @@ def clone_single_repository(
         _configure_credential_helper(existing_path)
         return existing_path
     clone_url = _ssh_url_to_https(repo.url)
+    token = os.environ.get("GITHUB_TOKEN")
+    auth_url = _inject_token_into_url(clone_url, token)
     env_clone_dir = os.environ.get(ENV_CLONE_DIR)
     effective_dir = Path(env_clone_dir) if env_clone_dir else clone_dir
     if effective_dir is not None:
@@ -59,7 +80,7 @@ def clone_single_repository(
     LOGGER.info("Cloning repository '%s' from '%s' into '%s'.", name, clone_url, dest_dir)
     try:
         subprocess.run(
-            ["git", "clone", clone_url, str(dest_dir)],
+            ["git", "clone", auth_url, str(dest_dir)],
             check=True,
             capture_output=True,
             text=True,

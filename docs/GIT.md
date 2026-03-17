@@ -263,12 +263,14 @@ Propagate automatically excludes `.env` files from commits. The `git:commit` com
 
 ## Authentication
 
-Propagate uses the `gh` CLI for all git authentication. When cloning a URL repository:
+Propagate supports two authentication methods for HTTPS git operations:
 
-1. SSH URLs (`git@github.com:owner/repo.git`) are automatically converted to HTTPS (`https://github.com/owner/repo.git`).
-2. The cloned repo's local git config is set to use `gh auth git-credential` as the credential helper.
+1. **`GITHUB_TOKEN` environment variable (recommended for servers):** When set, the token is injected into clone URLs as `https://x-access-token:TOKEN@github.com/...`. The token is never logged.
+2. **`gh` CLI credential helper (for local development):** After cloning, the repo's local git config is set to use `gh auth git-credential` for subsequent operations (`push`, `fetch`, PR creation).
 
-This means `git push`, `git fetch`, and PR operations all authenticate via `gh`'s stored OAuth token — no SSH keys or passphrase prompts required. Make sure `gh auth login` has been run before using propagate.
+When cloning a URL repository, SSH URLs (`git@github.com:owner/repo.git`) are automatically converted to HTTPS.
+
+For server deployments, set `GITHUB_TOKEN` in the `.env` file. For local development, make sure `gh auth login` has been run.
 
 ## Notes
 

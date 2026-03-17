@@ -36,7 +36,7 @@ Edit `/opt/propagate/.env`:
 | Variable | Description |
 |----------|-------------|
 | `GITHUB_WEBHOOK_SECRET` | GitHub webhook secret for signature verification |
-| `GITHUB_TOKEN` | GitHub personal access token for API calls |
+| `GITHUB_TOKEN` | GitHub personal access token — used for repository cloning (injected into HTTPS URLs) and API calls |
 | `CONFIG_PATH` | Path to propagate YAML config (relative to `/opt/propagate`) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
 | `TELEGRAM_USERS` | Comma-separated Telegram user IDs allowed to use the bot |
