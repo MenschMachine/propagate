@@ -1,7 +1,5 @@
 """Test that run_shell_command includes stderr in error messages."""
 
-import subprocess
-from pathlib import Path
 
 import pytest
 
