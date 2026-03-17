@@ -92,6 +92,8 @@ signals:
   include:
     - includes/default.yaml
     - includes/github-signals.yaml
+  start:
+    payload:
 
 executions:
   pull-data:

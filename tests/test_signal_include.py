@@ -55,16 +55,29 @@ def test_multiple_include_files(config_dir):
     assert "deploy" in result
 
 
-def test_duplicate_between_include_and_inline_raises(config_dir):
+def test_inline_overrides_included_signal(config_dir):
     write_include(config_dir, "gh.yaml", {
-        "run": {"payload": {}},
+        "run": {"payload": {"branch": {"type": "string"}}},
     })
     signals = {
         "include": "includes/gh.yaml",
         "run": {"payload": {}},
     }
-    with pytest.raises(PropagateError, match="Duplicate signal 'run'"):
-        resolve_signal_includes(signals, config_dir)
+    result = resolve_signal_includes(signals, config_dir)
+    # Inline definition wins — payload should be the empty one from inline
+    assert result["run"] == {"payload": {}}
+
+
+def test_inline_override_preserves_inline_payload(config_dir):
+    write_include(config_dir, "shared.yaml", {
+        "start": {"payload": {"env": {"type": "string"}}},
+    })
+    signals = {
+        "include": "includes/shared.yaml",
+        "start": {"payload": {"url": {"type": "string", "required": True}}},
+    }
+    result = resolve_signal_includes(signals, config_dir)
+    assert result["start"] == {"payload": {"url": {"type": "string", "required": True}}}
 
 
 def test_duplicate_between_two_includes_raises(config_dir):
