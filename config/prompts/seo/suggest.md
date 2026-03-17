@@ -1,8 +1,16 @@
 # Generate SEO Suggestions
 
-Read `:findings` from context. Turn each finding into a typed, actionable suggestion.
+## Review feedback (check first)
 
-If there are PR comments from a previous review (visible in context), address that feedback and revise your suggestions accordingly.
+Before doing anything else, run:
+```bash
+propagate context get :review-comments
+```
+If this returns review comments, they are the reviewer's feedback on your previous suggestions. Address every comment — fix what was asked, drop what was rejected, and note what you changed. This takes priority over everything below.
+
+---
+
+Read `:findings` from context. Turn each finding into a typed, actionable suggestion.
 
 ## Past suggestions and cool-down rules
 

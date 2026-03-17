@@ -569,13 +569,30 @@ load time and cause a validation error with the cycle path.
 Run state is persisted to `.propagate-state-{name}.yaml` in the config file directory. Use `--resume` to continue an
 interrupted run. Completed phases and tasks are skipped on resume.
 
+### Forced Resume
+
+Use `--resume <execution>` or `--resume <execution>/<task>` to force resume from a specific point in the DAG:
+
+```bash
+# Resume from the start of the "suggest" execution
+propagate run --config config.yaml --resume suggest
+
+# Resume from task "wait-for-verdict" in execution "suggest"
+propagate run --config config.yaml --resume suggest/wait-for-verdict
+```
+
+This rewrites the saved state so that all executions before the target are marked as completed, and (when a task is
+specified) all sub-tasks before the target task are marked as completed. The target execution's `before` hooks are
+skipped when resuming from a specific task. This is useful during development/debugging when you want to retry a
+specific step without re-running the entire pipeline.
+
 ---
 
 ## CLI Reference
 
 ```bash
 # Run an execution
-propagate run --config config.yaml [--execution name] [--signal name] [--signal-payload '{...}'] [--signal-file path] [--resume]
+propagate run --config config.yaml [--execution name] [--signal name] [--signal-payload '{...}'] [--signal-file path] [--resume [execution/task]]
 
 # Send a signal to a running server
 propagate send-signal --config config.yaml --signal name [--signal-payload '{...}']
@@ -587,7 +604,7 @@ propagate context get <key> [--global | --local | --task]
 propagate context dump
 
 # Run as a long-lived server
-propagate serve --config config.yaml
+propagate serve --config config.yaml [--resume [execution/task]]
 
 # Clear all context and run state
 propagate clear --config config.yaml
@@ -602,7 +619,7 @@ propagate clear --config config.yaml
 | `--signal` | Signal name to activate. |
 | `--signal-payload` | YAML/JSON mapping of signal payload values. Requires `--signal`. |
 | `--signal-file` | Path to a YAML/JSON file with `type` and `payload` keys. Mutually exclusive with `--signal`. |
-| `--resume` | Resume a previously interrupted run from the state file. |
+| `--resume [target]` | Resume a previously interrupted run. Without a target, resumes from saved state. With `execution` or `execution/task`, forces resume from that point. |
 
 ### `send-signal` options
 

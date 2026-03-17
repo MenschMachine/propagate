@@ -13,7 +13,7 @@ from .constants import LOGGER
 from .errors import PropagateError
 from .log_buffer import ZmqLogHandler
 from .models import ActiveSignal, Config, ExecutionScheduleState, RunState, RuntimeContext
-from .run_state import load_run_state, state_file_path
+from .run_state import apply_forced_resume_if_targeted, load_run_state, state_file_path
 from .scheduler import run_execution_schedule
 from .signal_transport import (
     bind_pub_socket,
@@ -72,7 +72,7 @@ def _run_with_event_publish(
         })
 
 
-def serve_command(config_value: str) -> int:
+def serve_command(config_value: str, resume: bool | str = False) -> int:
     config_path = Path(config_value).expanduser()
     config = load_config(config_path)
     address = socket_address(config.config_path)
@@ -103,9 +103,15 @@ def serve_command(config_value: str) -> int:
     previous_sigint = signal_module.getsignal(signal_module.SIGINT)
     signal_module.signal(signal_module.SIGTERM, handle_shutdown)
     signal_module.signal(signal_module.SIGINT, handle_shutdown)
+    resume_target = resume if isinstance(resume, str) else None
     try:
-        if state_file_path(config_path).exists():
-            LOGGER.info("Found existing state file, resuming previous run.")
+        if resume and not state_file_path(config_path).exists():
+            LOGGER.warning("--resume requested but no state file found; starting fresh.")
+        elif state_file_path(config_path).exists():
+            if resume_target:
+                apply_forced_resume_if_targeted(config_path, config, resume_target)
+            else:
+                LOGGER.info("Found existing state file, resuming previous run.")
             try:
                 _resume_run(config, signal_socket, pub_socket)
             except PropagateError as error:

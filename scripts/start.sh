@@ -22,6 +22,7 @@ TOKEN=""
 TOKEN_ENV="TELEGRAM_BOT_TOKEN"
 ALLOWED_USERS=""
 DEBUG=false
+RESUME=""
 
 usage() {
     cat <<EOF
@@ -40,6 +41,7 @@ Options:
   --token <value>       Telegram bot token
   --token-env <var>     Env var containing the Telegram bot token (default: TELEGRAM_BOT_TOKEN)
   --allowed-users <ids> Comma-separated Telegram user IDs
+  --resume [target]     Resume a previous run, optionally from a specific execution/task (e.g. suggest/wait-for-verdict)
   --debug               Enable debug logging on all services
   --help                Show this help
 EOF
@@ -57,6 +59,13 @@ while [[ $# -gt 0 ]]; do
         --token)      TOKEN="$2"; shift 2 ;;
         --token-env)  TOKEN_ENV="$2"; shift 2 ;;
         --allowed-users) ALLOWED_USERS="$2"; shift 2 ;;
+        --resume)
+            if [[ $# -ge 2 && ! "$2" =~ ^-- ]]; then
+                RESUME="$2"; shift 2
+            else
+                RESUME="__bare__"; shift
+            fi
+            ;;
         --debug)      DEBUG=true; shift ;;
         --help|-h)    usage ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -103,6 +112,11 @@ start_service() {
 
 # --- Build command args ---
 SERVE_ARGS=(--config "$CONFIG")
+if [[ "$RESUME" == "__bare__" ]]; then
+    SERVE_ARGS+=(--resume)
+elif [[ -n "$RESUME" ]]; then
+    SERVE_ARGS+=(--resume "$RESUME")
+fi
 
 WEBHOOK_ARGS=(--config "$CONFIG")
 [[ -n "$PORT" ]] && WEBHOOK_ARGS+=(--port "$PORT")

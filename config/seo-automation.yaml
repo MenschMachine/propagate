@@ -231,6 +231,8 @@ executions:
       - id: wait-for-verdict
         before:
           - propagate context dump
+        after:
+          - git:pr-comments-list :review-comments
         wait_for_signal: pull_request.labeled
         routes:
           - when: { label: "changes_required" }
@@ -269,6 +271,8 @@ executions:
           - git:push
           - git:pr
       - id: wait-for-verdict
+        after:
+          - git:pr-comments-list :review-comments
         wait_for_signal: pull_request.labeled
         routes:
           - when: { label: "changes_required" }

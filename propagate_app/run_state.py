@@ -6,9 +6,9 @@ from pathlib import Path
 
 import yaml
 
-from .constants import LOGGER
+from .constants import LOGGER, PHASE_AFTER, PHASE_BEFORE
 from .errors import PropagateError
-from .models import ActiveSignal, ExecutionScheduleState, RunState
+from .models import ActiveSignal, Config, ExecutionScheduleState, RunState
 
 
 def state_file_path(config_path: Path) -> Path:
@@ -106,6 +106,73 @@ def load_run_state(config_path: Path) -> RunState:
         received_signal_types=set(data.get("received_signal_types") or []),
         metadata=data.get("metadata") or {},
     )
+
+
+def parse_resume_target(target: str) -> tuple[str, str | None]:
+    parts = target.split("/", 1)
+    return (parts[0], parts[1] if len(parts) > 1 else None)
+
+
+def rewrite_state_for_forced_resume(
+    run_state: RunState,
+    config: Config,
+    target_execution: str,
+    target_task: str | None,
+) -> None:
+    from .scheduler import activate_execution_with_dependencies
+
+    if target_execution not in config.executions:
+        raise PropagateError(f"Execution '{target_execution}' not found in config.")
+    execution = config.executions[target_execution]
+    if target_task is not None:
+        task_ids = [t.task_id for t in execution.sub_tasks]
+        if target_task not in task_ids:
+            raise PropagateError(
+                f"Task '{target_task}' not found in execution '{target_execution}'. "
+                f"Available tasks: {', '.join(task_ids)}"
+            )
+
+    active_names: set[str] = set()
+    activate_execution_with_dependencies(config, target_execution, active_names)
+    completed_names = active_names - {target_execution}
+
+    completed_tasks: dict[str, dict[str, str]] = {}
+    completed_execution_phases: dict[str, str] = {}
+
+    if target_task is not None:
+        task_phases: dict[str, str] = {}
+        for sub_task in execution.sub_tasks:
+            if sub_task.task_id == target_task:
+                break
+            task_phases[sub_task.task_id] = PHASE_AFTER
+        completed_tasks[target_execution] = task_phases
+        completed_execution_phases[target_execution] = PHASE_BEFORE
+
+    run_state.schedule = ExecutionScheduleState(
+        active_names=active_names,
+        completed_names=completed_names,
+        completed_tasks=completed_tasks,
+        completed_execution_phases=completed_execution_phases,
+    )
+    save_run_state(run_state)
+    LOGGER.debug("Rewrote run state for forced resume at '%s'.", target_execution + (f"/{target_task}" if target_task else ""))
+
+
+def apply_forced_resume_if_targeted(
+    config_path: Path,
+    config: Config,
+    resume_target: str | None,
+) -> RunState:
+    """Load run state and optionally rewrite it for a forced resume target.
+
+    Centralises the load-parse-rewrite sequence used by both ``run`` and ``serve``.
+    """
+    run_state = load_run_state(config_path)
+    if resume_target is not None:
+        target_exec, target_task = parse_resume_target(resume_target)
+        LOGGER.info("Forced resume from '%s'.", resume_target)
+        rewrite_state_for_forced_resume(run_state, config, target_exec, target_task)
+    return run_state
 
 
 def clear_run_state(config_path: Path) -> None:

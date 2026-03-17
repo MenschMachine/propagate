@@ -1,8 +1,16 @@
 # Implement SEO Changes
 
-Read `:suggestions` from context. Implement the approved suggestions on the pdfdancer-www site.
+## Review feedback (check first)
 
-If there are PR comments from a previous review (visible in context), address that feedback and revise your implementation.
+Before doing anything else, run:
+```bash
+propagate context get :review-comments
+```
+If this returns review comments, they are the reviewer's feedback on your previous implementation. Address every comment — fix what was asked, revert what was rejected, and note what you changed. This takes priority over everything below.
+
+---
+
+Read `:suggestions` from context. Implement the approved suggestions on the pdfdancer-www site.
 
 ## Guidelines
 

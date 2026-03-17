@@ -20,7 +20,12 @@ from .context_store import (
 from .errors import PropagateError
 from .models import Config, ExecutionScheduleState, RunState, RuntimeContext
 from .repo_clone import is_propagate_clone
-from .run_state import clear_run_state, load_run_state, read_cloned_repos, state_file_path
+from .run_state import (
+    apply_forced_resume_if_targeted,
+    clear_run_state,
+    read_cloned_repos,
+    state_file_path,
+)
 from .scheduler import run_execution_schedule
 from .serve import serve_command
 from .signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, send_signal, socket_address
@@ -36,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--signal", help="Signal name to activate for this run.")
     run_parser.add_argument("--signal-payload", help="Signal payload as a YAML or JSON mapping. Requires --signal.")
     run_parser.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
-    run_parser.add_argument("--resume", action="store_true", default=False, help="Resume a previously interrupted run.")
+    run_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
     send_signal_parser = subparsers.add_parser("send-signal", help="Send a signal to a running propagate instance.")
     send_signal_parser.add_argument("--config", required=True, help="Config path (used to determine socket address).")
     send_signal_source = send_signal_parser.add_mutually_exclusive_group(required=True)
@@ -55,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     context_subparsers.add_parser("dump", help="Dump all context keys as YAML.")
     serve_parser = subparsers.add_parser("serve", help="Run as a long-lived server, listening for signals.")
     serve_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+    serve_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
     clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
     clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     clear_parser.add_argument("-f", "--force", action="store_true", default=False, help="Also delete cloned repositories.")
@@ -97,7 +103,7 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "send-signal":
         return send_signal_command(args.config, args.signal, args.signal_payload, args.signal_file)
     if args.command == "serve":
-        return serve_command(args.config)
+        return serve_command(args.config, resume=args.resume)
     if args.command == "clear":
         return clear_command(args.config, force=args.force)
     if args.command == "context":
@@ -138,22 +144,24 @@ def run_command(
     signal_name: str | None,
     signal_payload: str | None,
     signal_file: str | None,
-    resume: bool = False,
+    resume: bool | str = False,
 ) -> int:
     config_path = Path(config_value).expanduser()
     if resume:
         if any(v is not None for v in (execution_name, signal_name, signal_payload, signal_file)):
             raise PropagateError("--resume cannot be combined with --execution, --signal, --signal-payload, or --signal-file.")
+        if isinstance(resume, str):
+            return _run_resume(config_path, resume_target=resume)
         return _run_resume(config_path)
     return _run_fresh(config_path, execution_name, signal_name, signal_payload, signal_file)
 
 
-def _run_resume(config_path: Path) -> int:
+def _run_resume(config_path: Path, resume_target: str | None = None) -> int:
     signal_socket = None
     address = None
     try:
-        run_state = load_run_state(config_path)
         config = load_config(config_path)
+        run_state = apply_forced_resume_if_targeted(config_path, config, resume_target)
         active_signal = run_state.active_signal
         log_active_signal(active_signal)
         initialized_dirs = set(run_state.initialized_signal_context_dirs)
