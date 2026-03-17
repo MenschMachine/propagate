@@ -176,13 +176,19 @@ Runs on pdfdancer-marketing-data. Triggers after `implement` completes. Sole own
 Runs on pdfdancer-marketing-data. Triggers after `pull-data` completes (so it has fresh GSC data). Sole owner of
 ledger **evaluation** writes.
 
-**Tasks**:
-1. Read `data/feedback/implementations.yaml`
-2. For each `pending` entry, check evaluation gates
-3. Score mature entries using the noise threshold
-4. Write evaluated results back to the ledger
-5. Save `:evaluation-results` summary to context for analyze to read
-6. Commit to main
+This execution uses no agent prompt — all evaluation logic runs in a Python script
+(`config/scripts/evaluate_implementations.py` in the propagate repo) invoked as the `:evaluation-results` context
+source. The script:
+
+1. Reads `data/feedback/implementations.yaml`
+2. For each `pending` entry, checks evaluation gates (14-day floor, volume gate, 90-day ceiling)
+3. Scores mature entries using std dev noise threshold
+4. Writes evaluated results back to the ledger
+5. Prints a JSON summary to stdout (captured as `:evaluation-results` context)
+6. The execution's after hooks commit and push to main
+
+**Standalone testing**: `python config/scripts/evaluate_implementations.py` from the marketing-data repo root.
+**Unit tests**: `pytest tests/test_evaluate_implementations.py -v`
 
 ## Data flow to downstream steps
 
@@ -190,9 +196,3 @@ ledger **evaluation** writes.
   Effectiveness section in the report. Passes effectiveness data through to `:findings`.
 - **suggest**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
   matching (what works), and deprioritization (insufficient_volume). Does **not** read the raw ledger file.
-
-## Future improvement
-
-The statistical evaluation logic (std dev, classification) is currently handled by the agent in
-evaluate-implementations. If this proves unreliable, it can be migrated to a Python script (following the
-`scripts/fetch_gsc.py` pattern in marketing-data) with the agent just interpreting the results.

@@ -478,6 +478,7 @@ These are set by Propagate when running hooks and agent commands:
 
 | Variable | Description |
 |----------|-------------|
+| `PROPAGATE_CONFIG_DIR` | Absolute path to the directory containing the config YAML file. Useful for referencing scripts relative to the config. |
 | `PROPAGATE_EXECUTION` | Current execution name. |
 | `PROPAGATE_TASK` | Current sub-task ID. Empty string during execution-level hooks. |
 

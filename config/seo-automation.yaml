@@ -51,6 +51,7 @@
 #   DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD — DataForSEO API credentials
 #   DATAFORSEO_SERP_LIMIT — Max SERP lookups per run (default: 50)
 #   DATAFORSEO_SEED_LIMIT — Max related keyword seeds (default: 20)
+#   MARKETING_DATA_ENV    — Path to marketing-data .env file (default: .env in working dir)
 
 version: "6"
 
@@ -84,6 +85,8 @@ context_sources:
     command: 'printf "seo: track implementations %s\n" "$(date -u +%Y-%m-%d)"'
   seo-eval-commit:
     command: 'printf "seo: evaluate implementations %s\n" "$(date -u +%Y-%m-%d)"'
+  evaluation-results:
+    command: "python ${PROPAGATE_CONFIG_DIR}/scripts/evaluate_implementations.py"
 
 signals:
   include:
@@ -108,7 +111,7 @@ executions:
     sub_tasks:
       - id: install-deps
         before:
-          - cp /Users/michael/Code/TFC/pdfdancer/pdfdancer-marketing-data/.env .env
+          - cp "${MARKETING_DATA_ENV:-.env}" .env
           - pip install -r requirements.txt
       - id: fetch-data
         before:
@@ -137,7 +140,7 @@ executions:
     sub_tasks:
       - id: install-deps
         before:
-          - cp /Users/michael/Code/TFC/pdfdancer/pdfdancer-marketing-data/.env .env
+          - cp "${MARKETING_DATA_ENV:-.env}" .env
           - pip install -r requirements.txt
       - id: fetch-enrichment
         before:
@@ -163,7 +166,8 @@ executions:
       - git:branch
     sub_tasks:
       - id: evaluate
-        prompt: ./prompts/seo/evaluate-implementations.md
+        before:
+          - :evaluation-results
     after:
       - git:commit
       - git:push

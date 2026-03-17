@@ -5,7 +5,12 @@ from .models import ContextSourceConfig, RuntimeContext
 from .processes import run_shell_command
 
 
-def run_context_source(context_source: ContextSourceConfig, runtime_context: RuntimeContext, label: str) -> str:
+def run_context_source(
+    context_source: ContextSourceConfig,
+    runtime_context: RuntimeContext,
+    label: str,
+    extra_env: dict[str, str] | None = None,
+) -> str:
     context_dir = resolve_execution_context_dir(runtime_context)
     return capture_and_store_context_source_output(
         context_source,
@@ -13,6 +18,7 @@ def run_context_source(context_source: ContextSourceConfig, runtime_context: Run
         context_dir,
         failure_message=f"Context source '{context_source.name}' failed for {label} with exit code {{exit_code}}.",
         start_failure_message=f"Failed to start context source '{context_source.name}' for {label}: {{error}}",
+        extra_env=extra_env,
     )
 
 
@@ -23,12 +29,14 @@ def capture_and_store_context_source_output(
     *,
     failure_message: str,
     start_failure_message: str,
+    extra_env: dict[str, str] | None = None,
 ) -> str:
     output = capture_context_source_output(
         context_source.command,
         working_dir,
         failure_message=failure_message,
         start_failure_message=start_failure_message,
+        extra_env=extra_env,
     )
     context_set_command(f":{context_source.name}", output, context_dir)
     return output
@@ -39,6 +47,7 @@ def capture_context_source_output(
     working_dir: Path,
     failure_message: str,
     start_failure_message: str,
+    extra_env: dict[str, str] | None = None,
 ) -> str:
     result = run_shell_command(
         command,
@@ -47,5 +56,6 @@ def capture_context_source_output(
         start_failure_message=start_failure_message,
         capture_output=True,
         text=True,
+        extra_env=extra_env,
     )
     return result.stdout.strip()
