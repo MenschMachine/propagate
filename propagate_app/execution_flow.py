@@ -16,7 +16,7 @@ def run_configured_execution(
     completed_execution_phase: str | None = None,
 ) -> None:
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
-    if execution.git and completed_task_phases:
+    if execution.git and (completed_task_phases or completed_execution_phase):
         git_state = restore_git_run_state(runtime_context)
     else:
         git_state = GitRunState() if execution.git else None

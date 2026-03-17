@@ -220,29 +220,6 @@ class ContextStoreUnitTests(unittest.TestCase):
         self.assertEqual(env["PROPAGATE_CONTEXT_ROOT"], str(context_root))
 
 
-    def test_clear_execution_context_removes_files_and_subdirs(self) -> None:
-        from propagate_app.context_store import clear_execution_context
-
-        context_root = self.root / ".propagate-context"
-        exec_dir = context_root / "build"
-        task_dir = exec_dir / "task1"
-        task_dir.mkdir(parents=True)
-        (exec_dir / "key1").write_text("value1", encoding="utf-8")
-        (exec_dir / "key2").write_text("value2", encoding="utf-8")
-        (task_dir / "local_key").write_text("local_value", encoding="utf-8")
-
-        clear_execution_context(context_root, "build")
-
-        self.assertTrue(exec_dir.exists(), "Execution dir should be recreated")
-        self.assertEqual(list(exec_dir.iterdir()), [], "Execution dir should be empty")
-
-    def test_clear_execution_context_noop_when_missing(self) -> None:
-        from propagate_app.context_store import clear_execution_context
-
-        context_root = self.root / ".propagate-context"
-        clear_execution_context(context_root, "nonexistent")
-
-
 class ContextCLIScopeTests(unittest.TestCase):
     maxDiff = None
 
@@ -585,7 +562,7 @@ class ContextEnvVarsIntegrationTests(unittest.TestCase):
         self.assertEqual(env_data["PROPAGATE_TASK"], "plan")
 
     def test_merged_context_in_prompt_global_plus_execution(self) -> None:
-        """Pre-existing execution context is cleared on fresh runs; only global context survives."""
+        """All pre-existing context (global and execution) is cleared on fresh runs."""
         (self.prompt_dir / "task.md").write_text("task prompt\n", encoding="utf-8")
         context_root = self.config_dir / ".propagate-context"
         global_dir = context_root
@@ -631,7 +608,7 @@ class ContextEnvVarsIntegrationTests(unittest.TestCase):
         prompt = invocations[0]["prompt"]
         self.assertNotIn("### env\nprod\n", prompt, "Stale execution context should be cleared on fresh run")
         self.assertNotIn("2.0", prompt, "Stale execution context should be cleared on fresh run")
-        self.assertIn("### release\n1.0\n", prompt, "Global context should survive execution context clearing")
+        self.assertNotIn("### release\n1.0\n", prompt, "Stale global context should also be cleared on fresh run")
 
     def test_hook_receives_context_env_vars(self) -> None:
         (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")

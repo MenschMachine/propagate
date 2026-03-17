@@ -64,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
     clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     clear_parser.add_argument("-f", "--force", action="store_true", default=False, help="Also delete cloned repositories.")
+    validate_parser = subparsers.add_parser("validate", help="Validate a config file without running.")
+    validate_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     return parser
 
 
@@ -106,6 +108,8 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
         return serve_command(args.config, resume=args.resume)
     if args.command == "clear":
         return clear_command(args.config, force=args.force)
+    if args.command == "validate":
+        return validate_command(args.config)
     if args.command == "context":
         context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
         execution_env = os.environ.get(ENV_EXECUTION, "")
@@ -300,6 +304,13 @@ def clear_command(config_value: str, force: bool = False) -> int:
         LOGGER.info("Cleared: %s", ", ".join(cleared))
     else:
         LOGGER.info("Nothing to clear.")
+    return 0
+
+
+def validate_command(config_value: str) -> int:
+    config_path = Path(config_value).expanduser()
+    load_config(config_path)
+    LOGGER.info("Config is valid: %s", config_path)
     return 0
 
 

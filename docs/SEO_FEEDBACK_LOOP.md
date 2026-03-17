@@ -223,6 +223,18 @@ source. The script:
 **Standalone testing**: `python config/scripts/evaluate_implementations.py` from the marketing-data repo root.
 **Unit tests**: `pytest tests/test_evaluate_implementations.py -v`
 
+## Deployment Gate for Indexing
+
+The `request-index` execution waits for the implement PR to be merged and deployed before requesting Google re-indexing.
+
+Cloudflare Pages auto-deploys from the main branch. When the implement PR is merged, GitHub fires a `push` webhook
+targeting `refs/heads/main`. The `wait-for-deploy` sub-task blocks on this signal, then a 10-minute delay (`sleep 600`)
+gives Cloudflare time to finish the deploy before the indexing requests go out.
+
+```
+implement PR merged → GitHub push webhook → wait-for-deploy unblocks → 10 min delay → request indexing
+```
+
 ## Data flow to downstream steps
 
 - **analyze**: reads `:evaluation-results` from evaluate-implementations context. Includes an Implementation

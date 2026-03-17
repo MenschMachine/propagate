@@ -6,7 +6,7 @@ from typing import Any
 import zmq
 
 from .constants import LOGGER
-from .context_store import clear_execution_context, get_context_root
+from .context_store import clear_all_context, get_context_root
 from .errors import PropagateError
 from .execution_flow import run_configured_execution
 from .graph import build_execution_graph
@@ -43,6 +43,7 @@ def run_execution_schedule(
         )
     else:
         schedule_state = ExecutionScheduleState(active_names=set(), completed_names=set())
+        clear_all_context(get_context_root(config.config_path))
         LOGGER.info("Starting execution schedule with initial execution '%s'.", initial_execution_name)
         activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
     if run_state is not None:
@@ -66,12 +67,9 @@ def run_execution_schedule(
             raise PropagateError("No runnable executions remain for active run plan: " + ", ".join(remaining_names))
         execution = config.executions[execution_name]
         config = _ensure_repo_cloned(config, execution.repository, run_state)
-        context_root = get_context_root(config.config_path)
         completed_task_phases = schedule_state.completed_tasks.get(execution_name, {})
-        if not completed_task_phases:
-            clear_execution_context(context_root, execution.name)
-        execution_runtime_context = prepare_execution_runtime_context(config, execution, runtime_context)
         completed_execution_phase = schedule_state.completed_execution_phases.get(execution_name)
+        execution_runtime_context = prepare_execution_runtime_context(config, execution, runtime_context)
 
         def on_phase_completed(exec_name: str, task_id: str, phase: str) -> None:
             if task_id:

@@ -1,3 +1,16 @@
+  push:
+    payload:
+      repository:
+        type: string
+        required: true
+      ref:
+        type: string
+        required: true
+      head_commit_sha:
+        type: string
+      sender:
+        type: string
+
   pull_request.opened:
     payload:
       repository:

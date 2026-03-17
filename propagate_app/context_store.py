@@ -90,15 +90,6 @@ def clear_all_context(context_root: Path) -> bool:
     return True
 
 
-def clear_execution_context(context_root: Path, execution_name: str) -> None:
-    execution_dir = get_execution_context_dir(context_root, execution_name)
-    if not execution_dir.exists():
-        return
-    LOGGER.debug("Clearing execution context directory: %s", execution_dir)
-    shutil.rmtree(execution_dir)
-    execution_dir.mkdir(parents=True, exist_ok=True)
-
-
 def context_set_command(key: str, value: str, context_dir: Path) -> int:
     validated_key = validate_context_key(key)
     ensure_context_dir(context_dir)
