@@ -267,9 +267,11 @@ executions:
         prompt: ./prompts/seo/summarize-implement.md
       - id: publish
         before:
+          - 'propagate context set :applied-suggestions "$(propagate context get :suggestions --task suggest)"'
           - git:commit
           - git:push
           - git:pr
+          - git:pr-comment-add :applied-suggestions
       - id: wait-for-verdict
         after:
           - git:pr-comments-list :review-comments
