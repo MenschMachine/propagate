@@ -83,12 +83,21 @@ In addition to the PULL socket for receiving signals, the server binds a ZMQ PUB
 }
 ```
 
-- `event`: `"run_completed"` or `"run_failed"`
-- `signal_type`: the signal that triggered the run
+### Event types
+
+| Event | Source | Fields |
+|-------|--------|--------|
+| `run_completed` | After a DAG finishes | `signal_type`, `metadata`, `messages` |
+| `run_failed` | After a DAG fails | `signal_type`, `metadata`, `messages` |
+| `waiting_for_signal` | When the scheduler or a sub-task pauses waiting for a signal | `execution`, `signal`, `metadata` |
+| `pr_created` | When a `git:pr` hook creates a PR | `execution`, `pr_url`, `metadata` |
+| `command_failed` | When a command (e.g. resume) fails | `command`, `message`, `metadata` |
+| `log` | On each log message (for live streaming) | `line` |
+
 - `metadata`: opaque dict forwarded from the incoming ZMQ message (never touches signal validation)
 - `messages`: last 3 log messages from the `propagate` logger during the run
 
-Any ZMQ SUB client can subscribe to these events. The Telegram bot uses this to auto-reply to the chat that triggered the signal (see [TELEGRAM.md](TELEGRAM.md#auto-reply-on-run-completion)).
+Any ZMQ SUB client can subscribe to these events. The Telegram bot uses this to auto-reply to the chat that triggered the signal (see [TELEGRAM.md](TELEGRAM.md#auto-reply-on-events)).
 
 The server knows nothing about subscribers — it publishes events regardless of whether anyone is listening.
 

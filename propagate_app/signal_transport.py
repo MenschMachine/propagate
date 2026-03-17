@@ -141,6 +141,11 @@ def connect_sub_socket(address: str) -> zmq.Socket:
     return socket
 
 
+def publish_event_if_available(pub_socket: zmq.Socket | None, event_type: str, data: dict) -> None:
+    if pub_socket is not None:
+        publish_event(pub_socket, event_type, data)
+
+
 def publish_event(socket: zmq.Socket, event_type: str, data: dict) -> None:
     msg = {"event": event_type, **data}
     socket.send_json(msg)

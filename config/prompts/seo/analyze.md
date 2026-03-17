@@ -2,6 +2,8 @@
 
 Read the data files referenced in `:gsc-data-path`. Analyze the GSC performance data to identify actionable opportunities.
 
+Also read PostHog analytics data if available (path in `:posthog-data-path`). This provides per-page engagement metrics (bounce rate, session duration) that complement GSC's search performance data.
+
 ## What to analyze
 
 ### Performance issues
@@ -11,6 +13,15 @@ Read the data files referenced in `:gsc-data-path`. Analyze the GSC performance 
 
 ### Content gaps
 - Queries from GSC that land on the wrong page (intent mismatch)
+
+### Engagement quality (optional — requires PostHog data)
+
+If PostHog data is available, cross-reference bounce rate per page with GSC-flagged pages and classify each as:
+- `content-problem` — bounce rate > 70%. Visitors land but leave immediately; the page itself isn't delivering.
+- `content-weak` — bounce rate 50–70%. Engagement is mediocre; may respond to content improvements.
+- `content-delivers` — bounce rate < 40%. Visitors engage with the content; the page is doing its job.
+
+Flag pages with fewer than 5 pageviews as **low-confidence** — the bounce rate is not statistically meaningful.
 
 ### Technical signals
 - Pages with zero clicks despite impressions
@@ -66,10 +77,16 @@ Write a structured report to `reports/YYYY-MM-DD/report.md` (use today's date). 
 
 The findings should be a concise, actionable list that the suggest execution can turn into specific changes.
 
-To read the data path, run exactly:
+To read the data paths, run exactly:
 ```bash
 propagate context get :gsc-data-path
 ```
+
+```bash
+propagate context get :posthog-data-path
+```
+
+If `:posthog-data-path` is empty or the file doesn't exist, skip all engagement quality analysis — same pattern as enrichment data.
 
 To save findings, run exactly:
 ```bash
@@ -106,7 +123,7 @@ already compared `indexed_at_implementation` snapshots against current page cont
 - Entries with `"status": "confirmed_indexed"` → note as deployed, no action needed
 - Entries with `"status": "unknown"` → skip
 
-Include the diagnosis type per page (title-alignment, description, content-depth, structural, mismatch) in `:findings` so the suggest step can use it.
+Include the diagnosis type per page (title-alignment, description, content-depth, structural, mismatch) and the engagement quality signal (`content-problem`, `content-weak`, `content-delivers`, or `low-confidence`) in `:findings` so the suggest step can use both.
 
 If no `pages/` directory exists, skip this section entirely.
 

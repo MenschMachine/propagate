@@ -42,6 +42,18 @@ When `:findings` includes a page content diagnosis type, use it to guide your su
 
 The first version cites what was actually observed. The second invents a diagnosis from GSC performance data alone — it could be right, but it could also be wrong (the real problem might be rendering, thin content, or something else entirely). When page content data is available, use it. When it isn't, say what you don't know.
 
+### Suggestion type selection based on engagement quality signal
+
+When `:findings` includes an engagement quality classification from PostHog bounce rate data, use it to further refine the suggestion type:
+
+- **`content-problem`** (bounce > 70%) → prefer `content-edit`. The page isn't delivering — improving meta to drive more traffic to a broken page makes things worse.
+- **`content-weak`** (bounce 50–70%) → use the page content diagnosis to break the tie. If content is thin, go `content-edit`; if meta is misaligned, go `meta`.
+- **`content-delivers` + low traffic** (bounce < 40%, few clicks) → prefer `meta` or `new-content`. This is a visibility problem — the page works, it just needs more eyes.
+- **`content-delivers` + high traffic** → deprioritize. The page is performing well on both engagement and visibility.
+- **`low-confidence`** (< 5 pageviews) → treat as if no engagement data exists; fall back to page content diagnosis only.
+
+When the engagement signal conflicts with the page content diagnosis (e.g., content looks thin but bounce rate is low), trust the bounce rate — it reflects actual visitor behavior.
+
 ## Priority calibration
 
 - **high**: Pages with 100+ impressions that have a confirmed diagnosis from page content data, or critical technical issues (e.g., pages returning empty HTML).

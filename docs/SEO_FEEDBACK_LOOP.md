@@ -227,8 +227,12 @@ source. The script:
 
 - **analyze**: reads `:evaluation-results` from evaluate-implementations context. Includes an Implementation
   Effectiveness section in the report. When page content data exists, performs title/query alignment, thin content
-  detection, and implementation mismatch checks. Passes effectiveness data and page content diagnosis through to
-  `:findings`.
+  detection, and implementation mismatch checks. When PostHog data exists (via `:posthog-data-path`), classifies each
+  flagged page's engagement quality as `content-problem` (bounce > 70%), `content-weak` (50–70%), or
+  `content-delivers` (< 40%), with a `low-confidence` flag for pages under 5 pageviews. Passes effectiveness data,
+  page content diagnosis, and engagement quality signal through to `:findings`.
 - **suggest**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
-  matching (what works), and deprioritization (insufficient_volume). Uses page content diagnosis to select the right
-  suggestion type (meta vs content-edit vs technical). Does **not** read the raw ledger file.
+  matching (what works), and deprioritization (insufficient_volume). Uses page content diagnosis and engagement quality
+  signal to select the right suggestion type — e.g., `content-problem` pages get `content-edit` (not meta),
+  `content-delivers` with low traffic gets `meta` or `new-content` (visibility problem). When engagement signal
+  conflicts with page content diagnosis, bounce rate wins. Does **not** read the raw ledger file.

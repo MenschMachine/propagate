@@ -25,7 +25,7 @@ from .models import ActiveSignal, ExecutionConfig, GitConfig, RuntimeContext, Su
 from .processes import build_agent_command, run_agent_command, run_shell_command
 from .prompts import build_sub_task_prompt
 from .signal_context import store_active_signal_context
-from .signal_transport import receive_signal
+from .signal_transport import publish_event_if_available, receive_signal
 from .signals import signal_payload_matches_when
 from .temp_files import cleanup_temp_file, write_temp_text
 
@@ -96,6 +96,12 @@ def _handle_wait_for_signal(
         "Sub-task '%s' waiting for signal '%s' for execution '%s'.",
         sub_task.task_id, sub_task.wait_for_signal, execution.name,
     )
+    publish_event_if_available(runtime_context.pub_socket, "waiting_for_signal", {
+        "execution": execution.name,
+        "task_id": sub_task.task_id,
+        "signal": sub_task.wait_for_signal,
+        "metadata": runtime_context.metadata,
+    })
     # Build task index lookup
     task_id_to_index = {t.task_id: i for i, t in enumerate(execution.sub_tasks)}
 

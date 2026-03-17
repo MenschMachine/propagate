@@ -15,7 +15,7 @@ from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
 from .run_state import clear_run_state, save_run_state
 from .signal_reconcile import reconcile_pending_signals
-from .signal_transport import receive_signal
+from .signal_transport import publish_event_if_available, receive_signal
 from .signals import signal_payload_matches_when, validate_signal_payload
 
 
@@ -56,7 +56,7 @@ def run_execution_schedule(
             if reconcile_pending_signals(config, execution_graph, schedule_state, received_signal_types, reconciled_triggers):
                 continue
             if signal_socket is not None and has_pending_signal_triggers(config, execution_graph, schedule_state, received_signal_types):
-                _wait_for_signal(signal_socket, config, execution_graph, schedule_state, received_signal_types)
+                _wait_for_signal(signal_socket, config, execution_graph, schedule_state, received_signal_types, runtime_context)
                 continue
             if schedule_state.completed_names == schedule_state.active_names:
                 if run_state is not None:
@@ -233,9 +233,16 @@ def _wait_for_signal(
     execution_graph: ExecutionGraph,
     schedule_state: ExecutionScheduleState,
     received_signal_types: set[str],
+    runtime_context: RuntimeContext,
 ) -> None:
     pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
     LOGGER.info("Waiting for external signal (%s)...", ", ".join(sorted(pending)))
+    publish_event_if_available(runtime_context.pub_socket, "waiting_for_signal", {
+        "execution": "",
+        "task_id": "",
+        "signal": ", ".join(sorted(pending)),
+        "metadata": runtime_context.metadata,
+    })
     while True:
         result = receive_signal(signal_socket, block=True, timeout_ms=1000)
         if result is None:
