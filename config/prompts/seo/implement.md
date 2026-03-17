@@ -10,12 +10,12 @@ If this returns review comments, they are the reviewer's feedback on your previo
 
 ---
 
-Fetch the approved suggestions from the suggest execution by running exactly:
+Fetch the approved suggestions by running exactly:
 ```bash
 propagate context get :suggestions --task suggest
 ```
 
-Implement those suggestions on the pdfdancer-www site. Do NOT use any `:suggestions` value that appears in the auto-injected context section at the bottom of this prompt — it may be stale. Always use the command above.
+Implement those suggestions on the pdfdancer-www site.
 
 ## Guidelines
 

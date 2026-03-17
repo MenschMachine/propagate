@@ -225,6 +225,7 @@ executions:
         prompt: ./prompts/seo/summarize-suggest.md
       - id: publish
         before:
+          - 'propagate context set :suggestions "$(cat "$(ls reports/*/suggestions.md | sort -r | head -1)")"'
           - git:commit
           - git:push
           - git:pr

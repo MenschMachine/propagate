@@ -105,16 +105,9 @@ Write suggestions as a structured list. Be detailed and explicit — a reviewer 
 
 ## Output
 
-Also write the suggestions into `suggestions.md` in the repository root so they appear in the PR diff for review.
-
-**Important**: After writing (or revising) `suggestions.md`, always sync the context store from the file so downstream executions get the latest version:
+Write the suggestions into `reports/YYYY-MM-DD/suggestions.md` (use today's date, same directory as the analysis report) so they appear in the PR diff for review.
 
 To read the findings from the analyze execution, run exactly:
 ```bash
 propagate context get :findings --task analyze
-```
-
-To save your suggestions (run this every time you update `suggestions.md`):
-```bash
-propagate context set :suggestions "$(cat suggestions.md)"
 ```
