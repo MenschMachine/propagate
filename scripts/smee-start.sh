@@ -6,7 +6,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 STATE_FILE="$PROJECT_DIR/.smee.json"
 
 if [[ ! -f "$STATE_FILE" ]]; then
-    echo "ERROR: $STATE_FILE not found. Run smee-setup.sh first." >&2
+    echo "ERROR: $STATE_FILE not found. Run propagate-setup.py first." >&2
     exit 1
 fi
 

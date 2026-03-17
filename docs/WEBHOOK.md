@@ -156,32 +156,30 @@ For local development, GitHub can't reach `localhost`. [Smee.io](https://smee.io
 
 - `npm` (for installing `smee-client`)
 - `gh` CLI (authenticated — for creating/deleting webhooks)
-- `jq`
 
 ### Setup
 
-`smee-setup.sh` does the following, in order:
+`propagate-setup.py` does the following:
 
-1. Checks that `gh` (authenticated), `npm`, `python3`, and `jq` are available
-2. Refuses to run if `.smee.json` already exists (run teardown first)
-3. Installs `smee-client` globally via npm if the `smee` command isn't found
-4. Creates a new Smee channel by hitting `https://smee.io/new` — this gives you a unique public URL that Smee will relay to your local machine
-5. Reads your propagate config and extracts every GitHub `owner/repo` — for `url:` repos it parses the URL directly, for `path:` repos it reads the git origin remote
-6. For each repo, creates a GitHub webhook (via `gh api`) pointing at the Smee channel URL, subscribed to the `--events` types (`push,pull_request,issue_comment` by default)
-7. Writes `.smee.json` with the channel URL, port, secret, and a list of webhook IDs so teardown knows what to clean up
+1. Checks that `gh` is authenticated
+2. Reads your propagate config and extracts every GitHub `owner/repo` (deduped) — for `url:` repos it parses the URL directly, for `path:` repos it reads the git origin remote
+3. Creates a new Smee channel by hitting `https://smee.io/new` — or reuses the existing one if `.smee.json` already exists
+4. For each repo not already in `.smee.json`, creates a GitHub webhook (via `gh api`) pointing at the Smee channel URL
+5. Extracts all labels used in the config (from routes, propagation triggers, and `git:pr-labels-add` hooks) and creates any missing ones on each repo
+6. Writes `.smee.json` with the channel URL, port, secret, and webhook IDs for teardown
 
 ```bash
-# 1. Create a Smee channel and configure GitHub webhooks
-scripts/smee-setup.sh --config config/propagate.yaml
+# 1. Create Smee channel, webhooks, and labels
+scripts/propagate-setup.py --config config/propagate.yaml
 
 # 2. Start the Smee forwarder (Terminal 1)
 scripts/smee-start.sh
 
-# 3. Start propagate-webhook without --secret (Terminal 2)
+# 3. Start propagate-webhook (Terminal 2)
 propagate-webhook --config config/propagate.yaml --port 8080
 ```
 
-Options for `smee-setup.sh`:
+Options for `propagate-setup.py`:
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -189,6 +187,9 @@ Options for `smee-setup.sh`:
 | `--port` | `8080` | Port for the local webhook server (stored in `.smee.json` for `smee-start.sh`) |
 | `--events` | `push,pull_request,issue_comment` | Comma-separated GitHub event types to subscribe to |
 | `--secret` | (random) | Webhook secret for HMAC verification. Auto-generated if omitted |
+| `--skip-smee` | off | Skip smee webhook setup |
+| `--skip-labels` | off | Skip label creation |
+| `--dry-run` | off | Show what would be done without making changes |
 
 ### Teardown
 
