@@ -108,6 +108,14 @@ def _handle_wait_for_signal(
     # Block on ZMQ socket for incoming signal
     matched_route = _wait_for_matching_signal(sub_task, runtime_context)
 
+    LOGGER.info("Signal '%s' received; resuming execution '%s'.", sub_task.wait_for_signal, execution.name)
+    publish_event_if_available(runtime_context.pub_socket, "signal_received", {
+        "execution": execution.name,
+        "task_id": sub_task.task_id,
+        "signal": sub_task.wait_for_signal,
+        "metadata": runtime_context.metadata,
+    })
+
     # Mark this sub-task as completed
     if on_phase_completed is not None:
         on_phase_completed(execution.name, sub_task.task_id, PHASE_AFTER)

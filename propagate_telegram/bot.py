@@ -204,6 +204,12 @@ def _format_event_reply(event: dict) -> str:
         if execution:
             return f"Waiting for signal '{signal_name}' (execution '{execution}')."
         return f"Waiting for signal '{signal_name}'."
+    if event_type == "signal_received":
+        signal_name = event.get("signal", "unknown")
+        execution = event.get("execution", "")
+        if execution:
+            return f"Signal '{signal_name}' received — resuming execution '{execution}'."
+        return f"Signal '{signal_name}' received — resuming."
     if event_type == "pr_created":
         execution = event.get("execution", "unknown")
         pr_url = event.get("pr_url", "")

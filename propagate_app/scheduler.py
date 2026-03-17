@@ -250,6 +250,14 @@ def _wait_for_signal(
         _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
         new_pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
         if new_pending != pending:
+            signal_type, _ = result
+            LOGGER.info("Signal '%s' satisfied; resuming execution.", signal_type)
+            publish_event_if_available(runtime_context.pub_socket, "signal_received", {
+                "execution": "",
+                "task_id": "",
+                "signal": signal_type,
+                "metadata": runtime_context.metadata,
+            })
             return
 
 

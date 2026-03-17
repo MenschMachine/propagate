@@ -28,6 +28,18 @@ def test_format_waiting_for_signal_without_execution():
     assert result == "Waiting for signal 'review_done'."
 
 
+def test_format_signal_received_with_execution():
+    event = {"event": "signal_received", "execution": "deploy-app", "signal": "review_done", "metadata": {}}
+    result = _format_event_reply(event)
+    assert result == "Signal 'review_done' received — resuming execution 'deploy-app'."
+
+
+def test_format_signal_received_without_execution():
+    event = {"event": "signal_received", "execution": "", "signal": "review_done", "metadata": {}}
+    result = _format_event_reply(event)
+    assert result == "Signal 'review_done' received — resuming."
+
+
 def test_format_pr_created():
     event = {"event": "pr_created", "execution": "deploy-app", "pr_url": "https://github.com/org/repo/pull/42", "metadata": {}}
     result = _format_event_reply(event)
@@ -188,13 +200,102 @@ def test_scheduler_wait_publishes_event(tmp_path):
         with patch("propagate_app.scheduler.publish_event_if_available") as mock_publish:
             _wait_for_signal(pull_socket, config, execution_graph, schedule_state, received, rc)
 
-        mock_publish.assert_called_once()
-        call_args = mock_publish.call_args
-        assert call_args[0][1] == "waiting_for_signal"
-        assert call_args[0][2]["signal"] == "go"
-        assert call_args[0][2]["metadata"] == metadata
-        assert call_args[0][2]["task_id"] == ""
+        assert mock_publish.call_count == 2
+        # First call: waiting_for_signal
+        waiting_call = mock_publish.call_args_list[0]
+        assert waiting_call[0][1] == "waiting_for_signal"
+        assert waiting_call[0][2]["signal"] == "go"
+        assert waiting_call[0][2]["metadata"] == metadata
+        assert waiting_call[0][2]["task_id"] == ""
+        # Second call: signal_received
+        received_call = mock_publish.call_args_list[1]
+        assert received_call[0][1] == "signal_received"
+        assert received_call[0][2]["signal"] == "go"
+        assert received_call[0][2]["metadata"] == metadata
 
         t.join(timeout=5)
     finally:
         close_pull_socket(pull_socket, address)
+
+
+# ---------------------------------------------------------------------------
+# Integration: sub-task level signal_received publish
+# ---------------------------------------------------------------------------
+
+
+def test_subtask_signal_received_event_published(tmp_path):
+    import threading
+
+    from propagate_app.models import (
+        ExecutionConfig,
+        SubTaskConfig,
+        SubTaskRouteConfig,
+    )
+    from propagate_app.signal_transport import (
+        bind_pull_socket,
+        close_pull_socket,
+        close_push_socket,
+        connect_push_socket,
+        send_signal,
+        socket_address,
+    )
+    from propagate_app.sub_tasks import run_execution_sub_tasks
+
+    address = socket_address(tmp_path / "test-received-event.yaml")
+    socket = bind_pull_socket(address)
+    try:
+        sub_tasks = [
+            SubTaskConfig(
+                task_id="wait",
+                prompt_path=None,
+                before=[],
+                after=[],
+                on_failure=[],
+                wait_for_signal="review_done",
+                routes=[SubTaskRouteConfig(when={"status": "approved"}, continue_flow=True)],
+            ),
+        ]
+        execution = ExecutionConfig(
+            name="my-exec", repository="repo", depends_on=[], signals=[],
+            sub_tasks=sub_tasks, git=None,
+        )
+        metadata = {"chat_id": "42"}
+        rc = _make_runtime_context(tmp_path, pub_socket="fake", metadata=metadata)
+        rc = RuntimeContext(
+            agent_command="echo",
+            context_sources={},
+            active_signal=None,
+            initialized_signal_context_dirs=set(),
+            working_dir=Path("."),
+            context_root=tmp_path,
+            execution_name="my-exec",
+            task_id="",
+            signal_socket=socket,
+            pub_socket="fake",
+            metadata=metadata,
+        )
+
+        def send():
+            push = connect_push_socket(address)
+            send_signal(push, "review_done", {"status": "approved"})
+            close_push_socket(push)
+
+        t = threading.Thread(target=send, daemon=True)
+        t.start()
+
+        with patch("propagate_app.sub_tasks.publish_event_if_available") as mock_publish:
+            run_execution_sub_tasks(execution, rc)
+
+        t.join(timeout=5)
+
+        # Should have two calls: waiting_for_signal and signal_received
+        assert mock_publish.call_count == 2
+        waiting_call = mock_publish.call_args_list[0]
+        assert waiting_call[0][1] == "waiting_for_signal"
+        received_call = mock_publish.call_args_list[1]
+        assert received_call[0][1] == "signal_received"
+        assert received_call[0][2]["execution"] == "my-exec"
+        assert received_call[0][2]["signal"] == "review_done"
+        assert received_call[0][2]["metadata"] == metadata
+    finally:
+        close_pull_socket(socket, address)
