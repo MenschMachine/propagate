@@ -46,7 +46,7 @@ Prioritize multi-week declines over single-week dips. A page that dropped once m
 The `evaluate-implementations` step has already evaluated the ledger and saved results to context. Read them:
 
 ```bash
-propagate context get :evaluation-results --task evaluate
+propagate context get :evaluation-results --task evaluate-implementations/evaluate
 ```
 
 If evaluation results exist, include an **Implementation Effectiveness** section at the top of the report, before
@@ -81,7 +81,7 @@ Check if page content data exists:
 ls data/*/pages/*.json 2>/dev/null | head -1
 ```
 
-If found, load page JSON files from the `pages/` subdirectory of the latest data directory for each GSC-flagged page. The filename derives from the URL path: strip leading/trailing slashes, replace `/` with `_`, add `.json`.
+If found, load page JSON files from the `pages/` subdirectory of the latest data directory for each GSC-flagged page. The filename derives from the URL path: strip leading/trailing slashes, then replace all non-alphanumeric characters with `_`, add `.json`. For example, `/how-to/redact-pdfs/` becomes `how_to_redact_pdfs.json`.
 
 ### a) Title/description vs. query alignment
 

@@ -52,7 +52,7 @@ For each changed URL with suggestion type `meta`, check if page content data exi
 ls data/*/pages/ 2>/dev/null | head -1
 ```
 
-If a `pages/` directory exists, load the page JSON for each changed URL (filename: strip leading/trailing slashes from the URL path, replace `/` with `_`, add `.json`). Record the current indexed title and description in the ledger entry:
+If a `pages/` directory exists, load the page JSON for each changed URL (filename: strip leading/trailing slashes from the URL path, then replace all non-alphanumeric characters with `_`, add `.json` — e.g. `/how-to/redact-pdfs/` becomes `how_to_redact_pdfs.json`). Record the current indexed title and description in the ledger entry:
 
 ```yaml
 indexed_at_implementation:
