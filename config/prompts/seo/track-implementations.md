@@ -80,6 +80,10 @@ Formula: `avg_weekly_impressions * multiplier`
 Example: a page averaging 100 impressions/week with a `content-edit` suggestion needs 300 post-change impressions
 before it can be evaluated.
 
+Note: These multipliers are initial estimates. After several evaluation cycles, review whether they produce useful
+results. If evaluations consistently show `inconclusive` at these thresholds, increase the multipliers. If most
+entries resolve well before hitting the threshold, decrease them.
+
 ### 5. Find the suggestion source path
 
 Look for the most recent suggestions file:

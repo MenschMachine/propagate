@@ -32,6 +32,16 @@ When `:findings` includes a page content diagnosis type, use it to guide your su
 - **Source vs. indexed mismatch** (implementation not picked up) → `technical`
 - **Title missing query terms** → `meta` (title-focused)
 
+### Example: grounded vs. ungrounded suggestion
+
+**Well-grounded** (page content data exists in findings):
+> The page snapshot for `/sdk/fastapi/` returned HTTP 200 with no title, meta description, H1, or body text. This is a render/indexability problem. Fix the page so the HTML response exposes indexable content.
+
+**Poorly grounded** (speculative, no page content evidence):
+> The page at `/sdk/fastapi/` likely has a weak title tag that doesn't match query intent. Rewrite the title to include "FastAPI PDF SDK."
+
+The first version cites what was actually observed. The second invents a diagnosis from GSC performance data alone — it could be right, but it could also be wrong (the real problem might be rendering, thin content, or something else entirely). When page content data is available, use it. When it isn't, say what you don't know.
+
 ### Suggestion type selection based on engagement quality signal
 
 When `:findings` includes an engagement quality classification from PostHog bounce rate data, use it to further refine the suggestion type:
@@ -43,6 +53,22 @@ When `:findings` includes an engagement quality classification from PostHog boun
 - **`low-confidence`** (< 5 pageviews) → treat as if no engagement data exists; fall back to page content diagnosis only.
 
 When the engagement signal conflicts with the page content diagnosis (e.g., content looks thin but bounce rate is low), trust the bounce rate — it reflects actual visitor behavior.
+
+## Priority calibration
+
+- **high**: Pages with 100+ impressions that have a confirmed diagnosis from page content data, or critical technical issues (e.g., pages returning empty HTML).
+- **medium**: Pages with 50–100 impressions, or pages with 100+ impressions where the diagnosis is inferred from GSC data alone (no page content confirmation).
+- **low**: Speculative opportunities, pages under 50 impressions, or hygiene fixes with minimal absolute impact (e.g., URL normalization on low-traffic pages).
+
+## Suggestion count
+
+Always include all high and medium priority suggestions. If the total count is below 10, fill up to 10 with low priority suggestions. Do not exceed 10 suggestions per run. If more opportunities exist beyond the cutoff, add a brief "Deferred opportunities" note at the end listing what was left out and why.
+
+## How prescriptive to be
+
+- **meta** suggestions: Write the exact title and description text. These are short, and you have enough data to get them right.
+- **content-edit** and **new-content** suggestions: Provide the structure (headings, key phrases to include, internal links) but not full body copy. The implement step knows the site voice and can write better prose with access to the codebase.
+- **technical** suggestions: Specify the exact fix (redirect rule, canonical tag, config change) — don't leave it vague.
 
 ## Suggestion types
 

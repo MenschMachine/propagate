@@ -44,6 +44,8 @@ Read the `report.md` from each past report directory and extract metrics for pag
 
 > CTR: 2.1% → 1.4% → 0.58% (declining 3 weeks)
 
+**Fallback when fewer than 2 report directories exist:** Compute trends directly from the raw GSC weekly exports in `data/`. Use the `pages` section of each GSC JSON file (not `query_page` aggregation) to match the GSC page-level API methodology. The `pages` section contains pre-aggregated per-page metrics from Google; the `query_page` section uses a different aggregation that will produce different numbers for the same page.
+
 Classify each flagged page as:
 - **Declining**: metrics worsening over multiple weeks — highest priority
 - **Stable**: no meaningful change
@@ -66,6 +68,14 @@ and incorporate it into `:findings` so the suggest step has:
 - Which URLs are in cool-down (`pending`)
 - Which suggestion types are working or failing (`improved` / `declined`)
 - Which URLs to deprioritize (`inconclusive` with `insufficient_volume`)
+
+**Fallback when evaluation results are unavailable:** If `:evaluation-results` is empty or the context read fails, read the ledger file directly:
+
+```bash
+cat data/feedback/implementations.yaml 2>/dev/null
+```
+
+If the ledger exists and contains entries, extract all URLs with `status: pending` and include them in `:findings` as cool-down entries. The suggest step must know about these URLs even if the evaluate step did not run. Do not attempt to evaluate entries (that is the evaluate step's job) — just pass through the pending URLs, their `date_implemented`, and their `suggestion_type` so the suggest step can skip them.
 
 Do **not** modify `data/feedback/implementations.yaml` — the evaluate-implementations execution owns all ledger writes.
 
@@ -108,7 +118,7 @@ For each flagged page, check whether the indexed `title` and `meta_description` 
 
 ### b) Thin content detection
 
-Use `text_content` word count as a rough signal. Threshold: ~1000 total words (we're catching 200-word pages vs 2000-word pages, not drawing a fine line).
+Use `text_content` word count as a rough signal. Threshold: ~500 total words (we're catching thin pages vs substantive ones, not drawing a fine line).
 - Solid meta but very low word count → flag "content depth" as the issue
 - Missing H1 entirely → flag as a structural finding
 
