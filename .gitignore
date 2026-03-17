@@ -7,3 +7,8 @@
 /propagate.egg-info
 /.claude
 .smee.json
+/venv
+__pycache__
+*.swp
+.env-marketing-data
+.pdfdancer-seo-service-account.json
