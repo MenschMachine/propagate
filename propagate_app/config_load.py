@@ -28,7 +28,7 @@ def load_config(config_path: Path) -> Config:
         raise PropagateError("Config must be a YAML mapping.")
     validate_allowed_keys(
         raw_data,
-        {"version", "agent", "repositories", "context_sources", "signals", "executions", "propagation"},
+        {"version", "agent", "repositories", "context_sources", "signals", "executions", "propagation", "clone_dir"},
         "Config",
     )
     version = raw_data.get("version")
@@ -50,6 +50,12 @@ def load_config(config_path: Path) -> Config:
     )
     propagation_triggers = parse_propagation_triggers(raw_data.get("propagation"), set(executions), signals)
     validate_execution_graph_is_acyclic(executions, propagation_triggers)
+    raw_clone_dir = raw_data.get("clone_dir")
+    clone_dir = None
+    if raw_clone_dir is not None:
+        clone_dir = Path(raw_clone_dir)
+        if not clone_dir.is_absolute():
+            clone_dir = (resolved_config_path.parent / clone_dir).resolve()
     config = Config(
         version=version,
         agent=agent,
@@ -59,5 +65,6 @@ def load_config(config_path: Path) -> Config:
         propagation_triggers=propagation_triggers,
         executions=executions,
         config_path=resolved_config_path,
+        clone_dir=clone_dir,
     )
     return config

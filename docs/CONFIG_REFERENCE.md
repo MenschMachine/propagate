@@ -19,9 +19,22 @@ executions:                # Required
   name: { ... }
 propagation:               # Optional
   triggers: [...]
+clone_dir: ./clones        # Optional
 ```
 
 All keys not listed above are rejected.
+
+---
+
+## `clone_dir`
+
+**Optional.** Directory where remote repositories are cloned into. Relative paths are resolved from the config file directory. Can be overridden by the `PROPAGATE_CLONE_DIR` environment variable.
+
+```yaml
+clone_dir: ./clones
+```
+
+If not set, clones land in the system temp directory.
 
 ---
 
@@ -471,6 +484,7 @@ after:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PROPAGATE_CONTEXT_ROOT` | `.propagate-context` (relative to working directory) | Root directory for the context store. |
+| `PROPAGATE_CLONE_DIR` | System temp directory | Directory for cloned repositories. Overrides the YAML `clone_dir` key. |
 
 ### Set at runtime
 

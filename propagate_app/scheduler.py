@@ -103,7 +103,7 @@ def _ensure_repo_cloned(config: Config, repo_name: str, run_state: RunState | No
     if repo.url is None or repo.path is not None:
         return config
     existing_path = run_state.cloned_repos.get(repo_name) if run_state is not None else None
-    cloned_path = clone_single_repository(repo_name, repo, existing_path)
+    cloned_path = clone_single_repository(repo_name, repo, existing_path, config.clone_dir)
     if run_state is not None:
         run_state.cloned_repos[repo_name] = cloned_path
         save_run_state(run_state)

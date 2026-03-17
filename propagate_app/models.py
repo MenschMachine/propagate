@@ -139,6 +139,7 @@ class Config:
     propagation_triggers: list[PropagationTriggerConfig]
     executions: dict[str, ExecutionConfig]
     config_path: Path
+    clone_dir: Path | None = None
 
 
 @dataclass(frozen=True)
