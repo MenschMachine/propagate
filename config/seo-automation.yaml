@@ -269,10 +269,10 @@ executions:
       - id: publish
         before:
           - 'propagate context set :applied-suggestions "$(propagate context get :suggestions --task suggest)"'
+          - 'propagate context set :implement-summary "$(printf "%s\n\n---\n\n## Applied Suggestions\n\n%s" "$(propagate context get :implement-summary)" "$(propagate context get :applied-suggestions)")"'
           - git:commit
           - git:push
           - git:pr
-          - git:pr-comment-add :applied-suggestions
       - id: wait-for-verdict
         after:
           - git:pr-comments-list :review-comments
