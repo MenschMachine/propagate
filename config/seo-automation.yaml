@@ -2,26 +2,37 @@
 #
 # Main DAG (triggered by "start" signal):
 #
-#   pull-data → analyze → suggest → implement → request-index
+#   pull-data → evaluate-implementations → analyze → suggest → implement → track-implementations → request-index
 #
-# 1. pull-data:      Fetches GSC and PostHog data into
-#                    pdfdancer-marketing-data/data/YYYY-MM-DD/, commits to main.
-# 2. analyze:        Reads the fetched data and writes an analysis report to
-#                    reports/YYYY-MM-DD/ (bounce rates, traffic sources),
-#                    commits to main. If enrichment data exists, includes
-#                    competitor and keyword opportunity analysis.
-# 3. suggest:        Opens a PR on pdfdancer-marketing-data with concrete SEO
-#                    recommendations. Waits for a label: "approved" continues,
-#                    "changes_required" loops back to revise.
-# 4. implement:      Switches to the pdfdancer-www repo.
-#                    Reads the approved suggestions from the marketing-data
-#                    context and applies them — editing page metadata, titles,
-#                    headings, internal links, or content. Opens a PR on
-#                    pdfdancer-www with the same label-based review loop.
-# 5. request-index:  Runs in the pdfdancer-www repo after implement merges.
-#                    Reads the list of changed URL paths from context and
-#                    submits them to the Google Indexing API so crawlers
-#                    pick up the changes quickly.
+# 1. pull-data:              Fetches GSC and PostHog data into
+#                            pdfdancer-marketing-data/data/YYYY-MM-DD/, commits to main.
+# 2. evaluate-implementations:
+#                            Reads data/feedback/implementations.yaml, checks evaluation
+#                            gates (14-day floor + volume threshold), scores mature entries
+#                            using std dev noise check, writes results back to ledger.
+#                            Sole owner of ledger evaluation writes. Commits to main.
+# 3. analyze:                Reads the fetched data and the evaluated ledger (read-only).
+#                            Writes an analysis report to reports/YYYY-MM-DD/ with an
+#                            Implementation Effectiveness section. Commits to main.
+#                            If enrichment data exists, includes competitor and keyword
+#                            opportunity analysis.
+# 4. suggest:                Opens a PR on pdfdancer-marketing-data with concrete SEO
+#                            recommendations. Uses effectiveness data from :findings
+#                            for cool-down and pattern matching. Waits for a label:
+#                            "approved" continues, "changes_required" loops back to revise.
+# 5. implement:              Switches to the pdfdancer-www repo.
+#                            Reads the approved suggestions from the marketing-data
+#                            context and applies them — editing page metadata, titles,
+#                            headings, internal links, or content. Opens a PR on
+#                            pdfdancer-www with the same label-based review loop.
+# 6. track-implementations:  Switches back to pdfdancer-marketing-data. Records which
+#                            suggestions were implemented with baseline metrics into
+#                            data/feedback/implementations.yaml for future evaluation.
+#                            Sole owner of ledger append writes. Commits to main.
+# 7. request-index:          Runs in the pdfdancer-www repo after tracking completes.
+#                            Reads the list of changed URL paths from context and
+#                            submits them to the Google Indexing API so crawlers
+#                            pick up the changes quickly.
 #
 # Standalone execution (triggered by "enrich" signal):
 #
@@ -69,6 +80,10 @@ context_sources:
     command: "python scripts/fetch_dataforseo.py"
   seo-enrichment-commit:
     command: 'printf "seo: dataforseo enrichment %s\n" "$(date -u +%Y-%m-%d)"'
+  seo-tracking-commit:
+    command: 'printf "seo: track implementations %s\n" "$(date -u +%Y-%m-%d)"'
+  seo-eval-commit:
+    command: 'printf "seo: evaluate implementations %s\n" "$(date -u +%Y-%m-%d)"'
 
 signals:
   include:
@@ -129,6 +144,26 @@ executions:
           - :dataforseo-enrichment-path
       - id: summarize-enrichment
         prompt: ./prompts/seo/enrich-summary.md
+    after:
+      - git:commit
+      - git:push
+
+  evaluate-implementations:
+    repository: pdfdancer-marketing-data
+    git:
+      branch:
+        name: main
+        base: main
+        reuse: true
+      commit:
+        message_source: seo-eval-commit
+      push:
+        remote: origin
+    before:
+      - git:branch
+    sub_tasks:
+      - id: evaluate
+        prompt: ./prompts/seo/evaluate-implementations.md
     after:
       - git:commit
       - git:push
@@ -231,6 +266,26 @@ executions:
           - when: { label: "approved" }
             continue: true
 
+  track-implementations:
+    repository: pdfdancer-marketing-data
+    git:
+      branch:
+        name: main
+        base: main
+        reuse: true
+      commit:
+        message_source: seo-tracking-commit
+      push:
+        remote: origin
+    before:
+      - git:branch
+    sub_tasks:
+      - id: track
+        prompt: ./prompts/seo/track-implementations.md
+    after:
+      - git:commit
+      - git:push
+
   request-index:
     repository: pdfdancer-www
     sub_tasks:
@@ -243,10 +298,14 @@ executions:
 propagation:
   triggers:
     - after: pull-data
+      run: evaluate-implementations
+    - after: evaluate-implementations
       run: analyze
     - after: analyze
       run: suggest
     - after: suggest
       run: implement
     - after: implement
+      run: track-implementations
+    - after: track-implementations
       run: request-index

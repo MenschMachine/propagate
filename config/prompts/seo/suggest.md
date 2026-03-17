@@ -6,18 +6,14 @@ If there are PR comments from a previous review (visible in context), address th
 
 ## Past suggestions and cool-down rules
 
-Before generating suggestions, check what was previously recommended:
+The `:findings` from the analyze step include an **Implementation Effectiveness** section with evaluation results from
+the feedback ledger. Use that data to apply these rules:
 
-```bash
-find reports/ -name "*suggest*" -o -name "*suggestion*" | sort -r
-```
-
-Follow these rules:
-
-- **2-week cool-down**: Do not suggest changes for any URL that had a suggestion implemented less than 14 days ago. Give changes time to show up in GSC data before re-evaluating.
-- **Don't repeat failures**: If the effectiveness review in `:findings` shows a past suggestion didn't improve the target metric, do not recommend the same approach again. Try a different angle or skip the page.
-- **Build on successes**: If a type of change (e.g., meta title rewrites) consistently improved metrics across multiple pages, favor that approach for similar cases.
-- **Note history when re-suggesting**: When suggesting changes for a page after the cool-down period, mention what was tried before and explain why the new suggestion takes a different approach.
+- **Pending = cool-down**: Any URL listed as `pending` in the effectiveness data is still being evaluated. Do not suggest new changes for it.
+- **Don't repeat failures**: If a URL's previous suggestion was evaluated as `declined`, do not recommend the same suggestion type. Try a different approach or skip the page entirely.
+- **Build on successes**: If entries evaluated as `improved` share a common suggestion type (e.g., meta rewrites), favor that approach for similar pages.
+- **Deprioritize low-volume pages**: If a URL was marked `inconclusive` with `insufficient_volume`, deprioritize it. Changes on pages that can't accumulate enough impressions to measure aren't worth optimizing further.
+- **Note history when re-suggesting**: When suggesting changes for a page with prior evaluations in `:findings`, mention what was tried before, the outcome, and why the new suggestion takes a different approach.
 
 ## Grounding rules
 

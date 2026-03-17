@@ -41,21 +41,22 @@ Classify each flagged page as:
 
 Prioritize multi-week declines over single-week dips. A page that dropped once may be noise; a page declining 3+ weeks needs attention.
 
-## Effectiveness of past suggestions
+## Implementation effectiveness (read-only)
 
-Check what was previously suggested and whether it worked:
+The `evaluate-implementations` step has already evaluated the ledger and saved results to context. Read them:
 
 ```bash
-find reports/ -name "*suggest*" -o -name "*suggestion*" | sort -r
+propagate context get :evaluation-results --task evaluate
 ```
 
-For suggestions from reports older than 3 days (GSC has a reporting lag of ~3 days), compare the original metrics at the time of the suggestion against current data. Categorize each past suggestion as:
+If evaluation results exist, include an **Implementation Effectiveness** section at the top of the report, before
+per-category findings. Reproduce the evaluation summary (newly evaluated entries, pending progress, pattern summary)
+and incorporate it into `:findings` so the suggest step has:
+- Which URLs are in cool-down (`pending`)
+- Which suggestion types are working or failing (`improved` / `declined`)
+- Which URLs to deprioritize (`inconclusive` with `insufficient_volume`)
 
-- **Improved**: target metric moved in the right direction
-- **No change**: no meaningful movement
-- **Declined**: metric got worse after the suggestion was implemented
-
-Include an **Effectiveness review** summary section at the top of the report output, before the per-category findings. This data flows to the suggest step via `:findings`, so be specific about what worked and what didn't.
+Do **not** modify `data/feedback/implementations.yaml` — the evaluate-implementations execution owns all ledger writes.
 
 ## Output
 
