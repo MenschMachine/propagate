@@ -177,8 +177,8 @@ signals:
     - ./includes/custom-signals.yaml
 ```
 
-Each included file must be a YAML mapping of signal definitions. Duplicate signal names across files or between includes
-and inline definitions cause a validation error.
+Each included file must be a YAML mapping of signal definitions. Duplicate signal names across include files cause a
+validation error. Inline definitions override included ones with the same name.
 
 ### Signal files
 
@@ -230,6 +230,21 @@ executions:
       push: { ... }
       pr: { ... }
 ```
+
+### Execution includes
+
+The `include` key loads execution definitions from external YAML files. It accepts a single path or a list of paths,
+resolved relative to the config file directory.
+
+```yaml
+executions:
+  include:
+    - ./executions/deploy.yaml
+    - ./executions/build.yaml
+```
+
+Each included file must be a YAML mapping of execution definitions. Duplicate execution names across include files cause
+a validation error. Inline definitions override included ones with the same name.
 
 ### Execution-level fields
 

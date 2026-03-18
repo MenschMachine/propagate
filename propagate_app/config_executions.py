@@ -3,11 +3,56 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .config_git import parse_git_config
 from .constants import LOGGER
 from .errors import PropagateError
 from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig, SubTaskRouteConfig
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
+
+
+def resolve_execution_includes(executions_data: dict, config_dir: Path) -> dict:
+    """Pop 'include' key, load referenced files, merge with inline executions.
+
+    Inline executions take precedence over included ones. Duplicates between
+    include files still raise an error.
+    """
+    inline = dict(executions_data)
+    include = inline.pop("include", None)
+    if include is None:
+        return inline
+    paths = [include] if isinstance(include, str) else include
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise PropagateError("executions.include must be a string or list of strings.")
+    all_included: dict = {}
+    for path_str in paths:
+        file_path = (config_dir / path_str).resolve()
+        if not file_path.exists():
+            raise PropagateError(f"Execution include file does not exist: {file_path}")
+        LOGGER.debug("Loading execution include: %s", file_path)
+        try:
+            with file_path.open("r", encoding="utf-8") as handle:
+                included = yaml.safe_load(handle)
+        except yaml.YAMLError as error:
+            raise PropagateError(
+                f"Failed to parse execution include file {file_path}: {error}"
+            ) from error
+        if not isinstance(included, dict):
+            raise PropagateError(
+                f"Execution include file must be a YAML mapping: {file_path}"
+            )
+        for key in included:
+            if key in all_included:
+                raise PropagateError(
+                    f"Duplicate execution '{key}' from include file {file_path}"
+                )
+        all_included.update(included)
+    for key in inline:
+        if key in all_included:
+            LOGGER.debug("Inline execution '%s' overrides included definition", key)
+    merged = {**all_included, **inline}
+    return merged
 
 
 def parse_executions(

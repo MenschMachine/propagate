@@ -1,0 +1,41 @@
+implement:
+  repository: pdfdancer-www
+  git:
+    branch:
+      name_key: :implement-branch-name
+      base: main
+    commit:
+      message_source: commit_message
+    push:
+      remote: origin
+    pr:
+      base: main
+      body_key: :implement-summary
+      number_key: :implement-pr-number
+  sub_tasks:
+    - id: set-branch
+      before:
+        - 'propagate context set :implement-branch-name "seo/implement-$(date -u +%Y-%m-%d)"'
+    - id: create-branch
+      before:
+        - git:branch
+    - id: code
+      prompt: ./prompts/seo/implement.md
+    - id: summarize
+      prompt: ./prompts/seo/summarize-implement.md
+    - id: publish
+      before:
+        - 'propagate context set :applied-suggestions "$(propagate context get :suggestions --task suggest)"'
+        - 'propagate context set :implement-summary "$(printf "%s\n\n---\n\n## Applied Suggestions\n\n%s" "$(propagate context get :implement-summary)" "$(propagate context get :applied-suggestions)")"'
+        - git:commit
+        - git:push
+        - git:pr
+    - id: wait-for-verdict
+      after:
+        - git:pr-comments-list :review-comments
+      wait_for_signal: pull_request.labeled
+      routes:
+        - when: { label: "changes_required" }
+          goto: code
+        - when: { label: "approved" }
+          continue: true

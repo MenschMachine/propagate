@@ -1,0 +1,42 @@
+suggest:
+  repository: pdfdancer-marketing-data
+  git:
+    branch:
+      name_key: :suggest-branch-name
+      base: main
+    commit:
+      message_source: commit_message
+    push:
+      remote: origin
+    pr:
+      base: main
+      body_key: :summary
+      number_key: :pr-number
+  sub_tasks:
+    - id: set-branch
+      before:
+        - 'propagate context set :suggest-branch-name "seo/suggestions-$(date -u +%Y-%m-%d)"'
+    - id: create-branch
+      before:
+        - git:branch
+    - id: code
+      prompt: ./prompts/seo/suggest.md
+    - id: summarize
+      prompt: ./prompts/seo/summarize-suggest.md
+    - id: publish
+      before:
+        - 'propagate context set :suggestions "$(cat "$(ls reports/*/suggestions.md | sort -r | head -1)")"'
+        - git:commit
+        - git:push
+        - git:pr
+    - id: wait-for-verdict
+      before:
+        - propagate context dump
+      after:
+        - git:pr-comments-list :review-comments
+      wait_for_signal: pull_request.labeled
+      routes:
+        - when: { label: "changes_required" }
+          goto: code
+        - when: { label: "approved" }
+          continue: true

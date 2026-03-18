@@ -1,0 +1,27 @@
+enrich-seo:
+  repository: pdfdancer-marketing-data
+  signals: [ enrich ]
+  git:
+    branch:
+      name: main
+      base: main
+      reuse: true
+    commit:
+      message_source: seo-enrichment-commit
+    push:
+      remote: origin
+  before:
+    - git:branch
+  sub_tasks:
+    - id: install-deps
+      before:
+        - cp "${MARKETING_DATA_ENV:-.env}" .env
+        - pip install -r requirements.txt
+    - id: fetch-enrichment
+      before:
+        - :dataforseo-enrichment-path
+    - id: summarize-enrichment
+      prompt: ./prompts/seo/enrich-summary.md
+  after:
+    - git:commit
+    - git:push

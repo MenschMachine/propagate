@@ -1,0 +1,19 @@
+analyze:
+  repository: pdfdancer-marketing-data
+  git:
+    branch:
+      name: main
+      base: main
+      reuse: true
+    commit:
+      message_source: seo-report-commit
+    push:
+      remote: origin
+  before:
+    - git:branch
+  sub_tasks:
+    - id: analyze
+      prompt: ./prompts/seo/analyze.md
+  after:
+    - git:commit
+    - git:push

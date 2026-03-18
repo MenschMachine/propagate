@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from .config_agent import parse_agent, parse_context_sources, parse_repositories
-from .config_executions import parse_executions
+from .config_executions import parse_executions, resolve_execution_includes
 from .config_signals import parse_signal_configs, resolve_signal_includes
 from .errors import PropagateError
 from .graph import parse_propagation_triggers, validate_execution_graph_is_acyclic
@@ -41,8 +41,11 @@ def load_config(config_path: Path) -> Config:
     if isinstance(raw_signals, dict) and "include" in raw_signals:
         raw_signals = resolve_signal_includes(raw_signals, resolved_config_path.parent)
     signals = parse_signal_configs(raw_signals)
+    raw_executions = raw_data.get("executions")
+    if isinstance(raw_executions, dict) and "include" in raw_executions:
+        raw_executions = resolve_execution_includes(raw_executions, resolved_config_path.parent)
     executions = parse_executions(
-        raw_data.get("executions"),
+        raw_executions,
         resolved_config_path.parent,
         set(repositories),
         set(context_sources),
