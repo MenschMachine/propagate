@@ -42,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--signal-payload", help="Signal payload as a YAML or JSON mapping. Requires --signal.")
     run_parser.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
     run_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
+    run_parser.add_argument("--stop-after", default=None, help="Stop the run after the named execution completes.")
     send_signal_parser = subparsers.add_parser("send-signal", help="Send a signal to a running propagate instance.")
     send_signal_parser.add_argument("--config", required=True, help="Config path (used to determine socket address).")
     send_signal_source = send_signal_parser.add_mutually_exclusive_group(required=True)
@@ -101,7 +102,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "run":
-        return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume)
+        return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume, args.stop_after)
     if args.command == "send-signal":
         return send_signal_command(args.config, args.signal, args.signal_payload, args.signal_file)
     if args.command == "serve":
@@ -149,22 +150,26 @@ def run_command(
     signal_payload: str | None,
     signal_file: str | None,
     resume: bool | str = False,
+    stop_after: str | None = None,
 ) -> int:
     config_path = Path(config_value).expanduser()
+    config = load_config(config_path)
+    if stop_after is not None:
+        _validate_stop_after(stop_after, config)
     if resume:
         if any(v is not None for v in (execution_name, signal_name, signal_payload, signal_file)):
             raise PropagateError("--resume cannot be combined with --execution, --signal, --signal-payload, or --signal-file.")
         if isinstance(resume, str):
-            return _run_resume(config_path, resume_target=resume)
-        return _run_resume(config_path)
-    return _run_fresh(config_path, execution_name, signal_name, signal_payload, signal_file)
+            return _run_resume(config, resume_target=resume, stop_after=stop_after)
+        return _run_resume(config, stop_after=stop_after)
+    return _run_fresh(config, execution_name, signal_name, signal_payload, signal_file, stop_after=stop_after)
 
 
-def _run_resume(config_path: Path, resume_target: str | None = None) -> int:
+def _run_resume(config: Config, resume_target: str | None = None, stop_after: str | None = None) -> int:
+    config_path = config.config_path
     signal_socket = None
     address = None
     try:
-        config = load_config(config_path)
         run_state = apply_forced_resume_if_targeted(config_path, config, resume_target)
         active_signal = run_state.active_signal
         log_active_signal(active_signal)
@@ -185,6 +190,7 @@ def _run_resume(config_path: Path, resume_target: str | None = None) -> int:
             ),
             run_state=run_state,
             signal_socket=signal_socket,
+            stop_after=stop_after,
         )
         return 0
     except PropagateError as error:
@@ -200,13 +206,14 @@ def _run_resume(config_path: Path, resume_target: str | None = None) -> int:
 
 
 def _run_fresh(
-    config_path: Path,
+    config: Config,
     execution_name: str | None,
     signal_name: str | None,
     signal_payload: str | None,
     signal_file: str | None,
+    stop_after: str | None = None,
 ) -> int:
-    config = load_config(config_path)
+    config_path = config.config_path
     active_signal = parse_active_signal(signal_name, signal_payload, signal_file, config.signals)
     log_active_signal(active_signal)
     initial_execution = select_initial_execution(config, execution_name, active_signal)
@@ -237,6 +244,7 @@ def _run_fresh(
             ),
             run_state=run_state,
             signal_socket=signal_socket,
+            stop_after=stop_after,
         )
         return 0
     except PropagateError as error:
@@ -312,6 +320,11 @@ def validate_command(config_value: str) -> int:
     load_config(config_path)
     LOGGER.info("Config is valid: %s", config_path)
     return 0
+
+
+def _validate_stop_after(stop_after: str, config: Config) -> None:
+    if stop_after not in config.executions:
+        raise PropagateError(f"--stop-after execution '{stop_after}' not found in config.")
 
 
 def _has_signal_gated_triggers(config: Config) -> bool:

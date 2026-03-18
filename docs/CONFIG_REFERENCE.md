@@ -607,7 +607,7 @@ specific step without re-running the entire pipeline.
 
 ```bash
 # Run an execution
-propagate run --config config.yaml [--execution name] [--signal name] [--signal-payload '{...}'] [--signal-file path] [--resume [execution/task]]
+propagate run --config config.yaml [--execution name] [--signal name] [--signal-payload '{...}'] [--signal-file path] [--resume [execution/task]] [--stop-after name]
 
 # Send a signal to a running server
 propagate send-signal --config config.yaml --signal name [--signal-payload '{...}']
@@ -635,6 +635,7 @@ propagate clear --config config.yaml
 | `--signal-payload` | YAML/JSON mapping of signal payload values. Requires `--signal`. |
 | `--signal-file` | Path to a YAML/JSON file with `type` and `payload` keys. Mutually exclusive with `--signal`. |
 | `--resume [target]` | Resume a previously interrupted run. Without a target, resumes from saved state. With `execution` or `execution/task`, forces resume from that point. |
+| `--stop-after` | Stop the run after the named execution completes. Upstream executions and propagation triggers fire normally, but the scheduler exits before running any execution beyond the named one. Run state is preserved, so the remaining executions can be completed with `--resume`. |
 
 ### `send-signal` options
 

@@ -9,7 +9,7 @@ from .constants import LOGGER
 from .context_store import clear_all_context, get_context_root
 from .errors import PropagateError
 from .execution_flow import run_configured_execution
-from .graph import build_execution_graph
+from .graph import build_execution_graph, build_execution_graph_adjacency
 from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionScheduleState, RunState, RuntimeContext
 from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
@@ -25,6 +25,7 @@ def run_execution_schedule(
     runtime_context: RuntimeContext,
     run_state: RunState | None = None,
     signal_socket: zmq.Socket | None = None,
+    stop_after: str | None = None,
 ) -> None:
     execution_graph = build_execution_graph(config)
     received_signal_types: set[str] = set()
@@ -46,6 +47,8 @@ def run_execution_schedule(
         clear_all_context(get_context_root(config.config_path))
         LOGGER.info("Starting execution schedule with initial execution '%s'.", initial_execution_name)
         activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
+    if stop_after is not None:
+        _warn_if_stop_after_unreachable(config, initial_execution_name, stop_after, schedule_state)
     if run_state is not None:
         _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
     reconciled_triggers: set[tuple[str, str, str]] = set()
@@ -94,6 +97,9 @@ def run_execution_schedule(
         )
         if run_state is not None:
             _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
+        if stop_after is not None and execution.name == stop_after:
+            LOGGER.info("Stopping after execution '%s' as requested by --stop-after.", execution.name)
+            return
 
 
 def _ensure_repo_cloned(config: Config, repo_name: str, run_state: RunState | None) -> Config:
@@ -309,3 +315,28 @@ def _pending_signal_types(
                 continue
             pending.add(trigger.on_signal)
     return pending
+
+
+def _warn_if_stop_after_unreachable(
+    config: Config,
+    initial_execution_name: str,
+    stop_after: str,
+    schedule_state: ExecutionScheduleState,
+) -> None:
+    if stop_after in schedule_state.active_names:
+        return
+    adjacency = build_execution_graph_adjacency(config.executions, config.propagation_triggers)
+    reachable: set[str] = set()
+    stack = [initial_execution_name]
+    while stack:
+        name = stack.pop()
+        if name in reachable:
+            continue
+        reachable.add(name)
+        stack.extend(adjacency.get(name, ()))
+    if stop_after not in reachable:
+        LOGGER.warning(
+            "--stop-after execution '%s' is not reachable from '%s'; the run will complete without stopping early.",
+            stop_after,
+            initial_execution_name,
+        )
