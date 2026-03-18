@@ -62,6 +62,17 @@ When `:findings` includes an engagement quality classification from PostHog boun
 
 When the engagement signal conflicts with the page content diagnosis (e.g., content looks thin but bounce rate is low), trust the bounce rate — it reflects actual visitor behavior.
 
+### Suggestion type selection based on intent mismatch
+
+When `:findings` includes intent-match data, use the match assessment to guide suggestion type:
+
+- **Mismatch** → `content-edit` restructuring to serve the dominant intent. Meta rewrites won't fix this — the page content itself targets the wrong stage.
+- **Partial** → `content-edit` to deepen coverage for the dominant intent. The page is pointed in the right direction but is too generic or shallow.
+- **Match** → use other signals (page content diagnosis, engagement quality) as before.
+- **Split-intent** (no single intent >70%) → consider restructuring with distinct sections for each intent, or `new-content` for a dedicated page. Prefer restructuring unless the intents are fundamentally incompatible (e.g., Learning vs. Navigating).
+
+Intent mismatch takes priority over other diagnosis signals. A "thin content" page with a clear intent mismatch should be restructured for the right intent first — adding more words in the wrong direction won't help.
+
 ## Priority calibration
 
 - **high**: Pages with 100+ impressions that have a confirmed diagnosis from page content data, or critical technical issues (e.g., pages returning empty HTML).

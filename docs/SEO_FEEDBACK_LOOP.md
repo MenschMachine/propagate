@@ -7,7 +7,7 @@ performance in subsequent runs.
 
 ```
 Weekly run:
-  pull-data → evaluate-implementations → analyze → suggest → implement → track-implementations → request-index
+  pull-data → evaluate-implementations → intent-match → analyze → suggest → implement → track-implementations → request-index
                      ↑                                                          |
                      └──────────── reads ledger entries written by ─────────────┘
 ```
@@ -237,7 +237,11 @@ implement PR merged → GitHub push webhook → wait-for-deploy unblocks → 10 
 
 ## Data flow to downstream steps
 
-- **analyze**: reads `:evaluation-results` from evaluate-implementations context. Includes an Implementation
+- **intent-match**: reads GSC data (via `:gsc-data-path`), page content from `data/*/pages/*.json`, and PostHog bounce
+  rates (via `:posthog-data-path`). Classifies query intent per page (Learning/Evaluating/Solving/Navigating),
+  determines page stance, assesses match quality (match/partial/mismatch), and flags split-intent pages. Saves
+  `:intent-match` context with a markdown table and mismatch summary.
+- **analyze**: reads `:intent-match` from intent-match context and `:evaluation-results` from evaluate-implementations context. Includes an Implementation
   Effectiveness section in the report. When page content data exists, performs title/query alignment, thin content
   detection, and implementation mismatch checks. When PostHog data exists (via `:posthog-data-path`), classifies each
   flagged page's engagement quality as `content-problem` (bounce > 70%), `content-weak` (50–70%), or
@@ -246,5 +250,7 @@ implement PR merged → GitHub push webhook → wait-for-deploy unblocks → 10 
 - **suggest**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
   matching (what works), and deprioritization (insufficient_volume). Uses page content diagnosis and engagement quality
   signal to select the right suggestion type — e.g., `content-problem` pages get `content-edit` (not meta),
-  `content-delivers` with low traffic gets `meta` or `new-content` (visibility problem). When engagement signal
-  conflicts with page content diagnosis, bounce rate wins. Does **not** read the raw ledger file.
+  `content-delivers` with low traffic gets `meta` or `new-content` (visibility problem). Uses intent-match data to
+  override other signals when a mismatch is detected — intent mismatch → `content-edit` restructuring, partial →
+  `content-edit` deepening, split-intent → restructure or `new-content`. When engagement signal conflicts with page
+  content diagnosis, bounce rate wins. Does **not** read the raw ledger file.

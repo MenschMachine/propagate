@@ -2,7 +2,7 @@
 #
 # Main DAG (triggered by "start" signal):
 #
-#   pull-data → evaluate-implementations → analyze → suggest → implement → track-implementations → request-index
+#   pull-data → evaluate-implementations → intent-match → analyze → suggest → implement → track-implementations → request-index
 #
 # 1. pull-data:              Fetches GSC and PostHog data into
 #                            pdfdancer-marketing-data/data/YYYY-MM-DD/, commits to main.
@@ -11,25 +11,30 @@
 #                            gates (14-day floor + volume threshold), scores mature entries
 #                            using std dev noise check, writes results back to ledger.
 #                            Sole owner of ledger evaluation writes. Commits to main.
-# 3. analyze:                Reads the fetched data and the evaluated ledger (read-only).
+# 3. intent-match:           Classifies query intent per page (Learning/Evaluating/
+#                            Solving/Navigating), computes impression-weighted intent
+#                            distributions, determines page stance, and assesses match
+#                            quality. Writes intent-match report and saves :intent-match
+#                            context for analyze. Commits to main.
+# 4. analyze:                Reads the fetched data and the evaluated ledger (read-only).
 #                            Writes an analysis report to reports/YYYY-MM-DD/ with an
 #                            Implementation Effectiveness section. Commits to main.
 #                            If enrichment data exists, signals competitor and keyword
 #                            opportunity analysis.
-# 4. suggest:                Opens a PR on pdfdancer-marketing-data with concrete SEO
+# 5. suggest:                Opens a PR on pdfdancer-marketing-data with concrete SEO
 #                            recommendations. Uses effectiveness data from :findings
 #                            for cool-down and pattern matching. Waits for a label:
 #                            "approved" continues, "changes_required" loops back to revise.
-# 5. implement:              Switches to the pdfdancer-www repo.
+# 6. implement:              Switches to the pdfdancer-www repo.
 #                            Reads the approved suggestions from the marketing-data
 #                            context and applies them — editing page metadata, titles,
 #                            headings, internal links, or content. Opens a PR on
 #                            pdfdancer-www with the same label-based review loop.
-# 6. track-implementations:  Switches back to pdfdancer-marketing-data. Records which
+# 7. track-implementations:  Switches back to pdfdancer-marketing-data. Records which
 #                            suggestions were implemented with baseline metrics into
 #                            data/feedback/implementations.yaml for future evaluation.
 #                            Sole owner of ledger append writes. Commits to main.
-# 7. request-index:          Runs in the pdfdancer-www repo after tracking completes.
+# 8. request-index:          Runs in the pdfdancer-www repo after tracking completes.
 #                            Reads the list of changed URL paths from context and
 #                            submits them to the Google Indexing API so crawlers
 #                            pick up the changes quickly.
@@ -85,6 +90,8 @@ context_sources:
     command: 'printf "seo: track implementations %s\n" "$(date -u +%Y-%m-%d)"'
   seo-eval-commit:
     command: 'printf "seo: evaluate implementations %s\n" "$(date -u +%Y-%m-%d)"'
+  seo-intent-commit:
+    command: 'printf "seo: intent-match analysis %s\n" "$(date -u +%Y-%m-%d)"'
   evaluation-results:
     command: "python ${PROPAGATE_CONFIG_DIR}/scripts/evaluate_implementations.py"
 
@@ -103,6 +110,7 @@ executions:
     - executions/seo/pull-data.yaml
     - executions/seo/enrich-seo.yaml
     - executions/seo/evaluate-implementations.yaml
+    - executions/seo/intent-match.yaml
     - executions/seo/analyze.yaml
     - executions/seo/suggest.yaml
     - executions/seo/implement.yaml
@@ -114,6 +122,8 @@ propagation:
     - after: pull-data
       run: evaluate-implementations
     - after: evaluate-implementations
+      run: intent-match
+    - after: intent-match
       run: analyze
     - after: analyze
       run: suggest

@@ -101,6 +101,19 @@ To save findings, run exactly:
 propagate context set :findings "<your structured findings>"
 ```
 
+## Intent match (optional)
+
+Read intent-match data from the previous step:
+```bash
+propagate context get :intent-match --task intent-match
+```
+
+If available, include the intent-match table and mismatch summary in `:findings`.
+
+Cross-reference: when a page appears in both intent-match and other sections (CTR issues, content diagnosis), let the intent data inform the diagnosis. A low-CTR page with an intent mismatch is a mismatch problem, not a meta problem. A high-bounce page with a clear intent mismatch should be flagged as intent-driven rather than content-quality-driven.
+
+If `:intent-match` is empty or the context read fails, skip this section.
+
 ## Page content diagnosis (optional)
 
 Check if page content data exists:
