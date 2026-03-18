@@ -24,7 +24,7 @@ executions:
         message_source: commit_message
     sub_tasks:
       - id: implement
-        prompt: ./prompts/create-example-config.md
+        prompt: ./prompts/propagate/create-example-config.md
   refactor:
     repository: propagate
     git:
@@ -36,4 +36,4 @@ executions:
         message_source: commit_message
     sub_tasks:
       - id: refactor
-        prompt: ./prompts/refactor-propagate-py.md
+        prompt: ./prompts/propagate/efactor-propagate-py.md

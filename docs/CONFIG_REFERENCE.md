@@ -125,7 +125,7 @@ Typed event definitions with payload schemas. Signals activate executions and ga
 ```yaml
 signals:
   include:                        # optional, load signals from external files
-    - ./includes/github-signals.yaml
+    - ./signals/github-signals.yaml
   repo-change:
     payload:
       branch:
@@ -173,8 +173,8 @@ resolved relative to the config file directory.
 ```yaml
 signals:
   include:
-    - ./includes/github-signals.yaml
-    - ./includes/custom-signals.yaml
+    - ./signals/github-signals.yaml
+    - ./signals/custom-signals.yaml
 ```
 
 Each included file must be a YAML mapping of signal definitions. Duplicate signal names across include files cause a
@@ -689,7 +689,7 @@ context_sources:
 
 signals:
   include:
-    - ./includes/github-signals.yaml
+    - ./signals/github-signals.yaml
   repo-change:
     payload:
       branch:

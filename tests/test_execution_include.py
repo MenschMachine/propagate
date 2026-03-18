@@ -7,13 +7,13 @@ from propagate_app.errors import PropagateError
 
 @pytest.fixture()
 def config_dir(tmp_path):
-    includes = tmp_path / "includes"
+    includes = tmp_path / "signals"
     includes.mkdir()
     return tmp_path
 
 
 def write_include(config_dir, filename, data):
-    path = config_dir / "includes" / filename
+    path = config_dir / "signals" / filename
     path.write_text(yaml.dump(data, sort_keys=False), encoding="utf-8")
     return path
 
@@ -36,7 +36,7 @@ def test_single_include_file(config_dir):
         "deploy": _minimal_execution(),
     })
     executions = {
-        "include": "includes/deploy.yaml",
+        "include": "signals/deploy.yaml",
         "build": _minimal_execution(),
     }
     result = resolve_execution_includes(executions, config_dir)
@@ -53,7 +53,7 @@ def test_multiple_include_files(config_dir):
         "test": _minimal_execution(),
     })
     executions = {
-        "include": ["includes/deploy.yaml", "includes/test.yaml"],
+        "include": ["signals/deploy.yaml", "signals/test.yaml"],
         "build": _minimal_execution(),
     }
     result = resolve_execution_includes(executions, config_dir)
@@ -67,7 +67,7 @@ def test_inline_overrides_included_execution(config_dir):
         "build": _minimal_execution("other-repo"),
     })
     executions = {
-        "include": "includes/shared.yaml",
+        "include": "signals/shared.yaml",
         "build": _minimal_execution("my-repo"),
     }
     result = resolve_execution_includes(executions, config_dir)
@@ -81,7 +81,7 @@ def test_inline_override_preserves_inline_data(config_dir):
     inline_exec = _minimal_execution("inline-repo")
     inline_exec["sub_tasks"].append({"id": "extra", "prompt": "./prompts/extra.md"})
     executions = {
-        "include": "includes/shared.yaml",
+        "include": "signals/shared.yaml",
         "build": inline_exec,
     }
     result = resolve_execution_includes(executions, config_dir)
@@ -97,30 +97,30 @@ def test_duplicate_between_two_includes_raises(config_dir):
         "deploy": _minimal_execution(),
     })
     executions = {
-        "include": ["includes/a.yaml", "includes/b.yaml"],
+        "include": ["signals/a.yaml", "signals/b.yaml"],
     }
     with pytest.raises(PropagateError, match="Duplicate execution 'deploy'"):
         resolve_execution_includes(executions, config_dir)
 
 
 def test_missing_include_file_raises(config_dir):
-    executions = {"include": "includes/nonexistent.yaml"}
+    executions = {"include": "signals/nonexistent.yaml"}
     with pytest.raises(PropagateError, match="does not exist"):
         resolve_execution_includes(executions, config_dir)
 
 
 def test_include_file_not_a_mapping_raises(config_dir):
-    path = config_dir / "includes" / "bad.yaml"
+    path = config_dir / "signals" / "bad.yaml"
     path.write_text("- item1\n- item2\n", encoding="utf-8")
-    executions = {"include": "includes/bad.yaml"}
+    executions = {"include": "signals/bad.yaml"}
     with pytest.raises(PropagateError, match="must be a YAML mapping"):
         resolve_execution_includes(executions, config_dir)
 
 
 def test_include_invalid_yaml_raises(config_dir):
-    path = config_dir / "includes" / "bad.yaml"
+    path = config_dir / "signals" / "bad.yaml"
     path.write_text(": :\n  : :\n[broken", encoding="utf-8")
-    executions = {"include": "includes/bad.yaml"}
+    executions = {"include": "signals/bad.yaml"}
     with pytest.raises(PropagateError, match="Failed to parse"):
         resolve_execution_includes(executions, config_dir)
 
@@ -148,7 +148,7 @@ def test_included_executions_pass_through_normal_validation(config_dir):
         },
     })
     executions = {
-        "include": "includes/deploy.yaml",
+        "include": "signals/deploy.yaml",
         "build": {
             "repository": "my-repo",
             "sub_tasks": [{"id": "compile", "prompt": "./prompts/compile.md"}],

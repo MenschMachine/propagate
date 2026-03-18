@@ -18,8 +18,8 @@ context_sources:
 
 signals:
   include:
-    - includes/default.yaml
-    - includes/github-signals.yaml
+    - signals/default.yaml
+    - signals/github-signals.yaml
 
 executions:
   test-backend:
@@ -27,7 +27,6 @@ executions:
     signals: [ start ]
     sub_tasks:
       - id: plan
-        #prompt: ./prompts/test/plan-backend.md
         before:
           - echo planning...
           - propagate context set :date "$(date -u)" --local

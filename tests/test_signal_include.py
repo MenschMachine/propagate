@@ -7,13 +7,13 @@ from propagate_app.errors import PropagateError
 
 @pytest.fixture()
 def config_dir(tmp_path):
-    includes = tmp_path / "includes"
+    includes = tmp_path / "signals"
     includes.mkdir()
     return tmp_path
 
 
 def write_include(config_dir, filename, data):
-    path = config_dir / "includes" / filename
+    path = config_dir / "signals" / filename
     path.write_text(yaml.dump(data, sort_keys=False), encoding="utf-8")
     return path
 
@@ -29,7 +29,7 @@ def test_single_include_file(config_dir):
         "pr.labeled": {"payload": {"label": {"type": "string", "required": True}}},
     })
     signals = {
-        "include": "includes/gh.yaml",
+        "include": "signals/gh.yaml",
         "run": {"payload": {}},
     }
     result = resolve_signal_includes(signals, config_dir)
@@ -46,7 +46,7 @@ def test_multiple_include_files(config_dir):
         "deploy": {"payload": {"branch": {"type": "string"}}},
     })
     signals = {
-        "include": ["includes/gh.yaml", "includes/deploy.yaml"],
+        "include": ["signals/gh.yaml", "signals/deploy.yaml"],
         "run": {"payload": {}},
     }
     result = resolve_signal_includes(signals, config_dir)
@@ -60,7 +60,7 @@ def test_inline_overrides_included_signal(config_dir):
         "run": {"payload": {"branch": {"type": "string"}}},
     })
     signals = {
-        "include": "includes/gh.yaml",
+        "include": "signals/gh.yaml",
         "run": {"payload": {}},
     }
     result = resolve_signal_includes(signals, config_dir)
@@ -73,7 +73,7 @@ def test_inline_override_preserves_inline_payload(config_dir):
         "start": {"payload": {"env": {"type": "string"}}},
     })
     signals = {
-        "include": "includes/shared.yaml",
+        "include": "signals/shared.yaml",
         "start": {"payload": {"url": {"type": "string", "required": True}}},
     }
     result = resolve_signal_includes(signals, config_dir)
@@ -88,30 +88,30 @@ def test_duplicate_between_two_includes_raises(config_dir):
         "deploy": {"payload": {}},
     })
     signals = {
-        "include": ["includes/a.yaml", "includes/b.yaml"],
+        "include": ["signals/a.yaml", "signals/b.yaml"],
     }
     with pytest.raises(PropagateError, match="Duplicate signal 'deploy'"):
         resolve_signal_includes(signals, config_dir)
 
 
 def test_missing_include_file_raises(config_dir):
-    signals = {"include": "includes/nonexistent.yaml"}
+    signals = {"include": "signals/nonexistent.yaml"}
     with pytest.raises(PropagateError, match="does not exist"):
         resolve_signal_includes(signals, config_dir)
 
 
 def test_include_file_not_a_mapping_raises(config_dir):
-    path = config_dir / "includes" / "bad.yaml"
+    path = config_dir / "signals" / "bad.yaml"
     path.write_text("- item1\n- item2\n", encoding="utf-8")
-    signals = {"include": "includes/bad.yaml"}
+    signals = {"include": "signals/bad.yaml"}
     with pytest.raises(PropagateError, match="must be a YAML mapping"):
         resolve_signal_includes(signals, config_dir)
 
 
 def test_include_invalid_yaml_raises(config_dir):
-    path = config_dir / "includes" / "bad.yaml"
+    path = config_dir / "signals" / "bad.yaml"
     path.write_text(": :\n  : :\n[broken", encoding="utf-8")
-    signals = {"include": "includes/bad.yaml"}
+    signals = {"include": "signals/bad.yaml"}
     with pytest.raises(PropagateError, match="Failed to parse"):
         resolve_signal_includes(signals, config_dir)
 
@@ -130,7 +130,7 @@ def test_included_signals_pass_through_normal_validation(config_dir):
         "pr.labeled": {"payload": {"label": {"type": "string", "required": True}}},
     })
     signals = {
-        "include": "includes/gh.yaml",
+        "include": "signals/gh.yaml",
         "run": {"payload": {}},
     }
     resolved = resolve_signal_includes(signals, config_dir)

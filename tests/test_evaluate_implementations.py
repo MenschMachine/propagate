@@ -523,7 +523,7 @@ def test_deployment_non_meta():
     assert result["status"] == "unknown"
 
 
-# --- summary includes deployment_status ---
+# --- summary signals deployment_status ---
 
 def test_summary_includes_deployment_status(tmp_path):
     ledger_path = tmp_path / "data" / "feedback" / "implementations.yaml"

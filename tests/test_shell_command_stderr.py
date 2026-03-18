@@ -1,4 +1,4 @@
-"""Test that run_shell_command includes stderr in error messages."""
+"""Test that run_shell_command signals stderr in error messages."""
 
 
 import pytest

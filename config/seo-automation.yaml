@@ -14,7 +14,7 @@
 # 3. analyze:                Reads the fetched data and the evaluated ledger (read-only).
 #                            Writes an analysis report to reports/YYYY-MM-DD/ with an
 #                            Implementation Effectiveness section. Commits to main.
-#                            If enrichment data exists, includes competitor and keyword
+#                            If enrichment data exists, signals competitor and keyword
 #                            opportunity analysis.
 # 4. suggest:                Opens a PR on pdfdancer-marketing-data with concrete SEO
 #                            recommendations. Uses effectiveness data from :findings
@@ -90,8 +90,8 @@ context_sources:
 
 signals:
   include:
-    - includes/default.yaml
-    - includes/github-signals.yaml
+    - signals/default.yaml
+    - signals/github-signals.yaml
   start:
     payload:
       sender:

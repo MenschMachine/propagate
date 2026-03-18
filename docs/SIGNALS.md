@@ -46,7 +46,7 @@ Single file:
 
 ```yaml
 signals:
-  include: includes/github-signals.yaml
+  include: signals/github-signals.yaml
   run:
     payload: {}
 ```
@@ -56,8 +56,8 @@ Multiple files:
 ```yaml
 signals:
   include:
-    - includes/github-signals.yaml
-    - includes/deploy-signals.yaml
+    - signals/github-signals.yaml
+    - signals/deploy-signals.yaml
   run:
     payload: {}
 ```
@@ -65,7 +65,7 @@ signals:
 The included file must be a YAML mapping of signal definitions (same format as inline signals):
 
 ```yaml
-# includes/github-signals.yaml
+# signals/github-signals.yaml
 pull_request.labeled:
   payload:
     repository:
