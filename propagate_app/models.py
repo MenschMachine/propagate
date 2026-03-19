@@ -131,6 +131,8 @@ class PropagationTriggerConfig:
     run: str
     on_signal: str | None
     when: dict[str, Any] | None = None
+    # Context gate using sub-task `when` syntax: `:key` or `!:key`.
+    when_context: str | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,7 @@ class Config:
     executions: dict[str, ExecutionConfig]
     config_path: Path
     clone_dir: Path | None = None
+    repo_cache_dir: Path | None = None
 
 
 @dataclass(frozen=True)

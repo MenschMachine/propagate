@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from propagate_app.git_repo import working_tree_has_changes
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
 CLI_PYTHON = REPO_ROOT / "venv" / "bin" / "python"
@@ -261,6 +263,15 @@ class PropagateStage4GitTests(unittest.TestCase):
         )
         self.assertEqual(gh_invocation["args"][-1], "--draft")
         self.assertEqual(gh_invocation["body"], "\nPR body line")
+
+    def test_working_tree_check_ignores_clone_marker(self) -> None:
+        self.init_repo()
+        (self.repo / "README.md").write_text("init\n", encoding="utf-8")
+        self.commit_all("initial commit")
+
+        (self.repo / ".propagate-clone").write_text("", encoding="utf-8")
+
+        self.assertFalse(working_tree_has_changes(self.repo))
 
     @pytest.mark.slow
     def test_git_run_can_source_commit_message_from_reserved_context_key(self) -> None:

@@ -7,6 +7,7 @@ def test_pull_request_labeled():
         "label": {"name": "approved"},
         "pull_request": {
             "number": 42,
+            "merged": False,
             "head": {"ref": "feature-branch"},
             "base": {"ref": "main"},
         },
@@ -19,6 +20,7 @@ def test_pull_request_labeled():
     assert signal_name == "pull_request.labeled"
     assert payload["repository"] == "owner/repo"
     assert payload["pr_number"] == 42
+    assert payload["merged"] is False
     assert payload["label"] == "approved"
     assert payload["head_ref"] == "feature-branch"
     assert payload["base_ref"] == "main"
@@ -31,6 +33,7 @@ def test_pull_request_opened_has_no_label_field():
         "action": "opened",
         "pull_request": {
             "number": 10,
+            "merged": False,
             "head": {"ref": "my-branch"},
             "base": {"ref": "main"},
         },
@@ -41,7 +44,28 @@ def test_pull_request_opened_has_no_label_field():
     assert result is not None
     signal_name, payload = result
     assert signal_name == "pull_request.opened"
+    assert payload["merged"] is False
     assert "label" not in payload
+
+
+def test_pull_request_closed_includes_merged_flag():
+    body = {
+        "action": "closed",
+        "pull_request": {
+            "number": 55,
+            "merged": True,
+            "head": {"ref": "feature-branch"},
+            "base": {"ref": "main"},
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "bob"},
+    }
+    result = parse_github_event("pull_request", body)
+    assert result is not None
+    signal_name, payload = result
+    assert signal_name == "pull_request.closed"
+    assert payload["pr_number"] == 55
+    assert payload["merged"] is True
 
 
 def test_push_event():

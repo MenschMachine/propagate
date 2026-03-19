@@ -102,8 +102,9 @@ def test_clear_respects_context_root_env(tmp_path, monkeypatch):
 
 def test_clear_force_deletes_cloned_repos(tmp_path):
     config_path = _write_config(tmp_path)
-    clone_dir = tmp_path / "propagate-repo-abc123"
+    clone_dir = tmp_path / "project-repo-abc123"
     clone_dir.mkdir()
+    (clone_dir / ".propagate-clone").write_text("")
     (clone_dir / "file.txt").write_text("content")
     _create_state(config_path, cloned_repos={"myrepo": clone_dir})
 
@@ -129,8 +130,9 @@ def test_clear_force_skips_non_propagate_dirs(tmp_path):
 
 def test_clear_without_force_leaves_cloned_repos(tmp_path):
     config_path = _write_config(tmp_path)
-    clone_dir = tmp_path / "propagate-repo-abc123"
+    clone_dir = tmp_path / "project-repo-abc123"
     clone_dir.mkdir()
+    (clone_dir / ".propagate-clone").write_text("")
     _create_state(config_path, cloned_repos={"myrepo": clone_dir})
 
     result = main(["clear", "--config", str(config_path)])
@@ -150,10 +152,12 @@ def test_clear_force_no_state_file(tmp_path):
 
 def test_clear_force_continues_after_delete_failure(tmp_path, monkeypatch):
     config_path = _write_config(tmp_path)
-    clone_a = tmp_path / "propagate-repo-aaa"
-    clone_b = tmp_path / "propagate-repo-bbb"
+    clone_a = tmp_path / "project-repo-aaa"
+    clone_b = tmp_path / "project-repo-bbb"
     clone_a.mkdir()
     clone_b.mkdir()
+    (clone_a / ".propagate-clone").write_text("")
+    (clone_b / ".propagate-clone").write_text("")
     _create_state(config_path, cloned_repos={"a": clone_a, "b": clone_b})
 
     import shutil

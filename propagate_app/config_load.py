@@ -28,7 +28,7 @@ def load_config(config_path: Path) -> Config:
         raise PropagateError("Config must be a YAML mapping.")
     validate_allowed_keys(
         raw_data,
-        {"version", "agent", "repositories", "context_sources", "signals", "executions", "propagation", "clone_dir"},
+        {"version", "agent", "repositories", "context_sources", "signals", "executions", "propagation", "clone_dir", "repo_cache_dir"},
         "Config",
     )
     version = raw_data.get("version")
@@ -59,6 +59,12 @@ def load_config(config_path: Path) -> Config:
         clone_dir = Path(raw_clone_dir)
         if not clone_dir.is_absolute():
             clone_dir = (resolved_config_path.parent / clone_dir).resolve()
+    raw_repo_cache_dir = raw_data.get("repo_cache_dir")
+    repo_cache_dir = None
+    if raw_repo_cache_dir is not None:
+        repo_cache_dir = Path(raw_repo_cache_dir)
+        if not repo_cache_dir.is_absolute():
+            repo_cache_dir = (resolved_config_path.parent / repo_cache_dir).resolve()
     config = Config(
         version=version,
         agent=agent,
@@ -69,5 +75,6 @@ def load_config(config_path: Path) -> Config:
         executions=executions,
         config_path=resolved_config_path,
         clone_dir=clone_dir,
+        repo_cache_dir=repo_cache_dir,
     )
     return config

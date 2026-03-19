@@ -20,6 +20,7 @@ executions:                # Required
 propagation:               # Optional
   triggers: [...]
 clone_dir: ./clones        # Optional
+repo_cache_dir: ./cache    # Optional
 ```
 
 All keys not listed above are rejected.
@@ -35,6 +36,20 @@ clone_dir: ./clones
 ```
 
 If not set, clones land in the system temp directory.
+
+---
+
+## `repo_cache_dir`
+
+**Optional.** Directory for persistent bare-repo clone caches. When set, each remote repository is cloned once as a bare repo under `{repo_cache_dir}/{name}.git` and refreshed (`git fetch`) on subsequent runs. Each execution gets a fresh local clone from the bare repo, which is faster than a full remote clone.
+
+Relative paths are resolved from the config file directory. Safe for concurrent runs: a per-repo file lock (`fcntl.LOCK_EX`) serialises bare-repo access.
+
+```yaml
+repo_cache_dir: ./cache
+```
+
+If not set, each run performs a full remote clone (existing behaviour).
 
 ---
 
@@ -314,6 +329,18 @@ from the included file's directory.
 Templating in execution includes follows the same rules as signal includes above: rendering applies only to included
 file content, not to root config values.
 
+Unlike signal includes, execution includes may also template the top-level execution name itself. This makes it
+possible to instantiate the same included workflow multiple times with different execution names:
+
+```yaml
+# ./executions/review-loop.yaml
+"{{ execution_name }}":
+  repository: "{{ repository }}"
+  sub_tasks:
+    - id: implement
+      prompt: "{{ implement_prompt }}"
+```
+
 ### Execution-level fields
 
 | Field | Type | Required | Default | Description |
@@ -507,6 +534,7 @@ propagation:
   triggers:
     - after: triage-change
       run: update-docs
+      when_context: :ready-for-docs   # optional
       on_signal: repo-change          # optional
       when:                           # optional, requires on_signal
         urgent: true
@@ -518,6 +546,7 @@ propagation:
 |-------|------|----------|-------------|
 | `after` | string | Yes | Execution that must complete to fire this trigger. Must reference a defined execution. |
 | `run` | string | Yes | Execution to activate. Must reference a defined execution. |
+| `when_context` | string | No | Context gate evaluated against the completed execution's context. Uses the same syntax as sub-task `when`: `:key` requires a non-empty key, `!:key` requires it to be missing or empty. |
 | `on_signal` | string | No | Only fire if this signal type was received. Must reference a defined signal. |
 | `when` | mapping | No | Payload field-value filter. Requires `on_signal`. Field names must exist in the signal's payload. Values can be literals or matcher objects such as `{ equals_context: :key }`. |
 
@@ -740,7 +769,7 @@ propagate clear --config config.yaml
 | Flag | Description |
 |------|-------------|
 | `--config` | Path to YAML config file. Required. |
-| `-f`, `--force` | Also delete cloned repositories recorded in the run state file. Only directories whose name starts with `propagate-repo-` are removed. |
+| `-f`, `--force` | Also delete cloned repositories recorded in the run state file. Only directories marked as propagate-managed clones are removed. |
 
 Removes the `.propagate-context-{name}/` directory and the `.propagate-state-{name}.yaml` file associated with the config. With `-f`, also removes cloned repository directories that were created during the run.
 

@@ -19,6 +19,8 @@
       pr_number:
         type: number
         required: true
+      merged:
+        type: boolean
       head_ref:
         type: string
       base_ref:
@@ -37,6 +39,8 @@
       pr_number:
         type: number
         required: true
+      merged:
+        type: boolean
       head_ref:
         type: string
       base_ref:
@@ -55,6 +59,8 @@
       pr_number:
         type: number
         required: true
+      merged:
+        type: boolean
       head_ref:
         type: string
       base_ref:
@@ -73,6 +79,8 @@
       pr_number:
         type: number
         required: true
+      merged:
+        type: boolean
       label:
         type: string
         required: true
@@ -94,6 +102,8 @@
       pr_number:
         type: number
         required: true
+      merged:
+        type: boolean
       label:
         type: string
         required: true

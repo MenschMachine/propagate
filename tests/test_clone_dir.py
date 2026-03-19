@@ -13,7 +13,7 @@ from propagate_app.config_load import load_config
 from propagate_app.constants import ENV_CLONE_DIR
 from propagate_app.errors import PropagateError
 from propagate_app.models import RepositoryConfig
-from propagate_app.repo_clone import clone_single_repository
+from propagate_app.repo_clone import clone_single_repository, is_propagate_clone
 
 
 @pytest.fixture()
@@ -108,6 +108,7 @@ def test_nonexistent_clone_dir_is_created(tmp_path, monkeypatch):
 
     assert clone_dir.is_dir()
     assert str(result).startswith(str(clone_dir))
+    assert result.name.startswith("r-")
 
 
 def test_unwritable_clone_dir_raises_propagate_error(tmp_path, monkeypatch):
@@ -117,3 +118,50 @@ def test_unwritable_clone_dir_raises_propagate_error(tmp_path, monkeypatch):
 
     with pytest.raises(PropagateError, match="Cannot create clone directory"):
         clone_single_repository("r", repo, clone_dir=bad_path)
+
+
+def test_clone_dir_name_includes_sanitized_repository_name(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_CLONE_DIR, raising=False)
+    repo = RepositoryConfig(name="pdfdancer-backend", path=None, url="https://example.com/repo.git")
+
+    with patch("propagate_app.repo_clone.subprocess.run"):
+        result = clone_single_repository("pdfdancer-backend", repo, clone_dir=tmp_path)
+
+    assert result.name.startswith("pdfdancer-backend-")
+    assert is_propagate_clone(result) is True
+
+
+def test_clone_dir_name_sanitizes_repository_name(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_CLONE_DIR, raising=False)
+    repo = RepositoryConfig(name="pdfdancer/backend demo", path=None, url="https://example.com/repo.git")
+
+    with patch("propagate_app.repo_clone.subprocess.run"):
+        result = clone_single_repository("pdfdancer/backend demo", repo, clone_dir=tmp_path)
+
+    assert result.name.startswith("pdfdancer-backend-demo-")
+
+
+def test_clone_dir_name_includes_project_and_repository_name(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_CLONE_DIR, raising=False)
+    repo = RepositoryConfig(name="pdfdancer-backend", path=None, url="https://example.com/repo.git")
+
+    with patch("propagate_app.repo_clone.subprocess.run"):
+        result = clone_single_repository(
+            "pdfdancer-backend",
+            repo,
+            clone_dir=tmp_path,
+            project_name="pdfdancer-complete-workflow",
+        )
+
+    assert result.name.startswith("pdfdancer-complete-workflow-pdfdancer-backend-")
+
+
+def test_clone_marker_added_to_local_git_exclude(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_CLONE_DIR, raising=False)
+    repo = RepositoryConfig(name="pdfdancer-backend", path=None, url="https://example.com/repo.git")
+
+    with patch("propagate_app.repo_clone.subprocess.run"):
+        result = clone_single_repository("pdfdancer-backend", repo, clone_dir=tmp_path)
+
+    exclude_path = result / ".git" / "info" / "exclude"
+    assert exclude_path.read_text(encoding="utf-8").splitlines()[-1] == ".propagate-clone"

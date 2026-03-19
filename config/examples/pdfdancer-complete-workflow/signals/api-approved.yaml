@@ -1,0 +1,10 @@
+type: pull_request.labeled
+payload:
+  repository: MenschMachine/pdfdancer-api
+  pr_number: 456
+  merged: false
+  label: approved
+  action: labeled
+  head_ref: api/backend-pr-123
+  base_ref: main
+  sender: reviewer

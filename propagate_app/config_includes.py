@@ -29,6 +29,7 @@ def resolve_mapping_includes(
     *,
     section_name: str,
     entry_name: str,
+    allow_placeholder_keys: bool = False,
 ) -> dict[str, Any]:
     """Pop 'include', load referenced files, render parameters, and merge with inline mappings."""
     inline = dict(data)
@@ -53,7 +54,12 @@ def resolve_mapping_includes(
             raise PropagateError(
                 f"{entry_name.capitalize()} include file must be a YAML mapping: {file_path}"
             )
-        rendered = render_included_mapping(included, include_spec.parameters, file_path)
+        rendered = render_included_mapping(
+            included,
+            include_spec.parameters,
+            file_path,
+            allow_placeholder_keys=allow_placeholder_keys,
+        )
         for key in rendered:
             if key in all_included:
                 raise PropagateError(
@@ -110,13 +116,25 @@ def parse_include_spec(raw_item: Any, location: str) -> IncludeSpec:
     return IncludeSpec(path=path, parameters=parameters)
 
 
-def render_included_mapping(data: dict[str, Any], parameters: dict[str, _ScalarParameter], source_path: Path) -> dict[str, Any]:
+def render_included_mapping(
+    data: dict[str, Any],
+    parameters: dict[str, _ScalarParameter],
+    source_path: Path,
+    *,
+    allow_placeholder_keys: bool = False,
+) -> dict[str, Any]:
     used_parameters: set[str] = set()
     rendered: dict[str, Any] = {}
     for key, value in data.items():
+        rendered_key = key
         if isinstance(key, str) and ("{{" in key or "}}" in key):
-            raise PropagateError(f"Include file {source_path} must not use template placeholders in mapping keys.")
-        rendered[key] = render_included_value(value, parameters, used_parameters, source_path)
+            if not allow_placeholder_keys:
+                raise PropagateError(f"Include file {source_path} must not use template placeholders in mapping keys.")
+            rendered_key = render_included_value(key, parameters, used_parameters, source_path)
+            if not isinstance(rendered_key, str) or not rendered_key:
+                raise PropagateError(f"Include file {source_path} rendered an invalid mapping key.")
+            rendered_key = validate_context_source_name(rendered_key)
+        rendered[rendered_key] = render_included_value(value, parameters, used_parameters, source_path)
     unused_parameters = sorted(set(parameters) - used_parameters)
     if unused_parameters:
         raise PropagateError(

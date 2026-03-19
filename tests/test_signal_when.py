@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from propagate_app.config_executions import parse_execution_signals
-from propagate_app.context_store import ensure_context_dir, get_execution_context_dir, write_context_value
+from propagate_app.context_store import ensure_context_dir, get_context_root, get_execution_context_dir, write_context_value
 from propagate_app.errors import PropagateError
 from propagate_app.graph import parse_propagation_trigger
 from propagate_app.models import (
@@ -292,6 +292,16 @@ def test_propagation_trigger_when_equals_context():
     assert trigger.when == {"label": {"equals_context": ":expected-label"}}
 
 
+def test_propagation_trigger_when_context():
+    trigger = parse_propagation_trigger(
+        1,
+        {"after": "a", "run": "b", "when_context": ":run-full"},
+        {"a", "b"},
+        {},
+    )
+    assert trigger.when_context == ":run-full"
+
+
 # --- activate_matching_triggers with when ---
 
 
@@ -367,7 +377,7 @@ def test_activate_triggers_when_equals_context_matches(tmp_path):
         execution_order=("a", "b"),
         triggers_by_after={"a": (trigger,), "b": ()},
     )
-    context_dir = get_execution_context_dir(tmp_path / ".propagate-context-propagate", "a")
+    context_dir = get_execution_context_dir(get_context_root(config.config_path), "a")
     ensure_context_dir(context_dir)
     write_context_value(context_dir, ":expected-label", "deploy")
     active = ActiveSignal(signal_type="sig", payload={"label": "deploy"}, source="cli")
@@ -389,6 +399,61 @@ def test_activate_triggers_when_none_still_fires(tmp_path):
     completed_names: set[str] = {"a"}
     activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
     assert "b" in active_names
+
+
+def test_activate_triggers_when_context_matches(tmp_path):
+    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context=":run-full")
+    config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
+    graph = ExecutionGraph(
+        execution_order=("a", "b"),
+        triggers_by_after={"a": (trigger,), "b": ()},
+    )
+    context_dir = get_execution_context_dir(get_context_root(config.config_path), "a")
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, "run-full", "true")
+    active_names: set[str] = {"a"}
+    completed_names: set[str] = {"a"}
+    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
+    assert "b" in active_names
+
+
+def test_activate_triggers_when_context_mismatch(tmp_path):
+    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context=":run-full")
+    config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
+    graph = ExecutionGraph(
+        execution_order=("a", "b"),
+        triggers_by_after={"a": (trigger,), "b": ()},
+    )
+    active_names: set[str] = {"a"}
+    completed_names: set[str] = {"a"}
+    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
+    assert "b" not in active_names
+
+
+def test_activate_triggers_when_context_negated_missing_matches(tmp_path):
+    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context="!:run-full")
+    config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
+    graph = ExecutionGraph(
+        execution_order=("a", "b"),
+        triggers_by_after={"a": (trigger,), "b": ()},
+    )
+    active_names: set[str] = {"a"}
+    completed_names: set[str] = {"a"}
+    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
+    assert "b" in active_names
+
+
+def test_activate_triggers_when_context_missing_is_falsy(tmp_path):
+    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context=":run-full")
+    config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
+    graph = ExecutionGraph(
+        execution_order=("a", "b"),
+        triggers_by_after={"a": (trigger,), "b": ()},
+    )
+    active_names: set[str] = {"a"}
+    completed_names: set[str] = {"a"}
+    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
+    assert "b" not in active_names
 
 
 # --- has_pending_signal_triggers with when ---

@@ -30,6 +30,7 @@ def extract_pull_request_payload(body: dict[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "repository": repo.get("full_name", ""),
         "pr_number": pr.get("number", 0),
+        "merged": bool(pr.get("merged", False)),
         "action": body.get("action", ""),
         "head_ref": pr.get("head", {}).get("ref", ""),
         "base_ref": pr.get("base", {}).get("ref", ""),

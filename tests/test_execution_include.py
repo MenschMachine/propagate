@@ -205,6 +205,49 @@ def test_parameterized_include_renders_execution_fields(config_dir):
     assert review_loop["sub_tasks"][2]["routes"][1]["when"]["label"] == "approved"
 
 
+def test_parameterized_include_can_render_top_level_execution_name(config_dir):
+    write_include(config_dir, "review.yaml", {
+        "{{ execution_name }}": {
+            "repository": "{{ repository }}",
+            "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
+        },
+    })
+    executions = {
+        "include": [{
+            "path": "signals/review.yaml",
+            "with": {
+                "execution_name": "sdk-review",
+                "repository": "my-repo",
+                "implement_prompt": "./prompts/implement.md",
+            },
+        }],
+    }
+    result = resolve_execution_includes(executions, config_dir)
+    assert "sdk-review" in result
+    assert result["sdk-review"]["repository"] == "my-repo"
+
+
+def test_parameterized_include_rejects_invalid_top_level_execution_name(config_dir):
+    write_include(config_dir, "review.yaml", {
+        "{{ execution_name }}": {
+            "repository": "{{ repository }}",
+            "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
+        },
+    })
+    executions = {
+        "include": [{
+            "path": "signals/review.yaml",
+            "with": {
+                "execution_name": "bad name",
+                "repository": "my-repo",
+                "implement_prompt": "./prompts/implement.md",
+            },
+        }],
+    }
+    with pytest.raises(PropagateError, match="Invalid context source name 'bad name'"):
+        resolve_execution_includes(executions, config_dir)
+
+
 def test_parameterized_include_prompt_path_still_resolves_from_root_config_dir(config_dir):
     from propagate_app.config_executions import parse_executions
 

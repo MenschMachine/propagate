@@ -72,6 +72,7 @@ Unsupported event types are ignored with a 200 response.
 |-------|-------------|
 | `repository` | `owner/repo` |
 | `pr_number` | Pull request number |
+| `merged` | `true` if the PR is merged, else `false` |
 | `action` | GitHub action (opened, labeled, etc.) |
 | `label` | Label name (only for labeled/unlabeled) |
 | `head_ref` | Source branch |

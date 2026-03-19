@@ -1,0 +1,48 @@
+"{{ execution_name }}":
+  repository: "{{ repository }}"
+  git:
+    branch:
+      name_template: "{{ branch_name_template }}"
+      base: main
+    commit:
+      message_template: "{{ commit_message_template }}"
+    push:
+      remote: origin
+    pr:
+      base: main
+      body_key: "{{ pr_body_key }}"
+      number_key: "{{ pr_number_key }}"
+  after:
+    - 'propagate context set approved-marker true'
+    - "{{ aggregate_after_command }}"
+  sub_tasks:
+    - id: validate-context
+      prompt: "{{ validate_prompt }}"
+    - id: implement
+      before:
+        - git:branch
+      prompt: "{{ implement_prompt }}"
+    - id: summarize
+      prompt: "{{ summarize_prompt }}"
+    - id: publish
+      before:
+        - git:publish
+    - id: wait-for-verdict
+      before:
+        - git:pr-checks-wait :review-check-results :checks-passed 10 1800
+      after:
+        - git:pr-comments-list :review-comments
+      wait_for_signal: pull_request.labeled
+      routes:
+        - when:
+            repository: "{{ github_repository }}"
+            label: changes_required
+            pr_number:
+              equals_context: "{{ pr_number_key }}"
+          goto: implement
+        - when:
+            repository: "{{ github_repository }}"
+            label: approved
+            pr_number:
+              equals_context: "{{ pr_number_key }}"
+          continue: true

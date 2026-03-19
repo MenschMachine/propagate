@@ -77,7 +77,7 @@ class PdfdancerWebsiteSuggestionsConfigTests(unittest.TestCase):
         self.assertEqual(website.after, ["git:publish"])
 
         validate_backend_prompt = validate_backend_prompt_path.read_text(encoding="utf-8")
-        self.assertIn('LABEL` is exactly `suggestions_needed`', validate_backend_prompt)
+        self.assertIn('MERGED` is exactly `True`', validate_backend_prompt)
         self.assertIn('gh pr view "$PR_NUMBER" --repo MenschMachine/pdfdancer-backend', validate_backend_prompt)
 
         api_docs_prompt = api_docs_prompt_path.read_text(encoding="utf-8")

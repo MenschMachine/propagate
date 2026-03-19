@@ -1,5 +1,6 @@
 from typing import Any
 
+from .config_executions import parse_when_condition
 from .constants import LOGGER
 from .errors import PropagateError
 from .models import Config, ExecutionConfig, ExecutionGraph, PropagationTriggerConfig, SignalConfig
@@ -35,7 +36,7 @@ def parse_propagation_trigger(
     location = f"Propagation trigger #{index}"
     if not isinstance(trigger_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(trigger_data, {"after", "run", "on_signal", "when"}, location)
+    validate_allowed_keys(trigger_data, {"after", "run", "on_signal", "when", "when_context"}, location)
     after = trigger_data.get("after")
     run = trigger_data.get("run")
     on_signal = trigger_data.get("on_signal")
@@ -53,6 +54,7 @@ def parse_propagation_trigger(
         if on_signal not in signal_configs:
             raise PropagateError(f"{location}.on_signal references unknown signal '{on_signal}'.")
     when = trigger_data.get("when")
+    when_context = parse_when_condition(trigger_data.get("when_context"), f"{location}.when_context")
     if when is not None:
         if not isinstance(when, dict):
             raise PropagateError(f"{location}.when must be a mapping when provided.")
@@ -62,7 +64,7 @@ def parse_propagation_trigger(
             LOGGER.debug("%s has an empty 'when' clause — it matches any payload, same as omitting 'when'.", location)
         else:
             _validate_trigger_when_keys(when, signal_configs[on_signal], location)
-    return PropagationTriggerConfig(after=after, run=run, on_signal=on_signal, when=when)
+    return PropagationTriggerConfig(after=after, run=run, on_signal=on_signal, when=when, when_context=when_context)
 
 
 def validate_execution_graph_is_acyclic(

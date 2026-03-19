@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import zmq
@@ -130,7 +131,14 @@ def _ensure_repo_cloned(config: Config, repo_name: str, run_state: RunState | No
     if repo.url is None or repo.path is not None:
         return config
     existing_path = run_state.cloned_repos.get(repo_name) if run_state is not None else None
-    cloned_path = clone_single_repository(repo_name, repo, existing_path, config.clone_dir)
+    cloned_path = clone_single_repository(
+        repo_name,
+        repo,
+        existing_path,
+        config.clone_dir,
+        project_name=config.config_path.stem,
+        repo_cache_dir=config.repo_cache_dir,
+    )
     if run_state is not None:
         run_state.cloned_repos[repo_name] = cloned_path
         save_run_state(run_state)
@@ -168,6 +176,8 @@ def activate_matching_triggers(
     LOGGER.info("Evaluating propagation triggers after execution '%s'.", completed_execution_name)
     context_dir = get_execution_context_dir(get_context_root(config.config_path), completed_execution_name)
     for trigger in execution_graph.triggers_by_after[completed_execution_name]:
+        if trigger.when_context is not None and not _evaluate_trigger_context_gate(trigger.when_context, context_dir):
+            continue
         if trigger.on_signal is not None:
             if active_signal is None or trigger.on_signal != active_signal.signal_type:
                 continue
@@ -186,6 +196,21 @@ def activate_matching_triggers(
             continue
         LOGGER.info("Matched propagation trigger after '%s': activate '%s'.", trigger.after, trigger.run)
         activate_execution_with_dependencies(config, trigger.run, active_execution_names)
+
+
+def _evaluate_trigger_context_gate(gate: str, context_dir: Path) -> bool:
+    negated = gate.startswith("!")
+    key = gate[2:] if negated else gate[1:]
+    key_path = context_dir / key
+    try:
+        truthy = key_path.is_file() and key_path.read_text(encoding="utf-8") != ""
+    except OSError as error:
+        LOGGER.debug("Failed to read trigger context gate '%s' from %s: %s", gate, key_path, error)
+        truthy = False
+    except UnicodeDecodeError as error:
+        LOGGER.debug("Failed to decode trigger context gate '%s' from %s as UTF-8: %s", gate, key_path, error)
+        truthy = False
+    return not truthy if negated else truthy
 
 
 def activate_execution_with_dependencies(

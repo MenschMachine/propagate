@@ -41,7 +41,18 @@ def ensure_clean_working_tree(working_dir: Path) -> None:
 
 def working_tree_has_changes(working_dir: Path) -> bool:
     result = run_git_command(
-        ["status", "--porcelain", "--untracked-files=all", "--", ".", ":!**/.propagate-state-*.yaml", ":!.env", ":!**/.env"],
+        [
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            "--",
+            ".",
+            ":!**/.propagate-state-*.yaml",
+            ":!.env",
+            ":!**/.env",
+            ":!.propagate-clone",
+            ":!**/.propagate-clone",
+        ],
         working_dir,
         failure_message="Failed to inspect git working tree status.",
         start_failure_message="Failed to start git status inspection: {error}",

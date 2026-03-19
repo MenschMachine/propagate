@@ -18,6 +18,7 @@ def resolve_execution_includes(executions_data: dict, config_dir: Path) -> dict:
         config_dir,
         section_name="executions",
         entry_name="execution",
+        allow_placeholder_keys=True,
     )
 
 

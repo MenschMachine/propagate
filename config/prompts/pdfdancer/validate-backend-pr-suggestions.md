@@ -1,6 +1,6 @@
 # Validate Backend PR Suggestion Trigger
 
-This task must fail fast unless the triggering signal is the expected backend PR label event for this workflow.
+This task must fail fast unless the triggering signal is the expected merged backend PR event for this workflow.
 
 ## Inputs
 
@@ -9,7 +9,7 @@ Read the signal context and source PR:
 ```bash
 PR_NUMBER="$(propagate context get :signal.pr_number | xargs)"
 REPOSITORY="$(propagate context get :signal.repository | xargs)"
-LABEL="$(propagate context get :signal.label | xargs)"
+MERGED="$(propagate context get :signal.merged | xargs)"
 gh pr view "$PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json number,title,body,url,labels,state,headRefName,baseRefName
 ```
 
@@ -18,7 +18,7 @@ gh pr view "$PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json number,tit
 Treat the trigger as valid only if all of these are true:
 
 - `REPOSITORY` is exactly `MenschMachine/pdfdancer-backend`
-- `LABEL` is exactly `suggestions_needed`
+- `MERGED` is exactly `True`
 - `PR_NUMBER` is non-empty and resolves to an existing backend pull request
 
 ## Task
