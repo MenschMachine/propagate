@@ -7,6 +7,7 @@ from pathlib import Path
 import zmq
 
 from .constants import LOGGER
+from .models import SignalConfig, SignalFieldConfig
 
 COORDINATOR_ADDRESS = "ipc:///tmp/propagate-coordinator.sock"
 COORDINATOR_PUB_ADDRESS = "ipc:///tmp/propagate-coordinator-pub.sock"
@@ -188,6 +189,20 @@ def close_pub_socket(socket: zmq.Socket, address: str) -> None:
 def close_sub_socket(socket: zmq.Socket) -> None:
     socket.close()
     LOGGER.debug("Closed SUB socket.")
+
+
+def parse_signals_from_coordinator(signals_raw: dict) -> dict[str, SignalConfig]:
+    """Build ``dict[str, SignalConfig]`` from the coordinator's wire format."""
+    result: dict[str, SignalConfig] = {}
+    for sig_name, sig_data in signals_raw.items():
+        payload_fields = {}
+        for fname, finfo in sig_data.get("payload", {}).items():
+            payload_fields[fname] = SignalFieldConfig(
+                field_type=finfo.get("field_type", "string"),
+                required=finfo.get("required", False),
+            )
+        result[sig_name] = SignalConfig(name=sig_name, payload=payload_fields)
+    return result
 
 
 def _unlink_stale_socket(address: str) -> None:

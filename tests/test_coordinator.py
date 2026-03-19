@@ -307,16 +307,41 @@ def test_coordinator_dispatch_signal(tmp_path):
         mock_send.assert_called_once()
 
 
-def test_coordinator_dispatch_signal_missing_project():
-    """Signal without project in metadata returns error."""
+def test_coordinator_dispatch_signal_no_project_broadcasts_by_repo(tmp_path):
+    """Signal without project routes by repository match in payload."""
+    config = _make_config(tmp_path, "alpha")
     shutdown = threading.Event()
     coordinator = Coordinator(shutdown)
     coordinator._pub_socket = MagicMock()
 
-    coordinator._dispatch("signal", "go", {}, {})
-    coordinator._pub_socket.send_json.assert_called_once()
-    msg = coordinator._pub_socket.send_json.call_args[0][0]
-    assert "error" in msg
+    mock_push = MagicMock()
+    worker = WorkerInfo(
+        name="alpha",
+        config_path=config.config_path,
+        process=MagicMock(),
+        push_socket=mock_push,
+        sub_socket=MagicMock(),
+        signals=config.signals,
+        repositories={"owner/repo"},
+    )
+    worker.process.poll.return_value = None
+    coordinator._workers["alpha"] = worker
+
+    with patch("propagate_app.coordinator.send_signal") as mock_send:
+        coordinator._dispatch("signal", "go", {"repository": "owner/repo"}, {})
+        mock_send.assert_called_once()
+        assert mock_send.call_args[1]["metadata"]["project"] == "alpha"
+
+
+def test_coordinator_dispatch_signal_no_project_no_match():
+    """Signal without project and no repo match is silently dropped."""
+    shutdown = threading.Event()
+    coordinator = Coordinator(shutdown)
+    coordinator._pub_socket = MagicMock()
+
+    coordinator._dispatch("signal", "go", {"repository": "unknown/repo"}, {})
+    # No error published, just silently dropped.
+    coordinator._pub_socket.send_json.assert_not_called()
 
 
 def test_coordinator_worker_not_ready(tmp_path):

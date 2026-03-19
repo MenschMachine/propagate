@@ -55,8 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         # Coordinator mode: discover projects at startup via list command.
         projects = _discover_projects_from_coordinator()
         if projects is None:
-            logger.error("Failed to discover projects from coordinator.")
-            return 1
+            logger.warning("Could not discover projects from coordinator at startup. Bot will start with no projects — use /list to refresh.")
+            projects = {}
         run_bot(
             projects=projects,
             token=token,
@@ -144,7 +144,7 @@ def _discover_projects_from_coordinator() -> dict | None:
 
 
 def _parse_project_list(event: dict) -> dict:
-    from propagate_app.models import SignalConfig, SignalFieldConfig
+    from propagate_app.signal_transport import parse_signals_from_coordinator
 
     from .bot import ProjectState
 
@@ -152,15 +152,7 @@ def _parse_project_list(event: dict) -> dict:
     projects: dict[str, ProjectState] = {}
     for proj_info in data.get("projects", []):
         name = proj_info["name"]
-        config_signals: dict[str, SignalConfig] = {}
-        for sig_name, sig_data in proj_info.get("signals", {}).items():
-            payload_fields = {}
-            for fname, finfo in sig_data.get("payload", {}).items():
-                payload_fields[fname] = SignalFieldConfig(
-                    field_type=finfo.get("field_type", "string"),
-                    required=finfo.get("required", False),
-                )
-            config_signals[sig_name] = SignalConfig(name=sig_name, payload=payload_fields)
+        config_signals = parse_signals_from_coordinator(proj_info.get("signals", {}))
         projects[name] = ProjectState(name=name, config_signals=config_signals)
         sig_names = sorted(config_signals)
         logger.info("[%s] Discovered %d signal(s): %s", name, len(sig_names), ", ".join(sig_names))

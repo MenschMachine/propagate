@@ -26,14 +26,12 @@ RESUME=""
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") --config <path> [--config <path2> ...] [OPTIONS]
+Usage: $(basename "$0") [--config <path> ...] [OPTIONS]
 
 Start all propagate services with merged, labeled output.
 
-Required:
-  --config <path>       Path to a propagate YAML config (repeatable)
-
 Options:
+  --config <path>       Path to a propagate YAML config (repeatable, optional)
   --dev                 Also start smee (dev webhook forwarding)
   --port <port>         Port for the webhook server (default: 8080)
   --secret <value>      GitHub webhook secret
@@ -72,20 +70,28 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ ${#CONFIGS[@]} -eq 0 ]]; then
-    echo "Error: --config is required" >&2
-    echo "Run $(basename "$0") --help for usage" >&2
-    exit 1
-fi
-
 # --- Child PIDs ---
 PIDS=()
+
+_kill_tree() {
+    local pid=$1
+    # Find and kill children first (depth-first).
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        _kill_tree "$child"
+    done
+    kill "$pid" 2>/dev/null || true
+}
 
 cleanup() {
     echo ""
     echo "Shutting down..."
     for pid in "${PIDS[@]}"; do
-        kill "$pid" 2>/dev/null || true
+        _kill_tree "$pid"
+    done
+    sleep 1
+    # Force-kill any stragglers.
+    for pid in "${PIDS[@]}"; do
+        kill -9 "$pid" 2>/dev/null || true
     done
     wait 2>/dev/null || true
     echo "All services stopped."
@@ -121,11 +127,9 @@ elif [[ -n "$RESUME" ]]; then
     SERVE_ARGS+=(--resume "$RESUME")
 fi
 
-# Webhook uses first config only (webhook is per-repo)
-if [[ ${#CONFIGS[@]} -gt 1 ]]; then
-    echo -e "${BLUE}[webhook ]${NC} Warning: webhook only uses first config (${CONFIGS[0]})"
-fi
-WEBHOOK_ARGS=(--config "${CONFIGS[0]}")
+# Webhook connects to coordinator. No --config or --project needed —
+# coordinator routes signals by matching repository in the payload.
+WEBHOOK_ARGS=()
 [[ -n "$PORT" ]] && WEBHOOK_ARGS+=(--port "$PORT")
 if [[ "$DEV" == true ]]; then
     # Skip signature verification in dev mode — smee re-serialises the body,
@@ -138,9 +142,7 @@ elif [[ -n "$SECRET_ENV" ]]; then
 fi
 
 TELEGRAM_ARGS=()
-for cfg in "${CONFIGS[@]}"; do
-    TELEGRAM_ARGS+=(--config "$cfg")
-done
+# No --config: telegram connects to the coordinator automatically.
 [[ -n "$TOKEN" ]] && TELEGRAM_ARGS+=(--token "$TOKEN")
 [[ -n "$TOKEN_ENV" ]] && TELEGRAM_ARGS+=(--token-env "$TOKEN_ENV")
 [[ -n "$ALLOWED_USERS" ]] && TELEGRAM_ARGS+=(--allowed-users "$ALLOWED_USERS")
@@ -152,11 +154,12 @@ fi
 
 # --- Start services ---
 echo -e "${GREEN}[serve   ]${NC} propagate serve ${SERVE_ARGS[*]}"
-echo -e "${BLUE}[webhook ]${NC} propagate-webhook ${WEBHOOK_ARGS[*]}"
-echo -e "${YELLOW}[telegram]${NC} propagate-telegram ${TELEGRAM_ARGS[*]}"
-
 start_service "$GREEN" "serve" "$VENV/propagate" serve "${SERVE_ARGS[@]}"
+
+echo -e "${BLUE}[webhook ]${NC} propagate-webhook ${WEBHOOK_ARGS[*]}"
 start_service "$BLUE" "webhook" "$VENV/propagate-webhook" "${WEBHOOK_ARGS[@]}"
+
+echo -e "${YELLOW}[telegram]${NC} propagate-telegram ${TELEGRAM_ARGS[*]}"
 start_service "$YELLOW" "telegram" "$VENV/propagate-telegram" "${TELEGRAM_ARGS[@]}"
 
 if [[ "$DEV" == true ]]; then

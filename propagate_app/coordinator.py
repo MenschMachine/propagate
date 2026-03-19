@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import threading
@@ -33,6 +34,19 @@ from .signal_transport import (
 )
 
 
+def _extract_repo_full_names(config) -> set[str]:
+    """Extract GitHub-style 'owner/repo' identifiers from repository URLs."""
+    names: set[str] = set()
+    for repo in config.repositories.values():
+        if not repo.url:
+            continue
+        # Match owner/repo from https or ssh URLs.
+        match = re.search(r"[:/]([^/]+/[^/]+?)(?:\.git)?$", repo.url)
+        if match:
+            names.add(match.group(1))
+    return names
+
+
 @dataclass
 class WorkerInfo:
     name: str
@@ -41,6 +55,7 @@ class WorkerInfo:
     push_socket: zmq.Socket
     sub_socket: zmq.Socket
     signals: dict[str, SignalConfig] = field(default_factory=dict)
+    repositories: set[str] = field(default_factory=set)
 
 
 class Coordinator:
@@ -54,15 +69,18 @@ class Coordinator:
         self._proxy_rebuild = threading.Event()
 
     def start(self, initial_configs: list[str], resume: bool | str = False) -> None:
+        # Bind coordinator sockets first so clients (webhook, telegram, shell)
+        # can connect immediately, even before workers are ready.
+        self._pull_socket = bind_pull_socket(COORDINATOR_ADDRESS)
+        self._pub_socket = bind_pub_socket(COORDINATOR_PUB_ADDRESS)
+        LOGGER.info("Coordinator listening on %s", COORDINATOR_ADDRESS)
+        LOGGER.info("Coordinator publishing on %s", COORDINATOR_PUB_ADDRESS)
+
         for config_value in initial_configs:
             config_path = Path(config_value).expanduser().resolve()
             self._load_worker(config_path, resume)
 
     def run(self) -> None:
-        self._pull_socket = bind_pull_socket(COORDINATOR_ADDRESS)
-        self._pub_socket = bind_pub_socket(COORDINATOR_PUB_ADDRESS)
-        LOGGER.info("Coordinator listening on %s", COORDINATOR_ADDRESS)
-        LOGGER.info("Coordinator publishing on %s", COORDINATOR_PUB_ADDRESS)
 
         proxy_thread = threading.Thread(target=self._event_proxy, daemon=True)
         proxy_thread.start()
@@ -115,10 +133,10 @@ class Coordinator:
                 self._send_response(metadata.get("request_id"), error=f"Unknown coordinator action '{action}'.")
         elif kind == "signal":
             project = metadata.get("project")
-            if not project:
-                self._send_response(metadata.get("request_id"), error="Missing 'project' in metadata for signal.")
-                return
-            self._forward_signal(project, name, payload, metadata)
+            if project:
+                self._forward_signal(project, name, payload, metadata)
+            else:
+                self._broadcast_signal(name, payload, metadata)
         elif kind == "command":
             project = metadata.get("project")
             if not project:
@@ -194,6 +212,22 @@ class Coordinator:
             return
         send_signal(worker.push_socket, signal_type, payload, metadata=metadata)
         LOGGER.debug("Forwarded signal '%s' to worker '%s'.", signal_type, project)
+
+    def _broadcast_signal(self, signal_type: str, payload: dict, metadata: dict) -> None:
+        """Route a signal without explicit project. Matches by repository in payload."""
+        repo = payload.get("repository", "")
+        with self._lock:
+            targets = [
+                w for w in self._workers.values()
+                if w.process.poll() is None and (repo and repo in w.repositories)
+            ]
+        if not targets:
+            LOGGER.debug("No workers match repository '%s' for signal '%s'.", repo, signal_type)
+            return
+        for worker in targets:
+            worker_metadata = {**metadata, "project": worker.name}
+            send_signal(worker.push_socket, signal_type, payload, metadata=worker_metadata)
+            LOGGER.debug("Broadcast signal '%s' to worker '%s' (repo=%s).", signal_type, worker.name, repo)
 
     def _forward_command(self, project: str, command: str, metadata: dict) -> None:
         with self._lock:
@@ -285,6 +319,7 @@ class Coordinator:
             push_socket=push_socket,
             sub_socket=sub_socket,
             signals=config.signals,
+            repositories=_extract_repo_full_names(config),
         )
         with self._lock:
             self._workers[name] = worker

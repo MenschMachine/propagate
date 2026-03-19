@@ -125,6 +125,32 @@ List or switch between loaded projects.
 
 When only one project is loaded, project selection is automatic and the `/project` command is not needed.
 
+### `/list`
+
+List all loaded projects from the coordinator with live status, signal definitions, and active marker. Also refreshes the bot's cached project data.
+
+Available in coordinator mode only.
+
+### `/unload <name>`
+
+Stop and unload a project from the coordinator.
+
+```
+/unload my-project
+```
+
+Available in coordinator mode only.
+
+### `/reload <name>`
+
+Reload a project — stops the worker and starts it again with a fresh config. Useful after config file changes.
+
+```
+/reload my-project
+```
+
+The bot's signal cache is automatically refreshed after reload. Available in coordinator mode only.
+
 ### `/help`
 
 Show available commands and configured signals.

@@ -14,22 +14,34 @@ pip install propagate[webhook]
 
 ## Usage
 
+### Coordinator mode (recommended)
+
+```bash
+propagate-webhook --port 8080
+```
+
+Connects to the coordinator and forwards all GitHub events. The coordinator routes each signal to the correct worker(s) by matching the `repository` field in the payload against each project's configured repository URLs. A single webhook instance serves all projects.
+
+No `--config` or `--project` flag is needed — signal validation is handled by the workers.
+
+### Legacy mode
+
 ```bash
 propagate-webhook --config config/propagate.yaml --port 8080
 ```
+
+Connects directly to a config's ZMQ socket. The `--config` path must match the one used by `propagate serve`. Signals are validated against the config before sending.
 
 ### Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--config` | (required) | Path to the propagate YAML config |
+| `--config` | (none) | Path to a propagate YAML config (legacy mode). If omitted, connects to coordinator. |
 | `--port` | `8080` | Port to listen on |
 | `--host` | `0.0.0.0` | Host to bind to |
 | `--secret` | (none) | GitHub webhook secret for HMAC-SHA256 verification |
 | `--secret-env` | (none) | Environment variable name containing the webhook secret |
 | `--debug` | off | Enable debug-level logging |
-
-The `--config` path must match the one used by `propagate run` — it determines the ZeroMQ socket address.
 
 ---
 

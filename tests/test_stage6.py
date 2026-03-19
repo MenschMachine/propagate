@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import shlex
-
-import pytest
 import shutil
 import subprocess
 import sys
@@ -11,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
 import yaml
 
 from propagate_app.run_state import state_file_path

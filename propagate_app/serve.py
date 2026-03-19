@@ -301,7 +301,11 @@ def _handle_incoming_signal(
         return
     active_signal = ActiveSignal(signal_type=signal_type, payload=payload, source="external")
     LOGGER.info("Received signal '%s', selecting execution.", signal_type)
-    initial_execution = select_initial_execution(config, None, active_signal)
+    try:
+        initial_execution = select_initial_execution(config, None, active_signal)
+    except PropagateError as error:
+        LOGGER.warning("Signal '%s' ignored: %s", signal_type, error)
+        return
     run_metadata = metadata or {}
     run_state = RunState(
         config_path=config.config_path,
