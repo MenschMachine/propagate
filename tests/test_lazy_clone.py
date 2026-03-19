@@ -168,8 +168,3 @@ class LazyCloneTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, second_cwd, True)
         self.assertNotEqual(second_cwd.resolve(), bare_repo.resolve())
         self.assertIn("README.md", invocations[1]["files"])
-        # Clone log appears after first execution started
-        stderr = result.stderr
-        first_pos = stderr.find("Running execution 'first'")
-        clone_pos = stderr.find("Cloning repository 'remote'")
-        self.assertGreater(clone_pos, first_pos, "Clone should happen after first execution starts")

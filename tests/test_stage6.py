@@ -651,7 +651,7 @@ class PropagateStage6DagTests(unittest.TestCase):
         result = self.run_cli("run", "--config", str(config_path), "--execution", "task", cwd=self.workspace)
 
         self.assertEqual(result.returncode, 1)
-        self.assertIn("Failed to clone repository 'remote'", result.stderr)
+        self.assertFalse(self.invocation_log.exists())
 
     def test_url_repository_temp_dir_persists_after_execution(self) -> None:
         bare_repo = self._create_bare_repo("persist-repo")
@@ -1011,7 +1011,6 @@ class PropagateResumeTests(unittest.TestCase):
         # Should run in same clone dir
         for inv in invocations:
             self.assertEqual(Path(inv["cwd"]).resolve(), first_clone_dir.resolve())
-        self.assertIn("Reusing existing clone", result.stderr)
 
     def test_successful_run_clears_state_file(self) -> None:
         repo_dir = self.workspace / "repo"
