@@ -11,6 +11,12 @@ Write the final body to:
 
 - `:api-pr-body`
 
+Important:
+
+- Store `:api-pr-body` in the execution-level context so the later `git:publish` step can read it.
+- `propagate context set` already writes to execution scope by default in this workflow. Do not use `--local`.
+- If you use a command, it should be equivalent to `propagate context set :api-pr-body "<final body>"`.
+
 Structure:
 
 - `## Source Backend PR`
