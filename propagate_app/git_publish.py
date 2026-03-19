@@ -266,9 +266,41 @@ _FAILURE_BUCKETS = {"fail", "cancel"}
 _PENDING_BUCKET = "pending"
 
 
+def _format_check_wait_target(check: dict) -> str:
+    workflow_name = _extract_workflow_name(check)
+    check_name = str(check.get("name") or "").strip()
+    if workflow_name and check_name and workflow_name != check_name:
+        return f"{workflow_name} / {check_name}"
+    return workflow_name or check_name or "<unnamed check>"
+
+
+def _format_check_diagnostic(check: dict) -> str:
+    workflow_name = _extract_workflow_name(check)
+    name = check.get("name") or "<unnamed>"
+    bucket = check.get("bucket") or "<missing bucket>"
+    state = check.get("state") or "<missing state>"
+    if workflow_name:
+        return f"{workflow_name} / {name} [bucket={bucket}, state={state}]"
+    return f"{name} [bucket={bucket}, state={state}, workflow=<missing name>]"
+
+
+def _extract_workflow_name(check: dict) -> str | None:
+    workflow = check.get("workflow")
+    if isinstance(workflow, str):
+        stripped = workflow.strip()
+        return stripped or None
+    if isinstance(workflow, dict):
+        name = workflow.get("name")
+        if isinstance(name, str):
+            stripped = name.strip()
+            return stripped or None
+    return None
+
+
 def poll_pr_action_checks(working_dir: Path, interval: int, timeout: int) -> tuple[str, bool]:
     LOGGER.debug("Polling PR action checks (interval=%ds, timeout=%ds).", interval, timeout)
     deadline = time.monotonic() + timeout
+    wait_message_logged = False
     while True:
         result = run_process_command(
             ["gh", "pr", "checks", "--json", "bucket,description,event,link,name,state,workflow"],
@@ -281,11 +313,38 @@ def poll_pr_action_checks(working_dir: Path, interval: int, timeout: int) -> tup
             all_checks = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
             raise PropagateError(f"Failed to parse PR checks output as JSON: {exc}") from exc
-        filtered = [c for c in all_checks if isinstance(c.get("workflow"), dict) and c["workflow"].get("name")]
+        filtered = [c for c in all_checks if _extract_workflow_name(c)]
+        if not wait_message_logged:
+            LOGGER.info(
+                "PR checks query returned %d total check(s); %d GitHub Actions check(s) matched.",
+                len(all_checks),
+                len(filtered),
+            )
+            if all_checks:
+                diagnostics = ", ".join(_format_check_diagnostic(check) for check in all_checks[:10])
+                LOGGER.info("PR checks diagnostic sample: %s", diagnostics)
+                if len(all_checks) > 10:
+                    LOGGER.info("PR checks diagnostic sample truncated: %d additional check(s) omitted.", len(all_checks) - 10)
         if filtered and all(c.get("bucket") != _PENDING_BUCKET for c in filtered):
             filtered_json = json.dumps(filtered)
             all_passed = not any(c.get("bucket") in _FAILURE_BUCKETS for c in filtered)
             return filtered_json, all_passed
+        if filtered:
+            pending_checks = sorted({
+                _format_check_wait_target(check)
+                for check in filtered
+                if check.get("bucket") == _PENDING_BUCKET
+            })
+            wait_message = (
+                "Waiting for PR checks to complete: " + ", ".join(pending_checks)
+                if pending_checks
+                else "Waiting for PR checks to report a final status."
+            )
+        else:
+            wait_message = "Waiting for GitHub Actions PR checks to appear."
+        if not wait_message_logged:
+            LOGGER.info("%s", wait_message)
+            wait_message_logged = True
         if time.monotonic() >= deadline:
             raise PropagateError(f"Timed out after {timeout}s waiting for PR checks to complete.")
         LOGGER.debug("PR checks not yet complete, waiting %ds.", interval)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -215,6 +216,16 @@ def _make_check(name: str, bucket: str, state: str, workflow_name: str = "CI") -
     }
 
 
+def _make_check_with_string_workflow(name: str, bucket: str, state: str, workflow_name: str = "CI") -> dict:
+    return {
+        "name": name,
+        "bucket": bucket,
+        "state": state,
+        "workflow": workflow_name,
+        "link": f"https://example.com/{name}",
+    }
+
+
 def _make_non_action_check(name: str) -> dict:
     return {
         "name": name,
@@ -240,6 +251,27 @@ def test_poll_all_passing(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
 
     assert len(result) == 2
     assert all_passed
+    mock_sleep.assert_not_called()
+
+
+@patch("propagate_app.git_publish.time.sleep")
+@patch("propagate_app.git_publish.run_process_command")
+def test_poll_all_passing_with_string_workflow(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
+    checks = [
+        _make_check_with_string_workflow("build", "pass", "SUCCESS", workflow_name="Build"),
+        _make_check_with_string_workflow(
+            "build-and-publish", "pass", "SUCCESS", workflow_name="Build and Publish Docker Image"
+        ),
+    ]
+    mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
+
+    result_json, all_passed = poll_pr_action_checks(Path("/fake"), interval=10, timeout=60)
+    result = json.loads(result_json)
+
+    assert len(result) == 2
+    assert all_passed
+    assert result[0]["workflow"] == "Build"
+    assert result[1]["workflow"] == "Build and Publish Docker Image"
     mock_sleep.assert_not_called()
 
 
@@ -280,6 +312,46 @@ def test_poll_waits_for_completion(mock_run: MagicMock, mock_mono: MagicMock, mo
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.time.monotonic")
 @patch("propagate_app.git_publish.run_process_command")
+def test_poll_logs_first_pending_wait_target_once(
+    mock_run: MagicMock,
+    mock_mono: MagicMock,
+    mock_sleep: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pending = [_make_check_with_string_workflow("build", "pending", "PENDING", workflow_name="Build")]
+    completed = [_make_check_with_string_workflow("build", "pass", "SUCCESS", workflow_name="Build")]
+    mock_run.side_effect = [
+        SimpleNamespace(stdout=json.dumps(pending)),
+        SimpleNamespace(stdout=json.dumps(pending)),
+        SimpleNamespace(stdout=json.dumps(completed)),
+    ]
+    mock_mono.side_effect = [0, 5, 10, 15]
+
+    with caplog.at_level(logging.INFO, logger="propagate"):
+        result_json, all_passed = poll_pr_action_checks(Path("/fake"), interval=5, timeout=60)
+
+    assert all_passed
+    assert json.loads(result_json) == completed
+    matches = [
+        record.message
+        for record in caplog.records
+        if "Waiting for PR checks to complete: Build / build" in record.message
+    ]
+    assert matches == ["Waiting for PR checks to complete: Build / build"]
+    assert any(
+        "PR checks query returned 1 total check(s); 1 GitHub Actions check(s) matched." in record.message
+        for record in caplog.records
+    )
+    assert any(
+        "PR checks diagnostic sample: Build / build [bucket=pending, state=PENDING]" in record.message
+        for record in caplog.records
+    )
+    assert mock_sleep.call_count == 2
+
+
+@patch("propagate_app.git_publish.time.sleep")
+@patch("propagate_app.git_publish.time.monotonic")
+@patch("propagate_app.git_publish.run_process_command")
 def test_poll_waits_for_checks_to_appear(mock_run: MagicMock, mock_mono: MagicMock, mock_sleep: MagicMock) -> None:
     empty = [_make_non_action_check("codecov")]  # no actions checks yet
     with_actions = [
@@ -297,6 +369,45 @@ def test_poll_waits_for_checks_to_appear(mock_run: MagicMock, mock_mono: MagicMo
     assert len(result) == 1
     assert result[0]["name"] == "build"
     assert all_passed
+
+
+@patch("propagate_app.git_publish.time.sleep")
+@patch("propagate_app.git_publish.time.monotonic")
+@patch("propagate_app.git_publish.run_process_command")
+def test_poll_logs_first_wait_when_actions_checks_missing(
+    mock_run: MagicMock,
+    mock_mono: MagicMock,
+    mock_sleep: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    empty = [_make_non_action_check("codecov")]
+    with_actions = [_make_check("build", "pass", "SUCCESS")]
+    mock_run.side_effect = [
+        SimpleNamespace(stdout=json.dumps(empty)),
+        SimpleNamespace(stdout=json.dumps(with_actions)),
+    ]
+    mock_mono.side_effect = [0, 5, 10]
+
+    with caplog.at_level(logging.INFO, logger="propagate"):
+        result_json, all_passed = poll_pr_action_checks(Path("/fake"), interval=5, timeout=60)
+
+    assert all_passed
+    assert json.loads(result_json) == with_actions
+    matches = [
+        record.message
+        for record in caplog.records
+        if "Waiting for GitHub Actions PR checks to appear." in record.message
+    ]
+    assert matches == ["Waiting for GitHub Actions PR checks to appear."]
+    assert any(
+        "PR checks query returned 1 total check(s); 0 GitHub Actions check(s) matched." in record.message
+        for record in caplog.records
+    )
+    assert any(
+        "PR checks diagnostic sample: codecov [bucket=pass, state=SUCCESS, workflow=<missing name>]" in record.message
+        for record in caplog.records
+    )
+    mock_sleep.assert_called_once_with(5)
 
 
 @patch("propagate_app.git_publish.time.sleep")
