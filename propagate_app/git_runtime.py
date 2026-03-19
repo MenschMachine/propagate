@@ -17,6 +17,7 @@ from .git_publish import (
     remove_pr_labels,
     split_commit_message,
 )
+from .git_templates import render_git_template
 from .git_repo import (
     ensure_clean_working_tree,
     ensure_git_repository,
@@ -58,6 +59,14 @@ def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: R
         branch_config = GitBranchConfig(
             name=resolved_name, base=branch_config.base, reuse=branch_config.reuse,
         )
+    if branch_config.name_template is not None:
+        rendered_name = render_git_template(branch_config.name_template, runtime_context)
+        LOGGER.debug("Resolved branch name from template '%s': '%s'.", branch_config.name_template, rendered_name)
+        branch_config = GitBranchConfig(
+            name=rendered_name,
+            base=branch_config.base,
+            reuse=branch_config.reuse,
+        )
     prepared = prepare_git_execution(execution_name, branch_config, runtime_context.working_dir)
     git_state.starting_branch = prepared.starting_branch
     git_state.selected_branch = prepared.selected_branch
@@ -95,6 +104,12 @@ def git_do_pr(execution_name: str, git_config: GitConfig, runtime_context: Runti
         selected_branch=git_state.selected_branch,
     )
     create_execution_git_pr(execution_name, git_config, prepared, commit_message, runtime_context)
+
+
+def git_do_publish(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
+    git_do_commit(execution_name, git_config, runtime_context)
+    git_do_push(execution_name, git_config, runtime_context)
+    git_do_pr(execution_name, git_config, runtime_context)
 
 
 def prepare_git_execution(
@@ -167,15 +182,26 @@ def push_execution_git_branch(
 
 def load_pr_title_body(pr_config: GitPrConfig, commit_message: str, runtime_context: RuntimeContext) -> tuple[str, str]:
     title, body = split_commit_message(commit_message)
-    if pr_config.title_key is None and pr_config.body_key is None:
+    if (
+        pr_config.title_key is None
+        and pr_config.body_key is None
+        and pr_config.title_template is None
+        and pr_config.body_template is None
+    ):
         return title, body
     context_dir = resolve_execution_context_dir(runtime_context)
     if pr_config.title_key is not None:
         title = read_context_value(context_dir, pr_config.title_key)
         LOGGER.debug("Loaded PR title from context key '%s'.", pr_config.title_key)
+    elif pr_config.title_template is not None:
+        title = render_git_template(pr_config.title_template, runtime_context)
+        LOGGER.debug("Rendered PR title from template '%s'.", pr_config.title_template)
     if pr_config.body_key is not None:
         body = read_context_value(context_dir, pr_config.body_key)
         LOGGER.debug("Loaded PR body from context key '%s'.", pr_config.body_key)
+    elif pr_config.body_template is not None:
+        body = render_git_template(pr_config.body_template, runtime_context)
+        LOGGER.debug("Rendered PR body from template '%s'.", pr_config.body_template)
     return title, body
 
 

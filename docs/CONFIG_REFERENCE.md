@@ -350,17 +350,22 @@ Git automation for an execution. Configured as a nested block inside an executio
 git:
   branch:
     name: propagate/my-feature
+    # OR name_key: :branch-name
+    # OR name_template: "feature-{signal[pr_number]}"
     base: main
     reuse: true
   commit:
     message_source: commit-msg        # OR message_key: :commit-message
+                                      # OR message_template: "feat: PR #{signal[pr_number]}"
   push:
     remote: origin
   pr:
     base: main
     draft: false
     title_key: :pr-title
+    # OR title_template: "PR #{signal[pr_number]}"
     body_key: :pr-body
+    # OR body_template: "Implements PR #{signal[pr_number]}"
 ```
 
 ### `git.branch`
@@ -369,8 +374,9 @@ Controls branch creation and checkout before sub-tasks run.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `name` | string | No | `propagate/{execution_name}` | Branch name. Mutually exclusive with `name_key`. |
-| `name_key` | string | No | — | Context key (must start with `:`) whose value becomes the branch name. Mutually exclusive with `name`. |
+| `name` | string | No | `propagate/{execution_name}` | Branch name. Mutually exclusive with `name_key` and `name_template`. |
+| `name_key` | string | No | — | Context key (must start with `:`) whose value becomes the branch name. Mutually exclusive with `name` and `name_template`. |
+| `name_template` | string | No | — | Template rendered at runtime. Mutually exclusive with `name` and `name_key`. |
 | `base` | string | No | Current branch | Base ref to branch from when creating a new branch. |
 | `reuse` | boolean | No | `true` | Reuse an existing branch if it already exists. If `false` and the branch exists, the run fails. |
 
@@ -382,8 +388,9 @@ Controls how commits are created after sub-tasks produce file changes.
 |-------|------|----------|-------------|
 | `message_source` | string | One of | Name of a context source whose command output becomes the commit message. |
 | `message_key` | string | One of | Context key (must start with `:`) whose value becomes the commit message. |
+| `message_template` | string | One of | Template rendered at runtime into the commit message. |
 
-Exactly **one** of `message_source` or `message_key` must be set.
+Exactly **one** of `message_source`, `message_key`, or `message_template` must be set.
 
 ### `git.push`
 
@@ -403,11 +410,20 @@ Creates a pull request. Optional. **Requires `push` to be configured.**
 |-------|------|----------|---------|-------------|
 | `base` | string | No | `git.branch.base` or starting branch | Target branch for the PR. |
 | `draft` | boolean | No | `false` | Create the PR as a draft. |
-| `title_key` | string | No | First line of commit message | Context key (must start with `:`) for the PR title. |
-| `body_key` | string | No | Remaining commit message lines | Context key (must start with `:`) for the PR body. |
+| `title_key` | string | No | First line of commit message | Context key (must start with `:`) for the PR title. Mutually exclusive with `title_template`. |
+| `title_template` | string | No | First line of commit message | Template rendered at runtime for the PR title. Mutually exclusive with `title_key`. |
+| `body_key` | string | No | Remaining commit message lines | Context key (must start with `:`) for the PR body. Mutually exclusive with `body_template`. |
+| `body_template` | string | No | Remaining commit message lines | Template rendered at runtime for the PR body. Mutually exclusive with `body_key`. |
 | `number_key` | string | No | — | Context key (must start with `:`) where the PR number is stored after creation. |
 
 PRs are created via `gh pr create`.
+
+Template fields support:
+
+- `{signal[field]}` for active signal payload values
+- `{context[key]}` for the current execution context
+- `{context[execution-or-execution/task][key]}` for another execution/task context
+- `{execution.name}` for the current execution name
 
 ---
 
@@ -471,6 +487,7 @@ Prefix with `git:` for git operations. These require a `git` block on the execut
 |---------|-----------|-------------|
 | `git:branch` | — | Create or checkout the configured branch. |
 | `git:commit` | — | Stage all changes and commit. |
+| `git:publish` | — | Run commit, push, and PR creation in order. |
 | `git:push` | — | Push to the configured remote. |
 | `git:pr` | — | Create a pull request. |
 | `git:pr-labels-add` | `label1 label2 ...` | Add labels to the PR. |
@@ -484,6 +501,7 @@ Prefix with `git:` for git operations. These require a `git` block on the execut
 after:
   - git:branch
   - git:commit
+  - git:publish
   - git:push
   - git:pr
   - git:pr-labels-add review-needed documentation

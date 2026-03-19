@@ -29,7 +29,7 @@ def parse_git_branch_config(execution_name: str, branch_data: Any) -> GitBranchC
     location = f"Execution '{execution_name}' git.branch"
     if not isinstance(branch_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(branch_data, {"name", "base", "reuse", "name_key"}, location)
+    validate_allowed_keys(branch_data, {"name", "base", "reuse", "name_key", "name_template"}, location)
     reuse = branch_data.get("reuse", True)
     if not isinstance(reuse, bool):
         raise PropagateError(f"{location}.reuse must be a boolean when provided.")
@@ -40,13 +40,15 @@ def parse_git_branch_config(execution_name: str, branch_data: Any) -> GitBranchC
         if not validated.startswith(":"):
             raise PropagateError(f"{location}.name_key must use a reserved ':'-prefixed context key.")
         name_key = validated
-    if name is not None and name_key is not None:
-        raise PropagateError(f"{location} must define at most one of 'name' or 'name_key', not both.")
+    name_template = optional_non_empty_string(branch_data.get("name_template"), f"{location}.name_template")
+    if sum(value is not None for value in (name, name_key, name_template)) > 1:
+        raise PropagateError(f"{location} must define at most one of 'name', 'name_key', or 'name_template'.")
     return GitBranchConfig(
         name=name,
         base=optional_non_empty_string(branch_data.get("base"), f"{location}.base"),
         reuse=reuse,
         name_key=name_key,
+        name_template=name_template,
     )
 
 
@@ -58,20 +60,25 @@ def parse_git_commit_config(
     location = f"Execution '{execution_name}' git.commit"
     if not isinstance(commit_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(commit_data, {"message_source", "message_key"}, location)
+    validate_allowed_keys(commit_data, {"message_source", "message_key", "message_template"}, location)
     message_source = commit_data.get("message_source")
     message_key = commit_data.get("message_key")
-    if (message_source is None) == (message_key is None):
-        raise PropagateError(f"{location} must define exactly one of 'message_source' or 'message_key'.")
+    message_template = optional_non_empty_string(commit_data.get("message_template"), f"{location}.message_template")
+    if sum(value is not None for value in (message_source, message_key, message_template)) != 1:
+        raise PropagateError(
+            f"{location} must define exactly one of 'message_source', 'message_key', or 'message_template'."
+        )
     if message_source is not None:
         source_name = validate_context_source_name(message_source)
         if source_name not in context_source_names:
             raise PropagateError(f"{location}.message_source references unknown context source '{source_name}'.")
-        return GitCommitConfig(message_source=source_name, message_key=None)
+        return GitCommitConfig(message_source=source_name, message_key=None, message_template=None)
+    if message_template is not None:
+        return GitCommitConfig(message_source=None, message_key=None, message_template=message_template)
     validated_key = validate_context_key(message_key)
     if not validated_key.startswith(":"):
         raise PropagateError(f"{location}.message_key must use a reserved ':'-prefixed context key.")
-    return GitCommitConfig(message_source=None, message_key=validated_key)
+    return GitCommitConfig(message_source=None, message_key=validated_key, message_template=None)
 
 
 def parse_git_push_config(execution_name: str, push_data: Any) -> GitPushConfig | None:
@@ -93,7 +100,7 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
     location = f"Execution '{execution_name}' git.pr"
     if not isinstance(pr_data, dict):
         raise PropagateError(f"{location} must be a mapping.")
-    validate_allowed_keys(pr_data, {"base", "draft", "title_key", "body_key", "number_key"}, location)
+    validate_allowed_keys(pr_data, {"base", "draft", "title_key", "body_key", "title_template", "body_template", "number_key"}, location)
     draft = pr_data.get("draft", False)
     if not isinstance(draft, bool):
         raise PropagateError(f"{location}.draft must be a boolean when provided.")
@@ -109,6 +116,12 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
         if not validated.startswith(":"):
             raise PropagateError(f"{location}.body_key must use a reserved ':'-prefixed context key.")
         body_key = validated
+    title_template = optional_non_empty_string(pr_data.get("title_template"), f"{location}.title_template")
+    body_template = optional_non_empty_string(pr_data.get("body_template"), f"{location}.body_template")
+    if title_key is not None and title_template is not None:
+        raise PropagateError(f"{location} must define at most one of 'title_key' or 'title_template'.")
+    if body_key is not None and body_template is not None:
+        raise PropagateError(f"{location} must define at most one of 'body_key' or 'body_template'.")
     number_key = None
     if "number_key" in pr_data:
         validated = validate_context_key(pr_data["number_key"])
@@ -120,5 +133,7 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
         draft=draft,
         title_key=title_key,
         body_key=body_key,
+        title_template=title_template,
+        body_template=body_template,
         number_key=number_key,
     )

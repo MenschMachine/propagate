@@ -12,6 +12,7 @@ from .errors import PropagateError
 from .git_runtime import (
     git_do_branch,
     git_do_commit,
+    git_do_publish,
     git_do_pr,
     git_do_pr_checks_wait,
     git_do_pr_comment_add,
@@ -302,6 +303,8 @@ def run_git_hook_command(action: str, git_config: GitConfig | None, runtime_cont
         git_do_branch(execution_name, git_config, runtime_context)
     elif command == "commit":
         git_do_commit(execution_name, git_config, runtime_context)
+    elif command == "publish":
+        git_do_publish(execution_name, git_config, runtime_context)
     elif command == "push":
         git_do_push(execution_name, git_config, runtime_context)
     elif command == "pr":

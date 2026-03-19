@@ -39,12 +39,14 @@ executions:
         when:
           repository: MenschMachine/pdfdancer-backend
           label: suggestions_needed
+    before:
+      - 'propagate context set :source-backend-pr-number "$(propagate context get :signal.pr_number | xargs)"'
     git:
       branch:
-        name_key: :api-docs-branch-name
+        name_template: "api-docs/backend-pr-{signal[pr_number]}"
         base: main
       commit:
-        message_key: :api-docs-commit-message
+        message_template: "api-docs: document backend PR #{context[:source-backend-pr-number]}"
       push:
         remote: origin
       pr:
@@ -56,19 +58,13 @@ executions:
         prompt: ./prompts/pdfdancer/validate-backend-pr-suggestions.md
       - id: implement
         before:
-          - 'propagate context set :source-backend-pr-number "$(propagate context get :signal.pr_number | xargs)"'
-          - 'propagate context set :api-docs-branch-name "api-docs/backend-pr-$(propagate context get :source-backend-pr-number | xargs)"'
           - git:branch
         prompt: ./prompts/pdfdancer/implement-api-docs-from-backend-pr.md
       - id: summarize
         prompt: ./prompts/pdfdancer/summarize-api-docs-from-backend-pr.md
-        after:
-          - git:commit
-      - id: publish
-        before:
-          - git:push
-          - git:pr
       - id: wait-for-verdict
+        before:
+          - git:publish
         wait_for_signal: pull_request.labeled
         routes:
           - when:
@@ -85,10 +81,10 @@ executions:
     repository: pdfdancer-www
     git:
       branch:
-        name_key: :website-branch-name
+        name_template: "website/backend-pr-{context[implement-approved-api-docs-updates][:source-backend-pr-number]}"
         base: main
       commit:
-        message_key: :website-commit-message
+        message_template: "website: reflect backend PR #{context[implement-approved-api-docs-updates][:source-backend-pr-number]}"
       push:
         remote: origin
       pr:
@@ -100,16 +96,12 @@ executions:
         prompt: ./prompts/pdfdancer/validate-website-follow-up-context.md
       - id: implement
         before:
-          - 'propagate context set :website-branch-name "website/backend-pr-$(propagate context get :source-backend-pr-number --task implement-approved-api-docs-updates | xargs)"'
           - git:branch
         prompt: ./prompts/pdfdancer/implement-website-from-backend-pr.md
       - id: summarize
         prompt: ./prompts/pdfdancer/summarize-website-from-backend-pr.md
-        after:
-          - git:commit
     after:
-      - git:push
-      - git:pr
+      - git:publish
 
 propagation:
   triggers:

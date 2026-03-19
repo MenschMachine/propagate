@@ -52,12 +52,14 @@ class GitBranchConfig:
     base: str | None
     reuse: bool
     name_key: str | None = None
+    name_template: str | None = None
 
 
 @dataclass(frozen=True)
 class GitCommitConfig:
     message_source: str | None
     message_key: str | None
+    message_template: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,8 @@ class GitPrConfig:
     draft: bool
     title_key: str | None = None
     body_key: str | None = None
+    title_template: str | None = None
+    body_template: str | None = None
     number_key: str | None = None
 
 

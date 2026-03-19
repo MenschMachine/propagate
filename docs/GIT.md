@@ -1,6 +1,6 @@
 # Git Automation
 
-Git operations are driven by explicit hook commands (`git:branch`, `git:commit`, `git:push`, `git:pr`) placed in execution or sub-task hooks. The `git:` block on an execution declares configuration; the commands control when each operation runs.
+Git operations are driven by explicit hook commands (`git:branch`, `git:commit`, `git:publish`, `git:push`, `git:pr`) placed in execution or sub-task hooks. The `git:` block on an execution declares configuration; the commands control when each operation runs.
 
 ## Hook Commands
 
@@ -8,6 +8,7 @@ Git operations are driven by explicit hook commands (`git:branch`, `git:commit`,
 |---------|--------|
 | `git:branch` | Verify git repo, capture starting branch, ensure clean tree, create/checkout target branch |
 | `git:commit` | Stage all changes and commit; **skipped silently if the tree is clean** |
+| `git:publish` | Run `git:commit`, `git:push`, and `git:pr` in order |
 | `git:push` | Push the current branch to the configured remote |
 | `git:pr` | Create a pull request via `gh pr create` |
 
@@ -77,6 +78,8 @@ git:
   branch:
     name: my-branch-name      # optional; defaults to "propagate/{execution-name}"
     name_key: :branch-name    # optional; read branch name from context key (mutually exclusive with name)
+    # OR
+    name_template: "feature-{signal[pr_number]}"
     base: main                # optional; base ref when creating a new branch
                               # defaults to the starting branch
     reuse: true               # default: true — reuse existing branch
@@ -86,6 +89,8 @@ git:
     message_source: my-source # name of a context_source whose output becomes the commit message
     # OR
     message_key: :my-key      # a ':'-prefixed context key holding the commit message
+    # OR
+    message_template: "feat: PR #{signal[pr_number]}"
 
   push:                       # omit to skip push (and PR)
     remote: origin
@@ -95,23 +100,29 @@ git:
                               # defaults to: pr.base → branch.base → starting branch
     draft: false              # default: false
     title_key: :pr-title      # optional ':'-prefixed context key for PR title
+    # OR
+    title_template: "PR #{signal[pr_number]}"
     body_key: :pr-body        # optional ':'-prefixed context key for PR body
+    # OR
+    body_template: "Implements PR #{signal[pr_number]}"
     number_key: :pr-number    # optional ':'-prefixed context key; PR number extracted from URL and stored here
 ```
 
 ### Constraints
 
-- `git.branch.name` and `git.branch.name_key` are mutually exclusive — at most one may be set.
+- `git.branch.name`, `git.branch.name_key`, and `git.branch.name_template` are mutually exclusive — at most one may be set.
 - `git.branch.name_key` must use a `:` prefix (reserved context key).
-- `git.commit` must define exactly one of `message_source` or `message_key` — not both, not neither.
+- `git.commit` must define exactly one of `message_source`, `message_key`, or `message_template`.
 - `message_key` must use a `:` prefix (reserved context key).
 - `git.pr` requires `git.push` to also be configured.
 - `git.pr.number_key` must use a `:` prefix (reserved context key).
+- `title_key` / `title_template` and `body_key` / `body_template` are mutually exclusive pairs.
 
 ## Commit message
 
 - `message_source` — runs the named `context_source` shell command and uses its stdout.
 - `message_key` — reads the value from the execution's context store.
+- `message_template` — renders a template string at runtime.
 
 By default the message is split on the first line: line 1 becomes the PR title, the rest becomes the PR body.
 
@@ -127,6 +138,8 @@ pr:
 
 Both are optional `:` -prefixed context keys. When omitted the commit-message split applies as before.
 
+You can also use `title_template` and `body_template` for simple declarative strings.
+
 ### Dynamic branch name (`name_key`)
 
 Use `name_key` to read the branch name from a context key at runtime. This is useful when the branch name is generated dynamically (e.g. by an agent).
@@ -139,6 +152,27 @@ git:
 ```
 
 `name_key` and `name` are mutually exclusive. When neither is set, the default `propagate/{execution-name}` is used.
+
+### Runtime templates
+
+Template fields support:
+
+- `{signal[field]}` for active signal payload values
+- `{context[key]}` for the current execution context
+- `{context[execution-or-execution/task][key]}` for another execution/task context
+- `{execution.name}` for the current execution name
+
+Example:
+
+```yaml
+git:
+  branch:
+    name_template: "docs/pr-{signal[pr_number]}"
+  commit:
+    message_template: "docs: update PR #{signal[pr_number]}"
+  pr:
+    body_template: "Follow-up for PR #{signal[pr_number]}"
+```
 
 ### PR number capture (`number_key`)
 
@@ -158,8 +192,9 @@ git:
 | `name` is set and branch doesn't exist | Create branch from `base` (or starting branch) |
 | `name` is set, branch exists, `reuse: true` | Check out existing branch |
 | `name` is set, branch exists, `reuse: false` | Error |
-| `name` is omitted (no `name_key` either) | Use `propagate/{execution-name}` as the branch name |
+| `name` is omitted (no `name_key` / `name_template` either) | Use `propagate/{execution-name}` as the branch name |
 | `name_key` is set | Read branch name from context key |
+| `name_template` is set | Render branch name from template |
 | Target branch is already checked out | Use it as-is, skip checkout |
 
 ## Example
