@@ -4,6 +4,8 @@ import asyncio
 import logging
 from typing import Any
 
+from propagate_app.event_format import format_event_reply
+from propagate_app.message_parser import validate_and_build_payload
 from propagate_app.signal_transport import (
     close_push_socket,
     close_sub_socket,
@@ -14,7 +16,7 @@ from propagate_app.signal_transport import (
     send_signal,
 )
 
-from .message_parser import build_payload, parse_signal_message
+from .message_parser import parse_signal_message
 
 logger = logging.getLogger("propagate.telegram")
 
@@ -56,21 +58,10 @@ async def handle_signal(update, context) -> None:
         return
 
     signal_config = config_signals[signal_type]
-    user_fields = [k for k in signal_config.payload if k != "sender"]
 
-    try:
-        payload = build_payload(remaining, user_fields, set(signal_config.payload))
-    except ValueError as exc:
-        await update.message.reply_text(str(exc))
-        return
-
-    # Check required fields are present.
-    missing = [
-        k for k in user_fields
-        if signal_config.payload[k].required and k not in payload
-    ]
-    if missing:
-        await update.message.reply_text(f"Missing required field(s): {', '.join(sorted(missing))}")
+    payload, errors = validate_and_build_payload(remaining, signal_config)
+    if errors:
+        await update.message.reply_text(errors[0])
         return
 
     sender = update.effective_user.username or str(update.effective_user.id)
@@ -192,38 +183,6 @@ async def handle_help(update, context) -> None:
     )
 
 
-def _format_event_reply(event: dict) -> str:
-    event_type = event.get("event", "unknown")
-    if event_type == "command_failed":
-        command = event.get("command", "unknown")
-        message = event.get("message", "Command failed.")
-        return f"Command /{command} failed: {message}"
-    if event_type == "waiting_for_signal":
-        signal_name = event.get("signal", "unknown")
-        execution = event.get("execution", "")
-        if execution:
-            return f"Waiting for signal '{signal_name}' (execution '{execution}')."
-        return f"Waiting for signal '{signal_name}'."
-    if event_type == "signal_received":
-        signal_name = event.get("signal", "unknown")
-        execution = event.get("execution", "")
-        if execution:
-            return f"Signal '{signal_name}' received — resuming execution '{execution}'."
-        return f"Signal '{signal_name}' received — resuming."
-    if event_type == "pr_created":
-        execution = event.get("execution", "unknown")
-        pr_url = event.get("pr_url", "")
-        return f"PR created for '{execution}':\n{pr_url}"
-    signal_type = event.get("signal_type", "unknown")
-    messages = event.get("messages") or []
-    lines = [f"Run {'completed' if event_type == 'run_completed' else 'failed'} for signal '{signal_type}'."]
-    if messages:
-        lines.append("")
-        for msg in messages:
-            lines.append(msg)
-    return "\n".join(lines)
-
-
 async def _poll_events(application, sub_socket) -> None:
     """Background task that polls the SUB socket and sends replies."""
     from propagate_app.log_buffer import append_line
@@ -243,7 +202,7 @@ async def _poll_events(application, sub_socket) -> None:
             logger.debug("Received event without chat_id metadata; skipping reply.")
             continue
         message_id = metadata.get("message_id")
-        text = _format_event_reply(event)
+        text = format_event_reply(event)
         try:
             kwargs: dict[str, Any] = {"chat_id": int(chat_id), "text": text}
             if message_id is not None:

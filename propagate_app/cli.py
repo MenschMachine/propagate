@@ -65,6 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
     clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
     clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     clear_parser.add_argument("-f", "--force", action="store_true", default=False, help="Also delete cloned repositories.")
+    shell_parser = subparsers.add_parser("shell", help="Interactive REPL for a running propagate instance.")
+    shell_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     validate_parser = subparsers.add_parser("validate", help="Validate a config file without running.")
     validate_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     return parser
@@ -109,6 +111,9 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
         return serve_command(args.config, resume=args.resume)
     if args.command == "clear":
         return clear_command(args.config, force=args.force)
+    if args.command == "shell":
+        from .shell import shell_command
+        return shell_command(args.config)
     if args.command == "validate":
         return validate_command(args.config)
     if args.command == "context":
