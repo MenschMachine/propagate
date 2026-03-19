@@ -6,7 +6,7 @@ from typing import Any
 import zmq
 
 from .constants import LOGGER
-from .context_store import clear_all_context, get_context_root
+from .context_store import clear_all_context, get_context_root, get_execution_context_dir
 from .errors import PropagateError
 from .execution_flow import run_configured_execution
 from .graph import build_execution_graph, build_execution_graph_adjacency
@@ -166,11 +166,17 @@ def activate_matching_triggers(
     completed_execution_names: set[str],
 ) -> None:
     LOGGER.info("Evaluating propagation triggers after execution '%s'.", completed_execution_name)
+    context_dir = get_execution_context_dir(get_context_root(config.config_path), completed_execution_name)
     for trigger in execution_graph.triggers_by_after[completed_execution_name]:
         if trigger.on_signal is not None:
             if active_signal is None or trigger.on_signal != active_signal.signal_type:
                 continue
-            if not signal_payload_matches_when(active_signal.payload, trigger.when):
+            if not signal_payload_matches_when(
+                active_signal.payload,
+                trigger.when,
+                context_dir,
+                config.signals[active_signal.signal_type],
+            ):
                 continue
         if trigger.run in completed_execution_names:
             LOGGER.info("Skipping activation of '%s' because it already completed in this run.", trigger.run)

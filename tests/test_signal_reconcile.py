@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from propagate_app.config_signals import parse_signal_config
+from propagate_app.context_store import ensure_context_dir, get_execution_context_dir, write_context_value
 from propagate_app.errors import PropagateError
 from propagate_app.graph import build_execution_graph
 from propagate_app.models import (
@@ -195,6 +196,34 @@ def test_reconcile_handles_timeout(tmp_path):
     ):
         result = reconcile_pending_signals(config, graph, state, received)
     assert result is False
+
+
+def test_reconcile_resolves_equals_context_values(tmp_path):
+    exec_a = make_execution("a")
+    exec_b = make_execution("b")
+    trigger = PropagationTriggerConfig(
+        after="a",
+        run="b",
+        on_signal="pr.labeled",
+        when={"pr_number": {"equals_context": ":expected-pr-number"}},
+    )
+    signal_cfg = SignalConfig(
+        name="pr.labeled",
+        payload={"pr_number": SignalFieldConfig(field_type="number", required=True)},
+        check="echo {pr_number}",
+    )
+    config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr.labeled": signal_cfg})
+    graph = build_execution_graph(config)
+    state = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    received = set()
+    context_dir = get_execution_context_dir(tmp_path / ".propagate-context-propagate", "a")
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":expected-pr-number", "42")
+    mock_result = MagicMock(returncode=0)
+    with patch("propagate_app.signal_reconcile.subprocess.run", return_value=mock_result):
+        result = reconcile_pending_signals(config, graph, state, received)
+    assert result is True
+    assert "b" in state.active_names
 
 
 def test_check_command_parsed():

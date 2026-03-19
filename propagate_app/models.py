@@ -159,6 +159,7 @@ class RuntimeContext:
     context_sources: dict[str, ContextSourceConfig]
     active_signal: ActiveSignal | None
     initialized_signal_context_dirs: set[Path]
+    signal_configs: dict[str, SignalConfig] = field(default_factory=dict)
     working_dir: Path = field(default_factory=Path)
     context_root: Path = field(default_factory=Path)
     config_dir: Path = field(default_factory=Path)

@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from propagate_app.execution_flow import run_configured_execution
 from propagate_app.config_executions import parse_sub_task
+from propagate_app.context_store import ensure_context_dir, resolve_execution_context_dir, write_context_value
 from propagate_app.errors import PropagateError
+from propagate_app.execution_flow import run_configured_execution
 from propagate_app.models import (
     ActiveSignal,
     ExecutionConfig,
@@ -65,6 +66,22 @@ def test_parse_wait_for_signal_valid(tmp_path):
     assert result.routes[0].continue_flow is False
     assert result.routes[1].goto is None
     assert result.routes[1].continue_flow is True
+
+
+def test_parse_wait_for_signal_valid_equals_context(tmp_path):
+    seen_ids = {"code", "review"}
+    result = parse_sub_task(
+        "ex", 3,
+        {
+            "id": "wait",
+            "wait_for_signal": "pull_request.labeled",
+            "routes": [
+                {"when": {"pr_number": {"equals_context": ":api-docs-pr-number"}}, "continue": True},
+            ],
+        },
+        tmp_path, set(), SIGNAL_CONFIGS, seen_ids,
+    )
+    assert result.routes[0].when == {"pr_number": {"equals_context": ":api-docs-pr-number"}}
 
 
 def test_parse_wait_for_signal_without_routes_raises(tmp_path):
@@ -170,17 +187,31 @@ def test_parse_route_neither_goto_nor_continue_raises(tmp_path):
         )
 
 
+def test_parse_route_equals_context_invalid_key_raises(tmp_path):
+    with pytest.raises(PropagateError, match="reserved ':'-prefixed context key"):
+        parse_sub_task(
+            "ex", 2,
+            {
+                "id": "wait",
+                "wait_for_signal": "pull_request.labeled",
+                "routes": [{"when": {"pr_number": {"equals_context": "api-docs-pr-number"}}, "continue": True}],
+            },
+            tmp_path, set(), SIGNAL_CONFIGS,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Runtime tests
 # ---------------------------------------------------------------------------
 
 
-def _make_runtime_context(context_root: Path, signal_socket=None) -> RuntimeContext:
+def _make_runtime_context(context_root: Path, signal_socket=None, signal_configs=None) -> RuntimeContext:
     return RuntimeContext(
         agent_command="echo",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),
+        signal_configs=signal_configs or {},
         working_dir=Path("."),
         context_root=context_root,
         execution_name="my-exec",
@@ -230,7 +261,7 @@ def test_wait_for_signal_continue(tmp_path):
         )
         ctx_dir = tmp_path / "my-exec"
         ctx_dir.mkdir(parents=True, exist_ok=True)
-        rc = _make_runtime_context(tmp_path, signal_socket=socket)
+        rc = _make_runtime_context(tmp_path, signal_socket=socket, signal_configs=SIGNAL_CONFIGS)
 
         # Send signal in a thread
         def send():
@@ -274,7 +305,7 @@ def test_wait_for_signal_goto_loops(tmp_path):
         )
         ctx_dir = tmp_path / "my-exec"
         ctx_dir.mkdir(parents=True, exist_ok=True)
-        rc = _make_runtime_context(tmp_path, signal_socket=socket)
+        rc = _make_runtime_context(tmp_path, signal_socket=socket, signal_configs=SIGNAL_CONFIGS)
 
         def send():
             import time
@@ -332,7 +363,7 @@ def test_wait_for_signal_runs_before_and_after_hooks(tmp_path):
             name="my-exec", repository="repo", depends_on=[], signals=[],
             sub_tasks=sub_tasks, git=None,
         )
-        rc = _make_runtime_context(tmp_path, signal_socket=socket)
+        rc = _make_runtime_context(tmp_path, signal_socket=socket, signal_configs=SIGNAL_CONFIGS)
 
         def send():
             push = connect_push_socket(address)
@@ -462,6 +493,53 @@ def test_wait_for_signal_updates_active_signal_for_execution_after_hooks(tmp_pat
         t.join(timeout=5)
 
         assert observed_pr_numbers == [99]
+    finally:
+        close_pull_socket(socket, address)
+
+
+def test_wait_for_signal_route_equals_context_matches(tmp_path):
+    address = socket_address(tmp_path / "test-equals-context.yaml")
+    socket = bind_pull_socket(address)
+    try:
+        sub_tasks = [
+            _make_wait_task("wait", "pull_request.labeled", [
+                SubTaskRouteConfig(
+                    when={
+                        "label": "approved",
+                        "pr_number": {"equals_context": ":api-docs-pr-number"},
+                    },
+                    continue_flow=True,
+                ),
+            ]),
+            _make_sub_task("done"),
+        ]
+        execution = ExecutionConfig(
+            name="my-exec", repository="repo", depends_on=[], signals=[],
+            sub_tasks=sub_tasks, git=None,
+        )
+        rc = _make_runtime_context(tmp_path, signal_socket=socket, signal_configs=SIGNAL_CONFIGS)
+        context_dir = resolve_execution_context_dir(rc)
+        ensure_context_dir(context_dir)
+        write_context_value(context_dir, ":api-docs-pr-number", "99")
+
+        ran_tasks = []
+
+        def send():
+            push = connect_push_socket(address)
+            send_signal(push, "pull_request.labeled", {"label": "approved", "repository": "org/repo", "pr_number": 99})
+            close_push_socket(push)
+
+        def tracking_run(exec_name, sub_task, rt_ctx, git_config=None, completed_phase=None, on_phase_completed=None):
+            ran_tasks.append(sub_task.task_id)
+
+        t = threading.Thread(target=send, daemon=True)
+        t.start()
+
+        with patch("propagate_app.sub_tasks.run_sub_task", side_effect=tracking_run):
+            run_execution_sub_tasks(execution, rc)
+
+        t.join(timeout=5)
+        assert ran_tasks == ["done"]
     finally:
         close_pull_socket(socket, address)
 

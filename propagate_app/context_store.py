@@ -187,6 +187,16 @@ def read_context_value(context_dir: Path, key: str) -> str:
     return read_context_entry(context_dir, key, context_path)
 
 
+def read_optional_context_value(context_dir: Path, key: str) -> str | None:
+    if not context_dir.exists():
+        return None
+    require_context_dir(context_dir)
+    context_path = context_dir / key
+    if not context_path.exists():
+        return None
+    return read_context_entry(context_dir, key, context_path)
+
+
 def load_local_context(context_dir: Path) -> list[tuple[str, str]]:
     if not context_dir.exists():
         return []

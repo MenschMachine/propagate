@@ -3,6 +3,7 @@ from typing import Any
 from .constants import LOGGER
 from .errors import PropagateError
 from .models import Config, ExecutionConfig, ExecutionGraph, PropagationTriggerConfig, SignalConfig
+from .signals import validate_signal_when_clause
 from .validation import validate_allowed_keys
 
 
@@ -121,9 +122,4 @@ def visit_execution_graph(
 
 
 def _validate_trigger_when_keys(when: dict, signal_config: SignalConfig, location: str) -> None:
-    unknown_keys = sorted(set(when) - set(signal_config.payload))
-    if unknown_keys:
-        raise PropagateError(
-            f"{location}.when references unknown payload field '{unknown_keys[0]}'."
-            f" Signal '{signal_config.name}' declares: {', '.join(sorted(signal_config.payload))}."
-        )
+    validate_signal_when_clause(when, signal_config, location, ".when")

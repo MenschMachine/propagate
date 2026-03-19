@@ -37,7 +37,7 @@ class PdfdancerWebsiteSuggestionsConfigTests(unittest.TestCase):
         self.assertEqual(api_docs.git.branch.name_template, "api-docs/backend-pr-{signal[pr_number]}")
         self.assertEqual(api_docs.git.commit.message_template, "api-docs: document backend PR #{context[:source-backend-pr-number]}")
         self.assertEqual(api_docs.git.pr.body_key, ":api-docs-pr-body")
-        self.assertEqual([task.task_id for task in api_docs.sub_tasks], ["validate-backend-pr", "implement", "summarize", "publish", "wait-for-verdict", "validate-approved-api-docs-pr"])
+        self.assertEqual([task.task_id for task in api_docs.sub_tasks], ["validate-backend-pr", "implement", "summarize", "publish", "wait-for-verdict"])
         self.assertEqual(
             api_docs.sub_tasks[1].before,
             [
@@ -46,6 +46,14 @@ class PdfdancerWebsiteSuggestionsConfigTests(unittest.TestCase):
         )
         self.assertEqual(api_docs.sub_tasks[3].before, ["git:publish"])
         self.assertEqual(api_docs.sub_tasks[4].wait_for_signal, "pull_request.labeled")
+        self.assertEqual(
+            api_docs.sub_tasks[4].routes[0].when,
+            {
+                "repository": "MenschMachine/pdfdancer-api-docs",
+                "label": "approved",
+                "pr_number": {"equals_context": ":api-docs-pr-number"},
+            },
+        )
 
         website = config.executions["implement-approved-website-updates"]
         self.assertEqual(website.signals, [])

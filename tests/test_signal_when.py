@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from propagate_app.config_executions import parse_execution_signals
+from propagate_app.context_store import ensure_context_dir, get_execution_context_dir, write_context_value
 from propagate_app.errors import PropagateError
 from propagate_app.graph import parse_propagation_trigger
 from propagate_app.models import (
@@ -45,6 +46,69 @@ def test_matches_when_multi_field():
     payload = {"label": "deploy", "env": "prod"}
     assert signal_payload_matches_when(payload, {"label": "deploy", "env": "prod"}) is True
     assert signal_payload_matches_when(payload, {"label": "deploy", "env": "staging"}) is False
+
+
+def test_matches_when_equals_context(tmp_path):
+    context_dir = tmp_path / "deploy"
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":expected-label", "deploy")
+    signal_config = SignalConfig(
+        name="pull_request.labeled",
+        payload={"label": SignalFieldConfig(field_type="string", required=False)},
+    )
+    assert signal_payload_matches_when(
+        {"label": "deploy"},
+        {"label": {"equals_context": ":expected-label"}},
+        context_dir,
+        signal_config,
+    ) is True
+
+
+def test_matches_when_equals_context_number_uses_context_string(tmp_path):
+    context_dir = tmp_path / "deploy"
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":expected-pr-number", "42")
+    signal_config = SignalConfig(
+        name="pull_request.labeled",
+        payload={"pr_number": SignalFieldConfig(field_type="number", required=False)},
+    )
+    assert signal_payload_matches_when(
+        {"pr_number": 42},
+        {"pr_number": {"equals_context": ":expected-pr-number"}},
+        context_dir,
+        signal_config,
+    ) is True
+
+
+def test_matches_when_equals_context_missing_value_returns_false(tmp_path):
+    context_dir = tmp_path / "deploy"
+    ensure_context_dir(context_dir)
+    signal_config = SignalConfig(
+        name="pull_request.labeled",
+        payload={"label": SignalFieldConfig(field_type="string", required=False)},
+    )
+    assert signal_payload_matches_when(
+        {"label": "deploy"},
+        {"label": {"equals_context": ":expected-label"}},
+        context_dir,
+        signal_config,
+    ) is False
+
+
+def test_matches_when_equals_context_boolean_uses_typed_resolution(tmp_path):
+    context_dir = tmp_path / "deploy"
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":expected-ready", "True")
+    signal_config = SignalConfig(
+        name="pull_request.labeled",
+        payload={"ready": SignalFieldConfig(field_type="boolean", required=False)},
+    )
+    assert signal_payload_matches_when(
+        {"ready": True},
+        {"ready": {"equals_context": ":expected-ready"}},
+        context_dir,
+        signal_config,
+    ) is True
 
 
 # --- helpers ---
@@ -126,6 +190,33 @@ def test_parse_execution_signals_when_unknown_field():
         )
 
 
+def test_parse_execution_signals_when_equals_context():
+    result = parse_execution_signals(
+        "ex",
+        [{"signal": "pull_request.labeled", "when": {"label": {"equals_context": ":expected-label"}}}],
+        {"pull_request.labeled": _PR_LABELED_SIG},
+    )
+    assert result[0].when == {"label": {"equals_context": ":expected-label"}}
+
+
+def test_parse_execution_signals_when_equals_context_invalid_key():
+    with pytest.raises(PropagateError, match="reserved ':'-prefixed context key"):
+        parse_execution_signals(
+            "ex",
+            [{"signal": "pull_request.labeled", "when": {"label": {"equals_context": "expected-label"}}}],
+            {"pull_request.labeled": _PR_LABELED_SIG},
+        )
+
+
+def test_parse_execution_signals_when_equals_context_empty_mapping():
+    with pytest.raises(PropagateError, match="must not be an empty mapping"):
+        parse_execution_signals(
+            "ex",
+            [{"signal": "pull_request.labeled", "when": {"label": {}}}],
+            {"pull_request.labeled": _PR_LABELED_SIG},
+        )
+
+
 # --- parse_propagation_trigger with when ---
 
 
@@ -182,10 +273,20 @@ def test_propagation_trigger_when_unknown_field():
         )
 
 
+def test_propagation_trigger_when_equals_context():
+    trigger = parse_propagation_trigger(
+        1,
+        {"after": "a", "run": "b", "on_signal": "sig", "when": {"label": {"equals_context": ":expected-label"}}},
+        {"a", "b"},
+        {"sig": _SIG_WITH_LABEL},
+    )
+    assert trigger.when == {"label": {"equals_context": ":expected-label"}}
+
+
 # --- activate_matching_triggers with when ---
 
 
-def _make_config(tmp_path, executions, triggers):
+def _make_config(tmp_path, executions, triggers, signals=None):
     config_path = tmp_path / "propagate.yaml"
     config_path.touch()
     repos = {}
@@ -199,7 +300,7 @@ def _make_config(tmp_path, executions, triggers):
         agent=AgentConfig(command="echo test"),
         repositories=repos,
         context_sources={},
-        signals={},
+        signals=signals or {"sig": _SIG_WITH_LABEL},
         propagation_triggers=triggers,
         executions={e.name: e for e in executions},
         config_path=config_path,
@@ -243,6 +344,28 @@ def test_activate_triggers_when_no_match(tmp_path):
     completed_names: set[str] = {"a"}
     activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
     assert "b" not in active_names
+
+
+def test_activate_triggers_when_equals_context_matches(tmp_path):
+    trigger = PropagationTriggerConfig(
+        after="a",
+        run="b",
+        on_signal="sig",
+        when={"label": {"equals_context": ":expected-label"}},
+    )
+    config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger])
+    graph = ExecutionGraph(
+        execution_order=("a", "b"),
+        triggers_by_after={"a": (trigger,), "b": ()},
+    )
+    context_dir = get_execution_context_dir(tmp_path / ".propagate-context-propagate", "a")
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":expected-label", "deploy")
+    active = ActiveSignal(signal_type="sig", payload={"label": "deploy"}, source="cli")
+    active_names: set[str] = {"a"}
+    completed_names: set[str] = {"a"}
+    activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
+    assert "b" in active_names
 
 
 def test_activate_triggers_when_none_still_fires(tmp_path):
@@ -305,6 +428,7 @@ def _make_full_config(tmp_path, executions):
         context_sources={},
         signals={"pull_request.labeled": SignalConfig(name="pull_request.labeled", payload={
             "label": SignalFieldConfig(field_type="string", required=True),
+            "pr_number": SignalFieldConfig(field_type="number", required=False),
         })},
         propagation_triggers=[],
         executions={e.name: e for e in executions},
@@ -404,3 +528,42 @@ def test_select_initial_execution_when_no_match(tmp_path):
     signal = ActiveSignal(signal_type="pull_request.labeled", payload={"label": "staging"}, source="cli")
     with pytest.raises(PropagateError, match="No execution accepts signal"):
         select_initial_execution(config, None, signal)
+
+
+def test_select_initial_execution_when_equals_context(tmp_path):
+    ex = ExecutionConfig(
+        name="deploy",
+        repository="repo",
+        depends_on=[],
+        signals=[ExecutionSignalConfig(signal_name="pull_request.labeled", when={"pr_number": {"equals_context": ":expected-pr-number"}})],
+        sub_tasks=[SubTaskConfig(task_id="t1", prompt_path=None, before=[], after=[], on_failure=[])],
+        git=None,
+    )
+    config = _make_full_config(tmp_path, [ex])
+    context_dir = get_execution_context_dir(tmp_path / ".propagate-context-propagate", "deploy")
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":expected-pr-number", "42")
+    signal = ActiveSignal(signal_type="pull_request.labeled", payload={"label": "deploy", "pr_number": 42}, source="cli")
+    result = select_initial_execution(config, None, signal)
+    assert result.name == "deploy"
+
+
+def test_ensure_accepts_signal_when_equals_context_match(tmp_path):
+    ex = ExecutionConfig(
+        name="deploy", repository="repo", depends_on=[],
+        signals=[ExecutionSignalConfig(signal_name="pull_request.labeled", when={"pr_number": {"equals_context": ":expected-pr-number"}})],
+        sub_tasks=[SubTaskConfig(task_id="t1", prompt_path=None, before=[], after=[], on_failure=[])],
+        git=None,
+    )
+    context_dir = tmp_path / "deploy"
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, ":expected-pr-number", "42")
+    signal = ActiveSignal(signal_type="pull_request.labeled", payload={"label": "deploy", "pr_number": 42}, source="cli")
+    signal_config = SignalConfig(
+        name="pull_request.labeled",
+        payload={
+            "label": SignalFieldConfig(field_type="string", required=True),
+            "pr_number": SignalFieldConfig(field_type="number", required=False),
+        },
+    )
+    ensure_execution_accepts_signal(ex, signal, context_dir, signal_config)

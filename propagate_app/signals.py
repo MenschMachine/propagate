@@ -6,9 +6,12 @@ from typing import Any
 import yaml
 
 from .constants import LOGGER
+from .context_store import get_context_root, get_execution_context_dir, read_optional_context_value
 from .errors import PropagateError
 from .models import ActiveSignal, Config, ExecutionConfig, SignalConfig
-from .validation import validate_allowed_keys, validate_context_source_name
+from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
+
+_CONTEXT_WHEN_OPERATOR = "equals_context"
 
 
 def parse_active_signal(
@@ -111,10 +114,78 @@ def describe_signal_field_type(field_type: str) -> str:
     return descriptions.get(field_type, "a valid value")
 
 
-def signal_payload_matches_when(payload: dict[str, Any], when: dict[str, Any] | None) -> bool:
+def validate_signal_when_clause(when: dict[str, Any], signal_config: SignalConfig, location: str, when_label: str) -> None:
+    unknown_keys = sorted(set(when) - set(signal_config.payload))
+    if unknown_keys:
+        raise PropagateError(
+            f"{location} {when_label} references unknown payload field '{unknown_keys[0]}'."
+            f" Signal '{signal_config.name}' declares: {', '.join(sorted(signal_config.payload))}."
+        )
+    for field_name, expected_value in when.items():
+        field_config = signal_config.payload[field_name]
+        if not isinstance(expected_value, dict):
+            continue
+        if field_config.field_type == "mapping" and not _is_context_when_matcher(expected_value):
+            continue
+        matcher_location = f"{location} {when_label} field '{field_name}'"
+        if not expected_value:
+            raise PropagateError(f"{matcher_location} must not be an empty mapping.")
+        validate_allowed_keys(expected_value, {_CONTEXT_WHEN_OPERATOR}, matcher_location)
+        context_key = validate_context_key(expected_value[_CONTEXT_WHEN_OPERATOR])
+        if not context_key.startswith(":"):
+            raise PropagateError(f"{matcher_location} '{_CONTEXT_WHEN_OPERATOR}' must use a reserved ':'-prefixed context key.")
+
+
+def signal_payload_matches_when(
+    payload: dict[str, Any],
+    when: dict[str, Any] | None,
+    context_dir: Path | None = None,
+    signal_config: SignalConfig | None = None,
+) -> bool:
     if when is None:
         return True
-    return all(payload.get(key) == value for key, value in when.items())
+    for key, expected_value in when.items():
+        if key not in payload:
+            return False
+        payload_value = payload[key]
+        if _is_context_when_matcher(expected_value):
+            if signal_config is None:
+                raise PropagateError("Context-aware signal matching requires a signal config.")
+            resolved_value = _resolve_context_when_field_value(
+                expected_value,
+                signal_config.payload[key].field_type,
+                context_dir,
+            )
+            if resolved_value is _UNPARSEABLE_CONTEXT_VALUE:
+                return False
+            if payload_value != resolved_value:
+                return False
+            continue
+        if payload_value != expected_value:
+            return False
+    return True
+
+
+def resolve_signal_when_payload(
+    when: dict[str, Any] | None,
+    signal_config: SignalConfig,
+    context_dir: Path | None = None,
+) -> dict[str, Any] | None:
+    if when is None:
+        return None
+    resolved: dict[str, Any] = {}
+    for field_name, expected_value in when.items():
+        if not _is_context_when_matcher(expected_value):
+            resolved[field_name] = expected_value
+            continue
+        context_value = _resolve_context_when_value(expected_value, context_dir)
+        if context_value in {None, ""}:
+            return None
+        resolved_value = _deserialize_context_value(context_value, signal_config.payload[field_name].field_type)
+        if resolved_value is _UNPARSEABLE_CONTEXT_VALUE:
+            return None
+        resolved[field_name] = resolved_value
+    return resolved
 
 
 def log_active_signal(active_signal: ActiveSignal | None) -> None:
@@ -131,14 +202,25 @@ def select_initial_execution(
 ) -> ExecutionConfig:
     if requested_name:
         execution = select_execution(config, requested_name)
-        ensure_execution_accepts_signal(execution, active_signal)
+        ensure_execution_accepts_signal(
+            execution,
+            active_signal,
+            _execution_context_dir(config, execution.name),
+            config.signals.get(active_signal.signal_type) if active_signal is not None else None,
+        )
         return execution
     if active_signal is not None:
+        active_signal_config = config.signals[active_signal.signal_type]
         matching_executions = [
             execution for execution in config.executions.values()
             if any(
                 es.signal_name == active_signal.signal_type
-                and signal_payload_matches_when(active_signal.payload, es.when)
+                and signal_payload_matches_when(
+                    active_signal.payload,
+                    es.when,
+                    _execution_context_dir(config, execution.name),
+                    active_signal_config,
+                )
                 for es in execution.signals
             )
         ]
@@ -154,7 +236,12 @@ def select_initial_execution(
         LOGGER.info("Auto-selected execution '%s' for signal '%s'.", execution.name, active_signal.signal_type)
         return execution
     execution = select_execution(config, None)
-    ensure_execution_accepts_signal(execution, active_signal)
+    ensure_execution_accepts_signal(
+        execution,
+        active_signal,
+        _execution_context_dir(config, execution.name),
+        config.signals.get(active_signal.signal_type) if active_signal is not None else None,
+    )
     return execution
 
 
@@ -173,12 +260,17 @@ def select_execution(config: Config, requested_name: str | None) -> ExecutionCon
     )
 
 
-def ensure_execution_accepts_signal(execution: ExecutionConfig, active_signal: ActiveSignal | None) -> None:
+def ensure_execution_accepts_signal(
+    execution: ExecutionConfig,
+    active_signal: ActiveSignal | None,
+    context_dir: Path | None = None,
+    signal_config: SignalConfig | None = None,
+) -> None:
     if not execution.signals:
         return
     if active_signal is not None and any(
         es.signal_name == active_signal.signal_type
-        and signal_payload_matches_when(active_signal.payload, es.when)
+        and signal_payload_matches_when(active_signal.payload, es.when, context_dir, signal_config)
         for es in execution.signals
     ):
         return
@@ -204,3 +296,45 @@ def ensure_execution_accepts_signal(execution: ExecutionConfig, active_signal: A
         f"Execution '{execution.name}' does not accept signal '{active_signal.signal_type}'."
         f" Allowed signals: {', '.join(signal_names)}."
     )
+
+
+def _execution_context_dir(config: Config, execution_name: str) -> Path:
+    return get_execution_context_dir(get_context_root(config.config_path), execution_name)
+
+
+def _is_context_when_matcher(value: Any) -> bool:
+    return isinstance(value, dict) and _CONTEXT_WHEN_OPERATOR in value
+
+
+def _resolve_context_when_value(expected_value: dict[str, Any], context_dir: Path | None) -> str | None:
+    if context_dir is None:
+        return None
+    return read_optional_context_value(context_dir, expected_value[_CONTEXT_WHEN_OPERATOR])
+
+
+_UNPARSEABLE_CONTEXT_VALUE = object()
+
+
+def _deserialize_context_value(raw_value: str, field_type: str) -> Any:
+    if field_type == "string":
+        return raw_value
+    try:
+        parsed_value = yaml.safe_load(raw_value)
+    except yaml.YAMLError:
+        LOGGER.debug("Failed to parse context value %r for signal field type '%s'.", raw_value, field_type)
+        return _UNPARSEABLE_CONTEXT_VALUE
+    if signal_value_matches_type(parsed_value, field_type):
+        return parsed_value
+    LOGGER.debug("Context value %r does not match signal field type '%s'.", raw_value, field_type)
+    return _UNPARSEABLE_CONTEXT_VALUE
+
+
+def _resolve_context_when_field_value(
+    expected_value: dict[str, Any],
+    field_type: str,
+    context_dir: Path | None,
+) -> Any:
+    context_value = _resolve_context_when_value(expected_value, context_dir)
+    if context_value in {None, ""}:
+        return _UNPARSEABLE_CONTEXT_VALUE
+    return _deserialize_context_value(context_value, field_type)
