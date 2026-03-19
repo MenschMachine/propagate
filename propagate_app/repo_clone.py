@@ -121,12 +121,13 @@ def _ensure_bare_cache(
     token = os.environ.get("GITHUB_TOKEN")
     auth_url = _inject_token_into_url(_ssh_url_to_https(repo.url), token)
     clean_url = _ssh_url_to_https(repo.url)
+    LOGGER.info("Bare cache dir for '%s': %s (exists=%s)", name, cache_dir, cache_dir.exists())
     cache_dir.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "w") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         try:
             if is_propagate_bare_cache(bare_path):
-                LOGGER.debug("Refreshing bare cache for '%s'.", name)
+                LOGGER.info("Cache hit for '%s' at '%s', fetching.", name, bare_path)
                 subprocess.run(
                     ["git", "remote", "set-url", "origin", auth_url],
                     cwd=str(bare_path), check=True, capture_output=True, text=True,
@@ -140,7 +141,7 @@ def _ensure_bare_cache(
                     cwd=str(bare_path), check=True, capture_output=True, text=True,
                 )
             else:
-                LOGGER.debug("Creating bare cache for '%s'.", name)
+                LOGGER.info("Cache miss for '%s', cloning bare repo from '%s' to '%s'.", name, clean_url, bare_path)
                 try:
                     subprocess.run(
                         ["git", "clone", "--bare", auth_url, str(bare_path)],
@@ -180,7 +181,7 @@ def clone_single_repository(
     repo_cache_dir: Path | None = None,
 ) -> Path:
     if existing_path is not None and existing_path.exists():
-        LOGGER.info("Reusing existing clone for '%s' at '%s'.", name, existing_path)
+        LOGGER.debug("Reusing existing clone for '%s' at '%s' (skipping cache).", name, existing_path)
         _configure_credential_helper(existing_path)
         return existing_path
     clone_url = _ssh_url_to_https(repo.url)
@@ -188,7 +189,11 @@ def clone_single_repository(
     auth_url = _inject_token_into_url(clone_url, token)
     env_clone_dir = os.environ.get(ENV_CLONE_DIR)
     effective_dir = Path(env_clone_dir) if env_clone_dir else clone_dir
-    if repo_cache_dir is not None and env_clone_dir is None:
+    LOGGER.info(
+        "clone_single_repository '%s': repo_cache_dir=%s env_clone_dir=%s",
+        name, repo_cache_dir, env_clone_dir,
+    )
+    if repo_cache_dir is not None:
         dest_dir = _ensure_bare_cache(name, repo, repo_cache_dir, effective_dir)
         subprocess.run(
             ["git", "remote", "set-url", "origin", clone_url],

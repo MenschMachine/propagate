@@ -174,8 +174,8 @@ def test_config_parsing_repo_cache_dir_absent(tmp_path, minimal_config_data):
     assert config.repo_cache_dir == (tmp_path / ".repo-cache").resolve()
 
 
-def test_env_clone_dir_bypasses_cache(tmp_path, repo, monkeypatch):
-    """When PROPAGATE_CLONE_DIR is set, the bare cache is not used even if repo_cache_dir is set."""
+def test_env_clone_dir_sets_working_clone_location(tmp_path, repo, monkeypatch):
+    """PROPAGATE_CLONE_DIR controls where working clones land, not whether the bare cache is used."""
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     env_dir = tmp_path / "env-clones"
     env_dir.mkdir()
@@ -186,5 +186,7 @@ def test_env_clone_dir_bypasses_cache(tmp_path, repo, monkeypatch):
         result = clone_single_repository("myrepo", repo, repo_cache_dir=cache_dir)
 
     calls = [c.args[0] for c in mock_run.call_args_list]
-    assert not any(c[:3] == ["git", "clone", "--bare"] for c in calls)
+    # bare cache still used
+    assert any(c[:3] == ["git", "clone", "--bare"] for c in calls)
+    # working clone lands in env_dir
     assert str(result).startswith(str(env_dir))
