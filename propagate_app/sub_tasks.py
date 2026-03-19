@@ -12,7 +12,6 @@ from .errors import PropagateError
 from .git_runtime import (
     git_do_branch,
     git_do_commit,
-    git_do_publish,
     git_do_pr,
     git_do_pr_checks_wait,
     git_do_pr_comment_add,
@@ -20,6 +19,7 @@ from .git_runtime import (
     git_do_pr_labels_add,
     git_do_pr_labels_list,
     git_do_pr_labels_remove,
+    git_do_publish,
     git_do_push,
 )
 from .models import ActiveSignal, ExecutionConfig, GitConfig, RuntimeContext, SubTaskConfig
