@@ -168,14 +168,13 @@ def _wait_for_matching_signal(sub_task: SubTaskConfig, runtime_context: RuntimeC
             LOGGER.debug("Received signal '%s' but waiting for '%s'; ignoring.", received_type, signal_name)
             continue
         LOGGER.info("Received signal '%s' with payload %s.", received_type, payload)
-        # Update signal context with new payload
         context_dir = resolve_execution_context_dir(runtime_context)
         active_signal = ActiveSignal(signal_type=received_type, payload=payload, source="external")
         ensure_context_dir(context_dir)
-        store_active_signal_context(context_dir, active_signal)
-        # Match payload against routes
+        signal_config = runtime_context.signal_configs.get(signal_name)
         for route in sub_task.routes:
-            if signal_payload_matches_when(payload, route.when):
+            if signal_payload_matches_when(payload, route.when, context_dir, signal_config):
+                store_active_signal_context(context_dir, active_signal)
                 return route, active_signal
         unmatched_count += 1
         LOGGER.warning(

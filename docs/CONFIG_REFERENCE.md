@@ -345,7 +345,7 @@ signals:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `signal` | string | Yes | Signal name. Must reference a defined signal. |
-| `when` | mapping | No | Payload field-value pairs to match. Field names must exist in the signal's payload definition. |
+| `when` | mapping | No | Payload field-value pairs to match. Field names must exist in the signal's payload definition. Values can be literals or matcher objects such as `{ equals_context: :key }`. |
 
 ### Sub-tasks
 
@@ -372,7 +372,7 @@ sub_tasks:
 | `before` | list of strings | No | `[]` | Hook actions run before the agent. |
 | `after` | list of strings | No | `[]` | Hook actions run after the agent succeeds. |
 | `on_failure` | list of strings | No | `[]` | Hook actions run if the task fails. |
-| `wait_for_signal` | string | No | `null` | Signal name to wait for. Requires `routes`. Must not have `prompt`, `before`, or `after`. |
+| `wait_for_signal` | string | No | `null` | Signal name to wait for. Requires `routes`. Must not have `prompt` or `on_failure`. |
 | `routes` | list | No | `[]` | Route definitions for signal-gated sub-tasks. Requires `wait_for_signal`. |
 
 Task IDs must be unique within an execution.
@@ -387,7 +387,10 @@ A sub-task with `wait_for_signal` blocks until a matching signal arrives, then r
   routes:
     - when: { label: "changes_required" }
       goto: code                          # jump back to sub-task "code"
-    - when: { label: "approved" }
+    - when:
+        label: "approved"
+        pr_number:
+          equals_context: :api-docs-pr-number
       continue: true                      # proceed to next sub-task
 ```
 
@@ -395,7 +398,7 @@ Each route has:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `when` | mapping | Yes | Payload field-value pairs to match against the received signal. |
+| `when` | mapping | Yes | Payload field-value pairs to match against the received signal. Values can be literals or matcher objects such as `{ equals_context: :key }`. |
 | `goto` | string | No | Sub-task ID to jump to (must be defined earlier in the list). Mutually exclusive with `continue`. |
 | `continue` | boolean | No | If `true`, proceed to the next sub-task. Mutually exclusive with `goto`. |
 
@@ -516,7 +519,7 @@ propagation:
 | `after` | string | Yes | Execution that must complete to fire this trigger. Must reference a defined execution. |
 | `run` | string | Yes | Execution to activate. Must reference a defined execution. |
 | `on_signal` | string | No | Only fire if this signal type was received. Must reference a defined signal. |
-| `when` | mapping | No | Payload field-value filter. Requires `on_signal`. Field names must exist in the signal's payload. |
+| `when` | mapping | No | Payload field-value filter. Requires `on_signal`. Field names must exist in the signal's payload. Values can be literals or matcher objects such as `{ equals_context: :key }`. |
 
 The combined graph of `depends_on` edges and propagation triggers must be acyclic.
 

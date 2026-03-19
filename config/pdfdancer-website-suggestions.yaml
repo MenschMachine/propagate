@@ -71,12 +71,9 @@ executions:
           - when:
               repository: MenschMachine/pdfdancer-api-docs
               label: approved
+              pr_number:
+                equals_context: :api-docs-pr-number
             continue: true
-      - id: validate-approved-api-docs-pr
-        before:
-          - '[ "$(propagate context get :signal.repository | xargs)" = "MenschMachine/pdfdancer-api-docs" ]'
-          - '[ "$(propagate context get :signal.label | xargs)" = "approved" ]'
-          - '[ "$(propagate context get :signal.pr_number | xargs)" = "$(propagate context get :api-docs-pr-number | xargs)" ]'
 
   implement-approved-website-updates:
     repository: pdfdancer-www

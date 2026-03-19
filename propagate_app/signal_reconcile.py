@@ -5,7 +5,9 @@ import subprocess
 from string import Formatter
 
 from .constants import LOGGER
+from .context_store import get_context_root, get_execution_context_dir
 from .models import ActiveSignal, Config, ExecutionGraph, ExecutionScheduleState
+from .signals import resolve_signal_when_payload
 
 
 def reconcile_pending_signals(
@@ -44,9 +46,13 @@ def reconcile_pending_signals(
             signal_config = config.signals.get(trigger.on_signal)
             if signal_config is None or signal_config.check is None:
                 continue
-            if not _template_has_valid_keys(signal_config.check, trigger.when):
+            context_dir = get_execution_context_dir(get_context_root(config.config_path), completed_name)
+            resolved_when = resolve_signal_when_payload(trigger.when, signal_config, context_dir)
+            if resolved_when is None:
                 continue
-            if _run_signal_check(signal_config.check, trigger.when):
+            if not _template_has_valid_keys(signal_config.check, resolved_when):
+                continue
+            if _run_signal_check(signal_config.check, resolved_when):
                 LOGGER.debug(
                     "Signal check passed for '%s' (trigger after '%s' run '%s'); reconciling.",
                     trigger.on_signal, trigger.after, trigger.run,
@@ -54,7 +60,7 @@ def reconcile_pending_signals(
                 reconciled_triggers.add(trigger_key)
                 active_signal = ActiveSignal(
                     signal_type=trigger.on_signal,
-                    payload=trigger.when,
+                    payload=resolved_when,
                     source="reconciled",
                 )
                 received_signal_types.add(trigger.on_signal)

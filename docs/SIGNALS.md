@@ -270,6 +270,17 @@ The trigger only fires when `pull_request.labeled` is the active signal **and** 
 - Missing payload fields do not match
 - `when` with no fields (`when: {}`) matches any payload
 - If `when` is omitted, the signal matches regardless of payload
+- A field can compare against stored context with `equals_context`
+
+```yaml
+when:
+  repository: "MenschMachine/pdfdancer-api-docs"
+  label: "approved"
+  pr_number:
+    equals_context: :api-docs-pr-number
+```
+
+`equals_context` reads the reserved `:`-prefixed key from the execution context for the current execution. The value is interpreted using the signal field's declared type. If that key is missing or empty, the field does not match.
 
 ---
 
@@ -299,6 +310,7 @@ signals:
    - Each `when` value is shell-escaped via `shlex.quote()` before substitution
    - The command runs via `subprocess.run(shell=True)`
 3. If the command exits 0: the condition is already met. A synthetic signal is created with the `when` values as payload, and matching triggers are activated
+   Matcher values using `equals_context` are resolved from execution context before the check command is templated.
 4. If the command exits non-zero or raises an `OSError`: the condition is not met, and the scheduler continues to wait for a real webhook event
 
 ### Example
@@ -380,7 +392,7 @@ sub_tasks:
 
 When the sub-task runner reaches a `wait_for_signal` task, it blocks on the ZMQ socket until a matching signal arrives. The signal payload is matched against each route's `when` clause. If a route with `goto` matches, execution jumps back to that sub-task (clearing completed state for all tasks from the target onward). If a route with `continue` matches, execution proceeds to the next sub-task.
 
-Signal-gated sub-tasks require `propagate serve` (they need a ZMQ socket). The `:signal.*` context keys are updated with the new signal payload when a route matches.
+Signal-gated sub-tasks require `propagate serve` (they need a ZMQ socket). Route matching reads execution context as it existed before the incoming signal is accepted; if a route matches, the `:signal.*` context keys are then updated with the new signal payload.
 
 See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full syntax.
 

@@ -20,6 +20,7 @@ def prepare_execution_runtime_context(
         working_dir=routing.working_dir,
         active_signal=runtime_context.active_signal,
         initialized_signal_context_dirs=runtime_context.initialized_signal_context_dirs,
+        signal_configs=runtime_context.signal_configs,
         context_root=context_root,
         config_dir=runtime_context.config_dir,
         execution_name=execution.name,

@@ -8,6 +8,7 @@ from .config_includes import resolve_mapping_includes
 from .constants import LOGGER
 from .errors import PropagateError
 from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig, SubTaskRouteConfig
+from .signals import validate_signal_when_clause
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
 
 
@@ -153,12 +154,7 @@ def parse_execution_signals(
 
 
 def _validate_when_keys(when: dict[str, Any], signal_config: SignalConfig, location: str) -> None:
-    unknown_keys = sorted(set(when) - set(signal_config.payload))
-    if unknown_keys:
-        raise PropagateError(
-            f"{location} 'when' references unknown payload field '{unknown_keys[0]}'."
-            f" Signal '{signal_config.name}' declares: {', '.join(sorted(signal_config.payload))}."
-        )
+    validate_signal_when_clause(when, signal_config, location, "'when'")
 
 
 def parse_sub_task(
@@ -196,7 +192,7 @@ def parse_sub_task(
             raise PropagateError(f"{location} with 'wait_for_signal' must not have 'prompt'.")
         if sub_task_data.get("on_failure"):
             raise PropagateError(f"{location} with 'wait_for_signal' must not have 'on_failure' hooks.")
-        routes = parse_routes(routes_data, location, seen_task_ids)
+        routes = parse_routes(routes_data, location, seen_task_ids, signal_configs[wait_for_signal] if signal_configs is not None else None)
     return SubTaskConfig(
         task_id=task_id,
         prompt_path=prompt_path,
@@ -209,7 +205,12 @@ def parse_sub_task(
     )
 
 
-def parse_routes(routes_data: Any, location: str, seen_task_ids: set[str] | None) -> list[SubTaskRouteConfig]:
+def parse_routes(
+    routes_data: Any,
+    location: str,
+    seen_task_ids: set[str] | None,
+    signal_config: SignalConfig | None,
+) -> list[SubTaskRouteConfig]:
     if not isinstance(routes_data, list) or not routes_data:
         raise PropagateError(f"{location} 'routes' must be a non-empty list.")
     routes: list[SubTaskRouteConfig] = []
@@ -221,6 +222,8 @@ def parse_routes(routes_data: Any, location: str, seen_task_ids: set[str] | None
         when = route_data.get("when")
         if not isinstance(when, dict) or not when:
             raise PropagateError(f"{route_location} 'when' must be a non-empty mapping.")
+        if signal_config is not None:
+            validate_signal_when_clause(when, signal_config, route_location, "'when'")
         goto = route_data.get("goto")
         continue_flow = route_data.get("continue", False)
         if goto is not None and continue_flow:
