@@ -102,6 +102,15 @@ def test_parse_execution_signals_dict_without_when():
     assert result[0].when is None
 
 
+def test_parse_execution_signals_dict_with_empty_when_matches_any_payload():
+    result = parse_execution_signals(
+        "ex",
+        [{"signal": "pull_request.labeled", "when": {}}],
+        {"pull_request.labeled": _PR_LABELED_SIG},
+    )
+    assert result[0].when == {}
+
+
 def test_parse_execution_signals_dict_when_not_mapping():
     with pytest.raises(PropagateError, match="'when' must be a mapping"):
         parse_execution_signals("ex", [{"signal": "run", "when": "bad"}], {"run": _RUN_SIG})

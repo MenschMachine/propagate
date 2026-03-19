@@ -1,9 +1,8 @@
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-from .constants import LOGGER, SUPPORTED_SIGNAL_FIELD_TYPES
+from .config_includes import resolve_mapping_includes
+from .constants import SUPPORTED_SIGNAL_FIELD_TYPES
 from .errors import PropagateError
 from .models import SignalConfig, SignalFieldConfig
 from .validation import (
@@ -14,46 +13,12 @@ from .validation import (
 
 
 def resolve_signal_includes(signals_data: dict, config_dir: Path) -> dict:
-    """Pop 'include' key, load referenced files, merge with inline signals.
-
-    Inline signals take precedence over included ones. Duplicates between
-    include files still raise an error.
-    """
-    inline = dict(signals_data)
-    include = inline.pop("include", None)
-    if include is None:
-        return inline
-    paths = [include] if isinstance(include, str) else include
-    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
-        raise PropagateError("signals.include must be a string or list of strings.")
-    all_included: dict = {}
-    for path_str in paths:
-        file_path = (config_dir / path_str).resolve()
-        if not file_path.exists():
-            raise PropagateError(f"Signal include file does not exist: {file_path}")
-        LOGGER.debug("Loading signal include: %s", file_path)
-        try:
-            with file_path.open("r", encoding="utf-8") as handle:
-                included = yaml.safe_load(handle)
-        except yaml.YAMLError as error:
-            raise PropagateError(
-                f"Failed to parse signal include file {file_path}: {error}"
-            ) from error
-        if not isinstance(included, dict):
-            raise PropagateError(
-                f"Signal include file must be a YAML mapping: {file_path}"
-            )
-        for key in included:
-            if key in all_included:
-                raise PropagateError(
-                    f"Duplicate signal '{key}' from include file {file_path}"
-                )
-        all_included.update(included)
-    for key in inline:
-        if key in all_included:
-            LOGGER.debug("Inline signal '%s' overrides included definition", key)
-    merged = {**all_included, **inline}
-    return merged
+    return resolve_mapping_includes(
+        signals_data,
+        config_dir,
+        section_name="signals",
+        entry_name="signal",
+    )
 
 
 def parse_signal_configs(signals_data: Any) -> dict[str, SignalConfig]:

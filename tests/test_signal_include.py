@@ -118,7 +118,7 @@ def test_include_invalid_yaml_raises(config_dir):
 
 def test_include_invalid_type_raises(config_dir):
     signals = {"include": 42}
-    with pytest.raises(PropagateError, match="must be a string or list of strings"):
+    with pytest.raises(PropagateError, match="must be a string, a mapping, or a list"):
         resolve_signal_includes(signals, config_dir)
 
 
@@ -138,3 +138,103 @@ def test_included_signals_pass_through_normal_validation(config_dir):
     assert "pr.labeled" in parsed
     assert "run" in parsed
     assert parsed["pr.labeled"].payload["label"].required is True
+
+
+def test_parameterized_include_renders_signal_fields_and_preserves_scalar_types(config_dir):
+    from propagate_app.config_signals import parse_signal_configs
+
+    write_include(config_dir, "templated.yaml", {
+        "pr.labeled": {
+            "payload": {
+                "label": {"type": "{{ label_type }}", "required": "{{ label_required }}"},
+            },
+            "check": "gh pr view {pr_number} --repo {{ repository }}",
+        },
+    })
+    signals = {
+        "include": [{
+            "path": "signals/templated.yaml",
+            "with": {
+                "label_type": "string",
+                "label_required": True,
+                "repository": "myorg/myrepo",
+            },
+        }],
+    }
+    resolved = resolve_signal_includes(signals, config_dir)
+    assert resolved["pr.labeled"]["payload"]["label"]["required"] is True
+    assert resolved["pr.labeled"]["check"] == "gh pr view {pr_number} --repo myorg/myrepo"
+
+    parsed = parse_signal_configs(resolved)
+    assert parsed["pr.labeled"].payload["label"].required is True
+
+
+def test_parameterized_include_rejects_placeholders_in_keys(config_dir):
+    write_include(config_dir, "templated.yaml", {
+        "{{ signal_name }}": {"payload": {}},
+    })
+    signals = {
+        "include": [{
+            "path": "signals/templated.yaml",
+            "with": {"signal_name": "run"},
+        }],
+    }
+    with pytest.raises(PropagateError, match="must not use template placeholders in mapping keys"):
+        resolve_signal_includes(signals, config_dir)
+
+
+def test_parameterized_include_rejects_unused_parameter(config_dir):
+    write_include(config_dir, "templated.yaml", {
+        "run": {"payload": {}},
+    })
+    signals = {
+        "include": [{
+            "path": "signals/templated.yaml",
+            "with": {"unused_param": "extra"},
+        }],
+    }
+    with pytest.raises(PropagateError, match="unused template parameters: unused_param"):
+        resolve_signal_includes(signals, config_dir)
+
+
+def test_parameterized_include_preserves_literal_non_placeholder_mustache_text(config_dir):
+    write_include(config_dir, "templated.yaml", {
+        "run": {
+            "payload": {},
+            "check": "printf '{{.status}} {{ repository }}'",
+        },
+    })
+    signals = {
+        "include": [{
+            "path": "signals/templated.yaml",
+            "with": {"repository": "myorg/myrepo"},
+        }],
+    }
+    resolved = resolve_signal_includes(signals, config_dir)
+    assert resolved["run"]["check"] == "printf '{{.status}} myorg/myrepo'"
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        "{{ repository }",
+        "{{ repository",
+        "prefix {{ repository } suffix",
+        "{{ repository !}}",
+    ],
+)
+def test_parameterized_include_rejects_malformed_placeholder_syntax(config_dir, bad_value):
+    write_include(config_dir, "templated.yaml", {
+        "run": {
+            "payload": {},
+            "check": bad_value,
+        },
+    })
+    signals = {
+        "include": [{
+            "path": "signals/templated.yaml",
+            "with": {"repository": "myorg/myrepo"},
+        }],
+    }
+    with pytest.raises(PropagateError, match="invalid template placeholder syntax"):
+        resolve_signal_includes(signals, config_dir)

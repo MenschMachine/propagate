@@ -82,6 +82,24 @@ propagate run --config config.yaml \
 
 Signal data is accessible in hooks and prompt templates via the context store under the `:signal.*` namespace.
 
+### Parameterized Includes
+
+Shared signal and execution bundles can be reused with per-project parameters:
+
+```yaml
+executions:
+  include:
+    - path: ./executions/review-loop.yaml
+      with:
+        repository: app
+        implement_prompt: ./prompts/implement.md
+        summarize_prompt: ./prompts/summarize.md
+```
+
+Included files can reference those parameters in scalar values using `{{ name }}` placeholders. Relative prompt paths
+still resolve from the root config file directory after rendering. Placeholder rendering applies to included file
+content only; the root config itself is not templated.
+
 ### Propagation Triggers
 
 DAG edges that activate downstream executions after an upstream one completes, optionally gated on a signal:

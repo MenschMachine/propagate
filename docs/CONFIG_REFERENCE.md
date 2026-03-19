@@ -167,18 +167,48 @@ signals:
 
 ### Signal includes
 
-The `include` key loads signal definitions from external YAML files. It accepts a single path or a list of paths,
-resolved relative to the config file directory.
+The `include` key loads signal definitions from external YAML files. It accepts:
+
+- a single path string
+- a single mapping with `path` and optional `with`
+- a list mixing path strings and `path`/`with` mappings
+
+Include paths are resolved relative to the root config file directory.
 
 ```yaml
 signals:
   include:
     - ./signals/github-signals.yaml
     - ./signals/custom-signals.yaml
+    - path: ./signals/review.yaml
+      with:
+        repository: myorg/myrepo
+        required_label: approved
 ```
 
 Each included file must be a YAML mapping of signal definitions. Duplicate signal names across include files cause a
 validation error. Inline definitions override included ones with the same name.
+
+Included files may reference `with` parameters inside scalar string values using `{{ name }}` placeholders:
+
+```yaml
+# ./signals/review.yaml
+pull_request.labeled:
+  payload:
+    repository:
+      type: string
+      required: true
+  check: "gh pr list --repo {{ repository }} --label {{ required_label }} --state open --json number --jq 'length > 0'"
+```
+
+Templating rules:
+
+- placeholder rendering is applied only to included file content; root config values are not templated
+- placeholders are allowed only in scalar values, not YAML keys
+- a value that is exactly `{{ name }}` preserves the parameter type
+- placeholders embedded inside a larger string are interpolated as text
+- `with` values must be strings, numbers, or booleans
+- missing or unused parameters are validation errors
 
 ### Signal files
 
@@ -233,18 +263,56 @@ executions:
 
 ### Execution includes
 
-The `include` key loads execution definitions from external YAML files. It accepts a single path or a list of paths,
-resolved relative to the config file directory.
+The `include` key loads execution definitions from external YAML files. It accepts:
+
+- a single path string
+- a single mapping with `path` and optional `with`
+- a list mixing path strings and `path`/`with` mappings
+
+Include paths are resolved relative to the root config file directory.
 
 ```yaml
 executions:
   include:
     - ./executions/deploy.yaml
     - ./executions/build.yaml
+    - path: ./executions/review-loop.yaml
+      with:
+        repository: app
+        implement_prompt: ./prompts/implement.md
+        summarize_prompt: ./prompts/summarize.md
+        retry_label: changes_required
+        approve_label: approved
 ```
 
 Each included file must be a YAML mapping of execution definitions. Duplicate execution names across include files cause
 a validation error. Inline definitions override included ones with the same name.
+
+Included files may reference `with` parameters inside scalar string values using `{{ name }}` placeholders:
+
+```yaml
+# ./executions/review-loop.yaml
+review_loop:
+  repository: "{{ repository }}"
+  sub_tasks:
+    - id: implement
+      prompt: "{{ implement_prompt }}"
+    - id: summarize
+      prompt: "{{ summarize_prompt }}"
+    - id: wait-for-verdict
+      wait_for_signal: pull_request.labeled
+      routes:
+        - when: { label: "{{ retry_label }}" }
+          goto: implement
+        - when: { label: "{{ approve_label }}" }
+          continue: true
+```
+
+After rendering, relative prompt paths and other path-like values still resolve from the root config file directory, not
+from the included file's directory.
+
+Templating in execution includes follows the same rules as signal includes above: rendering applies only to included
+file content, not to root config values.
 
 ### Execution-level fields
 
