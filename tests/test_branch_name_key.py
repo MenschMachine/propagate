@@ -11,6 +11,7 @@ from propagate_app.errors import PropagateError
 from propagate_app.git_repo import resolve_execution_branch_name
 from propagate_app.git_runtime import git_do_branch
 from propagate_app.models import (
+    ActiveSignal,
     GitBranchConfig,
     GitCommitConfig,
     GitConfig,
@@ -38,6 +39,13 @@ def test_parse_name_key_missing_colon():
 def test_parse_name_and_name_key_mutual_exclusion():
     with pytest.raises(PropagateError, match="at most one of"):
         parse_git_branch_config("ex", {"name": "my-branch", "name_key": ":branch-name"})
+
+
+def test_parse_name_template_valid():
+    result = parse_git_branch_config("ex", {"name_template": "feat/{signal[pr_number]}"})
+    assert result.name_template == "feat/{signal[pr_number]}"
+    assert result.name is None
+    assert result.name_key is None
 
 
 def test_parse_name_key_with_base():
@@ -118,3 +126,31 @@ def test_git_do_branch_name_key_missing_raises(tmp_path):
 
     with pytest.raises(PropagateError, match=":branch-name"):
         git_do_branch("my-exec", git_config, rc)
+
+
+def test_git_do_branch_resolves_name_template_from_signal(tmp_path):
+    git_config = GitConfig(
+        branch=GitBranchConfig(name=None, base="main", reuse=True, name_template="feat/pr-{signal[pr_number]}"),
+        commit=GitCommitConfig(message_source=None, message_key=":msg"),
+        push=None,
+        pr=None,
+    )
+    rc = RuntimeContext(
+        agent_command="echo",
+        context_sources={},
+        active_signal=ActiveSignal(signal_type="pull_request.labeled", payload={"pr_number": 42}, source="test"),
+        initialized_signal_context_dirs=set(),
+        working_dir=Path("."),
+        context_root=tmp_path,
+        execution_name="my-exec",
+        task_id="",
+        git_state=GitRunState(),
+    )
+    prepared = PreparedGitExecution(starting_branch="main", selected_branch="feat/pr-42")
+
+    with patch("propagate_app.git_runtime.prepare_git_execution", return_value=prepared) as mock_prepare:
+        git_do_branch("my-exec", git_config, rc)
+        called_config = mock_prepare.call_args[0][1]
+        assert called_config.name == "feat/pr-42"
+        assert called_config.name_key is None
+        assert called_config.name_template is None

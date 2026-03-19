@@ -199,6 +199,41 @@ def test_known_git_commands_parse_ok(tmp_path: Path) -> None:
     assert exec_cfg.sub_tasks[0].after == ["git:commit"]
 
 
+def test_git_publish_command_parses_ok(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "propagate.yaml"
+    (config_dir / "task.md").write_text("prompt\n")
+    config_path.write_text(
+        yaml.dump(
+            {
+                "version": "6",
+                "agent": {"command": "echo {prompt_file}"},
+                "repositories": {"repo": {"path": str(tmp_path)}},
+                "context_sources": {"commit-msg": {"command": "echo hi"}},
+                "executions": {
+                    "my-exec": {
+                        "repository": "repo",
+                        "git": {
+                            "branch": {"name": "feat/test", "base": "main"},
+                            "commit": {"message_source": "commit-msg"},
+                            "push": {"remote": "origin"},
+                            "pr": {"base": "main"},
+                        },
+                        "before": ["git:branch"],
+                        "after": ["git:publish"],
+                        "sub_tasks": [{"id": "t1", "prompt": "task.md"}],
+                    }
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+    assert config.executions["my-exec"].after == ["git:publish"]
+
+
 # ---------------------------------------------------------------------------
 # Integration: git:branch in execution before hook
 # ---------------------------------------------------------------------------
@@ -441,6 +476,73 @@ def test_git_pr_in_after_hook_invokes_gh(git_ctx: SimpleNamespace, tmp_path: Pat
     assert "--head" in invocation["args"]
     assert "feat/pr-hook" in invocation["args"]
     assert invocation["args"][invocation["args"].index("--title") + 1] == "feat: pr hook"
+    assert "PR body" in invocation["body"]
+
+
+@pytest.mark.slow
+def test_git_publish_in_after_hook_runs_commit_push_and_pr(git_ctx: SimpleNamespace, tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh_log = tmp_path / "gh-log.json"
+
+    fake_gh = bin_dir / "gh"
+    fake_gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "body = ''\n"
+        "if '--body-file' in args:\n"
+        "    body = Path(args[args.index('--body-file') + 1]).read_text()\n"
+        "Path(os.environ['GH_LOG']).write_text(json.dumps({'args': args, 'body': body}))\n",
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+
+    _write_config(
+        git_ctx,
+        {
+            "version": "6",
+            "agent": {"command": _agent_cmd(git_ctx.mutate_script, git_ctx.target_file)},
+            "repositories": {"repo": {"path": str(git_ctx.repo)}},
+            "context_sources": {"commit-msg": {"command": _emit_cmd(git_ctx, "feat: publish hook\n\nPR body")}},
+            "executions": {
+                "default": {
+                    "repository": "repo",
+                    "git": {
+                        "branch": {"name": "feat/publish-hook", "base": "main"},
+                        "commit": {"message_source": "commit-msg"},
+                        "push": {"remote": "origin"},
+                        "pr": {"base": "main", "draft": False},
+                    },
+                    "before": ["git:branch"],
+                    "after": ["git:publish"],
+                    "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                }
+            },
+        },
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    env["GH_LOG"] = str(gh_log)
+    result = subprocess.run(
+        [str(CLI_PYTHON), str(CLI_PATH), "run", "--config", str(git_ctx.config_path)],
+        cwd=git_ctx.repo, text=True, capture_output=True, check=False, env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert gh_log.exists(), "fake gh should have been invoked"
+
+    remote_log = subprocess.run(
+        ["git", "log", "--oneline", "refs/heads/feat/publish-hook"],
+        cwd=git_ctx.remote_repo, text=True, capture_output=True, check=True,
+    )
+    assert len(remote_log.stdout.strip().splitlines()) == 2
+
+    import json
+    invocation = json.loads(gh_log.read_text())
+    assert invocation["args"][:2] == ["pr", "create"]
+    assert invocation["args"][invocation["args"].index("--title") + 1] == "feat: publish hook"
     assert "PR body" in invocation["body"]
 
 

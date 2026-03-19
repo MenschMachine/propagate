@@ -1,6 +1,6 @@
 # Summarize Website Changes From Backend PR
 
-Prepare the git metadata for the website changes you just made.
+Prepare the PR metadata for the website changes you just made.
 
 ## Inputs
 
@@ -23,15 +23,12 @@ git diff
 
 ## Task
 
-Set these context keys:
+Set this context key:
 
-- `:website-commit-message`
 - `:website-pr-body`
 
 Requirements:
 
-- The commit message subject should be: `website: reflect backend PR #<number>`
-- Add a short body line or two if it helps explain the change.
 - The PR body must be Markdown and include these sections:
   - `## Source Backend PR`
   - `## Source API Docs PR`
@@ -41,4 +38,4 @@ Requirements:
 - In `## Source API Docs PR`, include the api-docs PR URL.
 - In `## Testing`, state what you actually ran. If you did not run tests, say so plainly.
 
-Use `propagate context set` to store both values.
+Use `propagate context set` to store the PR body.

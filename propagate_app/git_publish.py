@@ -6,6 +6,7 @@ from .constants import LOGGER
 from .context_sources import run_context_source
 from .context_store import read_context_value, resolve_execution_context_dir
 from .errors import PropagateError
+from .git_templates import render_git_template
 from .models import GitCommitConfig, GitPrConfig, GitPushConfig, RuntimeContext
 from .processes import run_git_command, run_process_command
 from .temp_files import cleanup_temp_file, write_temp_text
@@ -20,6 +21,9 @@ def load_commit_message(commit_config: GitCommitConfig, runtime_context: Runtime
             runtime_context,
             f"execution '{execution_name}'",
         )
+    elif commit_config.message_template is not None:
+        LOGGER.info("Rendering commit message from template.")
+        message = render_git_template(commit_config.message_template, runtime_context)
     else:
         message_key = commit_config.message_key
         if message_key is None:

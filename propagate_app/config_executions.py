@@ -273,7 +273,7 @@ def parse_routes(routes_data: Any, location: str, seen_task_ids: set[str] | None
     return routes
 
 
-_KNOWN_GIT_HOOK_COMMANDS = {"branch", "commit", "push", "pr",
+_KNOWN_GIT_HOOK_COMMANDS = {"branch", "commit", "push", "pr", "publish",
     "pr-labels-add", "pr-labels-remove", "pr-labels-list",
     "pr-comment-add", "pr-comments-list", "pr-checks-wait"}
 

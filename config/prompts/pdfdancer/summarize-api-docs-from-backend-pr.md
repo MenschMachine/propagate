@@ -1,6 +1,6 @@
 # Summarize API Docs Changes From Backend PR
 
-Prepare the git metadata for the api-docs changes you just made.
+Prepare the PR metadata for the api-docs changes you just made.
 
 ## Inputs
 
@@ -21,15 +21,12 @@ git diff
 
 ## Task
 
-Set these context keys:
+Set this context key:
 
-- `:api-docs-commit-message`
 - `:api-docs-pr-body`
 
 Requirements:
 
-- The commit message subject should be: `api-docs: document backend PR #<number>`
-- Add a short body line or two if it helps explain the change.
 - The PR body must be Markdown and include these sections:
   - `## Source Backend PR`
   - `## Implemented Changes`
@@ -39,4 +36,4 @@ Requirements:
 - In `## Testing`, state what you actually ran. If you did not run tests, say so plainly.
 - In `## Website Follow-Up`, state that the website workflow will run after this PR is approved.
 
-Use `propagate context set` to store both values.
+Use `propagate context set` to store the PR body.
