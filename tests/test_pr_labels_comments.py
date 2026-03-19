@@ -14,6 +14,8 @@ import yaml
 from propagate_app.config_executions import parse_hook_actions
 from propagate_app.errors import PropagateError
 
+pytestmark = pytest.mark.slow
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
 CLI_PYTHON = REPO_ROOT / "venv" / "bin" / "python"

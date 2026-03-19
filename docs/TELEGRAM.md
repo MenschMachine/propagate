@@ -14,21 +14,35 @@ pip install propagate[telegram]
 
 ## Usage
 
+### Coordinator mode (recommended)
+
+When running without `--config`, the bot connects to the coordinator and discovers projects automatically:
+
+```bash
+propagate-telegram --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456,789012
+```
+
+This requires a running `propagate serve` instance. The bot sends a `list` command to the coordinator at startup to discover available projects and their signals.
+
+### Legacy mode
+
+Connect directly to specific config sockets (bypasses coordinator):
+
 ```bash
 propagate-telegram --config config/propagate.yaml --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456,789012
 ```
+
+The `--config` path must match the one used by `propagate serve`. Pass multiple `--config` flags to connect to multiple serve instances.
 
 ### Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--config` | (required) | Path to a propagate YAML config (repeatable) |
+| `--config` | (none) | Path to a propagate YAML config (repeatable). If omitted, connects to coordinator. |
 | `--token` | (none) | Telegram bot token |
 | `--token-env` | (none) | Environment variable name containing the bot token |
 | `--allowed-users` | (required) | Comma-separated Telegram user IDs allowed to send commands |
 | `--debug` | off | Enable debug-level logging |
-
-The `--config` path must match the one used by `propagate serve` — it determines the ZeroMQ socket address. Pass multiple `--config` flags to connect to multiple serve instances from a single bot.
 
 ---
 
@@ -104,12 +118,12 @@ List all signals defined in the propagate config. When multiple projects are loa
 
 ### `/project [name]`
 
-List or switch between loaded projects. Only available when multiple `--config` flags are passed.
+List or switch between loaded projects.
 
 - `/project` — list all projects, marks the active one
 - `/project myproject` — switch the active project for this chat
 
-When only one config is loaded, project selection is automatic and the `/project` command is not needed.
+When only one project is loaded, project selection is automatic and the `/project` command is not needed.
 
 ### `/help`
 
@@ -117,9 +131,11 @@ Show available commands and configured signals.
 
 ---
 
-## Multi-Config Usage
+## Multi-Project Support
 
-A single Telegram bot can bridge multiple propagate configs:
+A single Telegram bot can bridge multiple propagate projects.
+
+In coordinator mode, projects are discovered automatically from the running `propagate serve` instance. In legacy mode, pass multiple `--config` flags:
 
 ```bash
 propagate-telegram \
@@ -131,13 +147,11 @@ propagate-telegram \
 
 Each config becomes a "project" named after the config file stem (e.g. `project-a`, `project-b`). Use `/project <name>` to switch the active project before sending signals.
 
-When only one config is loaded, all commands work without `/project` — auto-selection is applied.
+When only one project is loaded, all commands work without `/project` — auto-selection is applied.
 
 Event replies are prefixed with `[project-name]` when multiple projects are loaded, so you can tell which project an event came from. With a single project, no prefix is added.
 
-Config filenames must be unique — two configs with the same stem (e.g. `repos/a/propagate.yaml` and `repos/b/propagate.yaml`) will be rejected.
-
-**Note:** `/logs` output is shared across all projects. When multiple configs are loaded, log lines are interleaved without per-project labels.
+Config filenames must be unique — two configs with the same stem will be rejected.
 
 ---
 
@@ -176,8 +190,8 @@ executions:
 # Terminal 1: start propagate server
 propagate serve --config config/propagate.yaml
 
-# Terminal 2: start telegram bot
-propagate-telegram --config config/propagate.yaml --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456
+# Terminal 2: start telegram bot (coordinator mode)
+propagate-telegram --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456
 ```
 
 Send `/signal deploy Deploy to production.` in Telegram. The signal is delivered, the `deploy-app` execution starts, and the agent sees your instructions in its prompt.
@@ -186,20 +200,20 @@ Send `/signal deploy Deploy to production.` in Telegram. The signal is delivered
 
 ## Auto-Reply on Events
 
-When a signal is sent from Telegram, the bot automatically replies to the chat on key events. No extra configuration is needed — the bot subscribes to a ZMQ PUB socket that `propagate serve` publishes events on.
+When a signal is sent from Telegram, the bot automatically replies to the chat on key events. No extra configuration is needed — the bot subscribes to the coordinator's PUB socket (or individual worker PUB sockets in legacy mode).
 
 The serve process remains Telegram-agnostic. It publishes generic events with an opaque `metadata` dict that the bot uses to route replies back to the originating chat.
 
-**Architecture:**
+**Architecture (coordinator mode):**
 
 ```
-Telegram Bot                          Serve Process
-┌──────────────┐    ZMQ PUSH/PULL    ┌──────────────────┐
-│ /signal go   │ ──────────────────► │ receive signal   │
-│              │                     │ run DAG          │
-│              │    ZMQ PUB/SUB      │ capture logs     │
-│ reply to chat│ ◄────────────────── │ publish event    │
-└──────────────┘                     └──────────────────┘
+Telegram Bot                        Coordinator                     Worker
+┌──────────────┐   ZMQ PUSH/PULL   ┌──────────────┐  PUSH/PULL   ┌──────────────┐
+│ /signal go   │ ────────────────► │  route to     │ ──────────► │ receive signal│
+│              │                   │  worker       │             │ run DAG       │
+│              │   ZMQ PUB/SUB     │  re-publish   │  PUB/SUB    │ publish event │
+│ reply to chat│ ◄──────────────── │  events       │ ◄────────── │               │
+└──────────────┘                   └──────────────┘             └──────────────┘
 ```
 
 ### Event types
@@ -208,42 +222,9 @@ Telegram Bot                          Serve Process
 |-------|------|---------|
 | `run_completed` | DAG finishes successfully | Run completed for signal 'X'. (+ last 3 log lines) |
 | `run_failed` | DAG fails with an error | Run failed for signal 'X'. (+ last 3 log lines) |
-| `waiting_for_signal` | System pauses to wait for a signal (sub-task or scheduler level) | Waiting for signal 'X' (execution 'Y'). |
+| `waiting_for_signal` | System pauses to wait for a signal | Waiting for signal 'X' (execution 'Y'). |
 | `pr_created` | A PR is opened by a git:pr hook | PR created for 'Y':\nhttps://... |
 | `command_failed` | A command (e.g. /resume) fails | Command /resume failed: ... |
-
-**Example `run_completed` event:**
-
-```json
-{
-  "event": "run_completed",
-  "signal_type": "deploy",
-  "metadata": {"chat_id": "123", "message_id": "456"},
-  "messages": ["Setting up...", "Running agent...", "Completed run for signal 'deploy'."]
-}
-```
-
-**Example `waiting_for_signal` event:**
-
-```json
-{
-  "event": "waiting_for_signal",
-  "execution": "review-code",
-  "signal": "review_done",
-  "metadata": {"chat_id": "123", "message_id": "456"}
-}
-```
-
-**Example `pr_created` event:**
-
-```json
-{
-  "event": "pr_created",
-  "execution": "deploy-app",
-  "pr_url": "https://github.com/org/repo/pull/42",
-  "metadata": {"chat_id": "123", "message_id": "456"}
-}
-```
 
 The reply is sent to the chat that triggered the signal, as a reply to the original `/signal` message.
 

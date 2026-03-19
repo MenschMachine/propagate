@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import shlex
+
+import pytest
 import shutil
 import subprocess
 import sys
@@ -576,6 +578,7 @@ class PropagateStage6DagTests(unittest.TestCase):
         self.assertNotEqual(cwd_path.resolve(), bare_repo.resolve())
         self.assertIn("README.md", invocations[0]["files"])
 
+    @pytest.mark.slow
     def test_url_repository_with_ref_checks_out_specified_branch(self) -> None:
         bare_repo = self._create_bare_repo("ref-repo")
         work_dir = self.workspace / "ref-repo-work2"
@@ -945,6 +948,7 @@ class PropagateResumeTests(unittest.TestCase):
         self.assertEqual(prompts, ["step-b", "step-c"])
         self.assertIn("Resuming execution schedule", result.stderr)
 
+    @pytest.mark.slow
     def test_resume_reuses_cloned_url_repository(self) -> None:
         bare_repo = self._create_bare_repo("resume-remote")
         (self.prompt_dir / "task-first.md").write_text("task-first\n", encoding="utf-8")

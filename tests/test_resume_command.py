@@ -122,6 +122,7 @@ def _make_config(tmp_path, signals=None):
     )
 
 
+@pytest.mark.slow
 def test_serve_handles_resume_command_with_state_file(tmp_path):
     signal_cfg = SignalConfig(name="go", payload={})
     config = _make_config(tmp_path, signals={"go": signal_cfg})
@@ -162,6 +163,7 @@ def test_serve_handles_resume_command_with_state_file(tmp_path):
     assert resume_called == [True]
 
 
+@pytest.mark.slow
 def test_serve_handles_resume_command_without_state_file(tmp_path, caplog):
     signal_cfg = SignalConfig(name="go", payload={})
     config = _make_config(tmp_path, signals={"go": signal_cfg})
@@ -200,6 +202,7 @@ def test_serve_handles_resume_command_without_state_file(tmp_path, caplog):
     assert any("nothing to resume" in r.message.lower() for r in caplog.records)
 
 
+@pytest.mark.slow
 def test_serve_ignores_unknown_command(tmp_path, caplog):
     config = _make_config(tmp_path)
 

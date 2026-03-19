@@ -2,6 +2,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+
+def pytest_addoption(parser):
+    parser.addoption("--slow", action="store_true", default=False, help="include slow tests")
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--slow"):
+        return
+    skip = pytest.mark.skip(reason="use --slow to run")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip)
+
+
+@pytest.fixture(scope="module")
+def anyio_backend():
+    return "asyncio"
+
 
 def inject_test_repository(
     executions: dict[str, object],

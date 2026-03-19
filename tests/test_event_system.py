@@ -245,6 +245,7 @@ def test_run_log_buffer_empty():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_serve_publishes_event_on_completion(tmp_path):
     exec_a = _make_execution("a", signals=[ExecutionSignalConfig(signal_name="go")])
     signal_cfg = SignalConfig(name="go", payload={})
@@ -292,6 +293,7 @@ def test_serve_publishes_event_on_completion(tmp_path):
     assert isinstance(event["messages"], list)
 
 
+@pytest.mark.slow
 def test_serve_publishes_event_on_failure(tmp_path):
     exec_a = _make_execution("a", signals=[ExecutionSignalConfig(signal_name="go")])
     signal_cfg = SignalConfig(name="go", payload={})

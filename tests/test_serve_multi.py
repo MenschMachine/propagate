@@ -1,4 +1,4 @@
-"""Tests for multi-config serve support."""
+"""Tests for multi-config serve support via coordinator."""
 
 from unittest.mock import patch
 
@@ -47,68 +47,33 @@ def _make_config(tmp_path, name, signals=None, subdir=None):
     )
 
 
-def test_multi_config_starts_thread_per_config(tmp_path):
-    """Passing 2 configs spawns 2 threads, each calling _serve_one_config."""
+def test_multi_config_coordinator_spawns_workers(tmp_path):
+    """Passing 2 configs spawns 2 workers via coordinator."""
     config_a = _make_config(tmp_path, "alpha")
     config_b = _make_config(tmp_path, "beta")
 
-    calls = []
-
-    def fake_serve_one(config, shutdown, resume):
-        calls.append(config.config_path.stem)
-
     with (
-        patch("propagate_app.serve.load_config", side_effect=[config_a, config_b]),
-        patch("propagate_app.serve._serve_one_config", side_effect=fake_serve_one),
+        patch("propagate_app.coordinator.Coordinator.start") as mock_start,
+        patch("propagate_app.coordinator.Coordinator.run"),
     ):
         serve_command([str(config_a.config_path), str(config_b.config_path)])
-
-    assert sorted(calls) == ["alpha", "beta"]
-
-
-def test_multi_config_shared_shutdown(tmp_path):
-    """Setting shutdown from one thread causes both to exit."""
-    config_a = _make_config(tmp_path, "alpha")
-    config_b = _make_config(tmp_path, "beta")
-
-    shutdown_events = []
-
-    def fake_serve_one(config, shutdown, resume):
-        shutdown_events.append(shutdown)
-        if config.config_path.stem == "alpha":
-            shutdown.set()
-        else:
-            # Wait a bit for the other thread to set shutdown
-            shutdown.wait(timeout=2)
-
-    with (
-        patch("propagate_app.serve.load_config", side_effect=[config_a, config_b]),
-        patch("propagate_app.serve._serve_one_config", side_effect=fake_serve_one),
-    ):
-        serve_command([str(config_a.config_path), str(config_b.config_path)])
-
-    # Both threads got the same shutdown event
-    assert len(shutdown_events) == 2
-    assert shutdown_events[0] is shutdown_events[1]
-    assert shutdown_events[0].is_set()
+        mock_start.assert_called_once()
+        args = mock_start.call_args
+        assert len(args[0][0]) == 2
 
 
 def test_single_config_backward_compatible(tmp_path):
-    """A single-element list works exactly like the old string interface."""
+    """A single-element list works through coordinator."""
     config = _make_config(tmp_path, "solo")
 
-    calls = []
-
-    def fake_serve_one(cfg, shutdown, resume):
-        calls.append(cfg.config_path.stem)
-
     with (
-        patch("propagate_app.serve.load_config", return_value=config),
-        patch("propagate_app.serve._serve_one_config", side_effect=fake_serve_one),
+        patch("propagate_app.coordinator.Coordinator.start") as mock_start,
+        patch("propagate_app.coordinator.Coordinator.run"),
     ):
         serve_command([str(config.config_path)])
-
-    assert calls == ["solo"]
+        mock_start.assert_called_once()
+        args = mock_start.call_args
+        assert len(args[0][0]) == 1
 
 
 def test_multi_config_isolated_sockets(tmp_path):
@@ -132,54 +97,17 @@ def test_multi_config_duplicate_stems_rejected(tmp_path):
     config_a = _make_config(tmp_path, "propagate", subdir="a")
     config_b = _make_config(tmp_path, "propagate", subdir="b")
 
-    with (
-        patch("propagate_app.serve.load_config", side_effect=[config_a, config_b]),
-        pytest.raises(PropagateError, match="Duplicate config name"),
-    ):
+    with pytest.raises(PropagateError, match="Duplicate config name"):
         serve_command([str(config_a.config_path), str(config_b.config_path)])
 
 
-def test_multi_config_thread_failure_sets_shutdown(tmp_path):
-    """If one thread raises, the shutdown event is set so the other exits."""
-    config_a = _make_config(tmp_path, "alpha")
-    config_b = _make_config(tmp_path, "beta")
-
-    shutdown_seen = []
-
-    def fake_serve_one(config, shutdown, resume):
-        if config.config_path.stem == "alpha":
-            raise RuntimeError("bind failed")
-        # beta waits for shutdown
-        shutdown.wait(timeout=5)
-        shutdown_seen.append(shutdown.is_set())
-
+def test_no_configs_starts_empty_coordinator(tmp_path):
+    """Passing no configs starts coordinator with empty worker list."""
     with (
-        patch("propagate_app.serve.load_config", side_effect=[config_a, config_b]),
-        patch("propagate_app.serve._serve_one_config", side_effect=fake_serve_one),
+        patch("propagate_app.coordinator.Coordinator.start") as mock_start,
+        patch("propagate_app.coordinator.Coordinator.run"),
     ):
-        result = serve_command([str(config_a.config_path), str(config_b.config_path)])
-
-    assert result == 1
-    assert shutdown_seen == [True]
-
-
-def test_multi_config_thread_failure_logged(tmp_path, caplog):
-    """Thread failure is logged."""
-    import logging
-
-    config_a = _make_config(tmp_path, "alpha")
-    config_b = _make_config(tmp_path, "beta")
-
-    def fake_serve_one(config, shutdown, resume):
-        if config.config_path.stem == "alpha":
-            raise RuntimeError("socket bind failed")
-        shutdown.wait(timeout=5)
-
-    with (
-        patch("propagate_app.serve.load_config", side_effect=[config_a, config_b]),
-        patch("propagate_app.serve._serve_one_config", side_effect=fake_serve_one),
-        caplog.at_level(logging.ERROR),
-    ):
-        serve_command([str(config_a.config_path), str(config_b.config_path)])
-
-    assert any("alpha" in r.message and "socket bind failed" in r.message for r in caplog.records)
+        serve_command([])
+        mock_start.assert_called_once()
+        args = mock_start.call_args
+        assert args[0][0] == []

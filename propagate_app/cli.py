@@ -44,7 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
     run_parser.add_argument("--stop-after", default=None, help="Stop the run after the named execution completes.")
     send_signal_parser = subparsers.add_parser("send-signal", help="Send a signal to a running propagate instance.")
-    send_signal_parser.add_argument("--config", required=True, help="Config path (used to determine socket address).")
+    send_signal_parser.add_argument("--config", default=None, help="Config path (used to determine socket address). If omitted, sends via coordinator with --project.")
+    send_signal_parser.add_argument("--project", default=None, help="Project name (routes signal through coordinator).")
     send_signal_source = send_signal_parser.add_mutually_exclusive_group(required=True)
     send_signal_source.add_argument("--signal", help="Signal type name.")
     send_signal_source.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
@@ -60,13 +61,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_read_scope_flags(get_parser)
     context_subparsers.add_parser("dump", help="Dump all context keys as YAML.")
     serve_parser = subparsers.add_parser("serve", help="Run as a long-lived server, listening for signals.")
-    serve_parser.add_argument("--config", required=True, action="append", help="Path to a Propagate YAML config (repeatable).")
+    serve_parser.add_argument("--config", action="append", default=[], help="Path to a Propagate YAML config (repeatable).")
     serve_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
+    worker_parser = subparsers.add_parser("serve-worker", help=argparse.SUPPRESS)
+    worker_parser.add_argument("--config", required=True)
+    worker_parser.add_argument("--resume", nargs="?", const=True, default=False)
     clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
     clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     clear_parser.add_argument("-f", "--force", action="store_true", default=False, help="Also delete cloned repositories.")
     shell_parser = subparsers.add_parser("shell", help="Interactive REPL for a running propagate instance.")
-    shell_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+    shell_parser.add_argument("--config", default=None, help="Path to a Propagate YAML config (optional, connects to coordinator if omitted).")
     validate_parser = subparsers.add_parser("validate", help="Validate a config file without running.")
     validate_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     return parser
@@ -106,14 +110,17 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "run":
         return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume, args.stop_after)
     if args.command == "send-signal":
-        return send_signal_command(args.config, args.signal, args.signal_payload, args.signal_file)
+        return send_signal_command(args.config, args.signal, args.signal_payload, args.signal_file, project=getattr(args, "project", None))
     if args.command == "serve":
         return serve_command(args.config, resume=args.resume)
+    if args.command == "serve-worker":
+        from .serve import serve_worker_command
+        return serve_worker_command(args.config, resume=args.resume)
     if args.command == "clear":
         return clear_command(args.config, force=args.force)
     if args.command == "shell":
         from .shell import shell_command
-        return shell_command(args.config)
+        return shell_command(args.config)  # None means coordinator mode
     if args.command == "validate":
         return validate_command(args.config)
     if args.command == "context":
@@ -265,20 +272,38 @@ def _run_fresh(
 
 
 def send_signal_command(
-    config_value: str,
+    config_value: str | None,
     signal_name: str,
     signal_payload: str | None,
     signal_file: str | None,
+    project: str | None = None,
 ) -> int:
-    config_path = Path(config_value).expanduser()
-    config = load_config(config_path)
-    active_signal = parse_active_signal(signal_name, signal_payload, signal_file, config.signals)
+    from .signal_transport import COORDINATOR_ADDRESS
+
+    if not config_value and not project:
+        raise PropagateError("Must specify --config or --project for send-signal.")
+
+    # Validate the signal against config if provided, otherwise skip validation.
+    signals_dict = {}
+    if config_value:
+        config_path = Path(config_value).expanduser()
+        config = load_config(config_path)
+        signals_dict = config.signals
+
+    active_signal = parse_active_signal(signal_name, signal_payload, signal_file, signals_dict)
     if active_signal is None:
         raise PropagateError("Signal type is required for send-signal.")
-    address = socket_address(config.config_path)
+
+    if project:
+        address = COORDINATOR_ADDRESS
+        metadata: dict | None = {"project": project}
+    else:
+        address = socket_address(config.config_path)
+        metadata = None
+
     push = connect_push_socket(address)
     try:
-        send_signal(push, active_signal.signal_type, active_signal.payload)
+        send_signal(push, active_signal.signal_type, active_signal.payload, metadata=metadata)
         LOGGER.info("Sent signal '%s' to %s", active_signal.signal_type, address)
     finally:
         close_push_socket(push)

@@ -31,4 +31,4 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev,webhook]"
-      - run: pytest tests/ -v
+      - run: pytest tests/ --slow -v

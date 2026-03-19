@@ -1,56 +1,104 @@
 # Serve Mode
 
-`propagate serve` runs Propagate as a long-lived server that listens for signals on a ZeroMQ socket and executes the corresponding DAG for each one.
+`propagate serve` runs Propagate as a long-lived server using a coordinator/worker architecture. The coordinator process manages worker subprocesses, each handling one config. Clients (shell, telegram) connect to the coordinator via well-known sockets.
 
 ---
 
 ## Usage
 
 ```bash
+# Start with pre-loaded configs
 propagate serve --config config/propagate.yaml
-```
 
-The `--config` flag is repeatable. Pass multiple configs to serve them all from a single process:
-
-```bash
+# Multiple configs
 propagate serve --config config/project-a.yaml --config config/project-b.yaml
+
+# Start empty, load configs dynamically via shell
+propagate serve
 ```
 
-The server binds a ZMQ PULL socket unconditionally (not gated on whether signal-gated triggers exist) and waits for incoming signals.
+The `--config` flag is optional and repeatable. Configs can also be loaded/unloaded at runtime via the shell or telegram bot.
+
+---
+
+## Architecture
+
+```
+propagate serve [--config a.yaml --config b.yaml]
+  └─ Coordinator (main process)
+     ├─ Binds PULL socket: ipc:///tmp/propagate-coordinator.sock
+     ├─ Binds PUB socket:  ipc:///tmp/propagate-coordinator-pub.sock
+     ├─ Spawns worker subprocesses via: propagate serve-worker --config x.yaml
+     ├─ Connects PUSH to each worker's PULL (hash-based address)
+     ├─ Subscribes SUB to each worker's PUB (hash-based address)
+     ├─ Re-publishes worker events on coordinator PUB with "project" field
+     ├─ Routes signals/commands to correct worker based on "project" in metadata
+     └─ Monitors worker health (detects unexpected death)
+
+Clients (shell, telegram):
+  └─ Connect PUSH to coordinator PULL + SUB to coordinator PUB
+     └─ Never talk directly to workers
+```
+
+Workers are separate OS processes, eliminating GIL contention. Each worker binds its own PULL + PUB sockets (hash-based addresses, same as before).
 
 ---
 
 ## How it works
 
-1. Load config from the specified YAML file(s)
-2. Bind ZMQ PULL socket at `ipc:///tmp/propagate-{hash}.sock` per config
-3. If a state file exists from a previous interrupted run, resume it
-4. Enter the serve loop: poll for signals, run the matching execution DAG for each one
-5. On SIGTERM or SIGINT, finish the current operation and exit
-
-Signals are processed sequentially — one DAG runs to completion before the next signal is handled.
+1. Coordinator binds well-known PULL + PUB sockets
+2. For each `--config`, spawn a worker subprocess (`propagate serve-worker --config x.yaml`)
+3. Worker binds its own PULL + PUB sockets, prints `READY` to stdout
+4. Coordinator connects PUSH + SUB to each worker's sockets
+5. Enter main loop: receive messages on coordinator PULL, route to workers or handle coordinator commands
+6. Worker events are re-published on coordinator PUB with a `"project"` field added
+7. On SIGTERM or SIGINT, SIGTERM all workers, wait, then exit
 
 ---
 
-## Multi-config mode
+## Coordinator commands
 
-When multiple `--config` flags are passed, each config runs in its own thread with isolated ZMQ sockets. They share a single shutdown event — a SIGTERM or SIGINT stops all configs.
+The coordinator accepts these commands on its PULL socket (in addition to forwarding signals/commands to workers):
 
-Each thread's ZMQ log handler is filtered to only publish log messages originating from its own thread, preventing cross-talk between configs.
+| Command | Description |
+|---------|-------------|
+| `list` | List all loaded projects with status and signal definitions |
+| `load` | Load a new config as a worker subprocess |
+| `unload` | Stop and remove a project |
+| `reload` | Stop and restart a project (unload + load) |
 
-Configs are completely independent: each has its own PULL socket, PUB socket, serve loop, and state file. Signals sent to one config's socket are not visible to the others.
+Responses are published on the coordinator PUB socket as `coordinator_response` events.
 
-Config filenames must be unique — two configs with the same stem (e.g. `repos/a/propagate.yaml` and `repos/b/propagate.yaml`) will be rejected at startup.
+---
 
-If one config fails (e.g. socket bind error), all configs are shut down and the error is logged.
+## Dynamic project management
 
-**Note:** When using `scripts/start.sh` with multiple configs, the webhook service only receives the first config. Webhooks are per-repository and don't support multi-config routing.
+Projects can be loaded and unloaded at runtime without restarting the server:
+
+```
+# Via shell
+propagate shell
+propagate> /load config/new-project.yaml
+propagate> /list
+propagate> /unload new-project
+propagate> /reload existing-project
+```
 
 ---
 
 ## Sending signals to the server
 
-Use `propagate send-signal` from another terminal:
+### Via coordinator (recommended)
+
+Signals include a `"project"` field in metadata to route to the correct worker:
+
+```bash
+propagate send-signal --project my-project \
+  --signal deploy \
+  --signal-payload '{branch: main}'
+```
+
+### Via config path (backward compatible)
 
 ```bash
 propagate send-signal --config config/propagate.yaml \
@@ -58,80 +106,67 @@ propagate send-signal --config config/propagate.yaml \
   --signal-payload '{branch: main}'
 ```
 
-Or via a webhook receiver that pushes signals to the same ZMQ socket.
-
-The `--config` path must match the one used by the running `propagate serve` instance.
+This connects directly to the worker's socket (bypassing the coordinator).
 
 ---
 
 ## Auto-resume on startup
 
-If a state file (`.propagate-state-{name}.yaml`) exists when the server starts, it resumes the interrupted run before entering the serve loop. This handles crash recovery — if the server was killed mid-run, restarting it picks up where it left off.
+If a state file (`.propagate-state-{name}.yaml`) exists when a worker starts, it resumes the interrupted run before entering the serve loop. This handles crash recovery — if the server was killed mid-run, restarting it picks up where it left off.
 
 ---
 
 ## Error handling
 
-- **Unknown signal type**: logged as a warning, ignored. The server continues.
+- **Unknown signal type**: logged as a warning, ignored. The worker continues.
 - **Invalid payload** (missing required fields, wrong types): logged as a warning, ignored.
-- **Execution failure** (`PropagateError` during a run): logged as an error. The server continues listening for the next signal.
-- The server never crashes on a bad signal or failed run.
+- **Execution failure** (`PropagateError` during a run): logged as an error. The worker continues listening.
+- **Worker death**: coordinator detects via health check, publishes `worker_died` event. No auto-restart.
+- **Unknown project**: coordinator responds with an error message.
 
 ---
 
 ## Graceful shutdown
 
-The server handles SIGTERM and SIGINT. When received:
+The coordinator handles SIGTERM and SIGINT:
 
-1. A shutdown flag is set
-2. If a DAG is currently running, it runs to completion (or until the scheduler saves state on `KeyboardInterrupt`)
-3. The serve loop exits cleanly
-4. The ZMQ socket is closed and cleaned up
+1. Shutdown flag is set
+2. SIGTERM sent to all worker processes
+3. Wait up to 5 seconds per worker, then SIGKILL if needed
+4. Coordinator sockets closed and cleaned up
 
-If the process is killed during an active run, the scheduler saves state via `_sync_and_save`. On next startup, auto-resume picks it up.
+Workers handle SIGTERM independently — they finish the current operation and exit.
 
 ---
 
 ## Event Publishing (PUB/SUB)
 
-In addition to the PULL socket for receiving signals, the server binds a ZMQ PUB socket at `ipc:///tmp/propagate-pub-{hash}.sock`. After each run completes or fails, a JSON event is published:
+Each worker binds a ZMQ PUB socket at `ipc:///tmp/propagate-pub-{hash}.sock`. The coordinator subscribes to all workers and re-publishes events on `ipc:///tmp/propagate-coordinator-pub.sock` with a `"project"` field added.
 
-```json
-{
-  "event": "run_completed",
-  "signal_type": "deploy",
-  "metadata": {},
-  "messages": ["last", "three", "log messages"]
-}
-```
+Clients should subscribe to the coordinator PUB socket to receive events from all projects.
 
 ### Event types
 
 | Event | Source | Fields |
 |-------|--------|--------|
-| `run_completed` | After a DAG finishes | `signal_type`, `metadata`, `messages` |
-| `run_failed` | After a DAG fails | `signal_type`, `metadata`, `messages` |
-| `waiting_for_signal` | When the scheduler or a sub-task pauses waiting for a signal | `execution`, `signal`, `metadata` |
-| `pr_created` | When a `git:pr` hook creates a PR | `execution`, `pr_url`, `metadata` |
-| `command_failed` | When a command (e.g. resume) fails | `command`, `message`, `metadata` |
-| `log` | On each log message (for live streaming) | `line` |
-
-- `metadata`: opaque dict forwarded from the incoming ZMQ message (never touches signal validation)
-- `messages`: last 3 log messages from the `propagate` logger during the run
-
-Any ZMQ SUB client can subscribe to these events. The Telegram bot uses this to auto-reply to the chat that triggered the signal (see [TELEGRAM.md](TELEGRAM.md#auto-reply-on-events)).
-
-The server knows nothing about subscribers — it publishes events regardless of whether anyone is listening.
+| `run_completed` | After a DAG finishes | `signal_type`, `metadata`, `messages`, `project` |
+| `run_failed` | After a DAG fails | `signal_type`, `metadata`, `messages`, `project` |
+| `waiting_for_signal` | Scheduler pauses for a signal | `execution`, `signal`, `metadata`, `project` |
+| `pr_created` | Git PR hook creates a PR | `execution`, `pr_url`, `metadata`, `project` |
+| `command_failed` | Command (e.g. resume) fails | `command`, `message`, `metadata`, `project` |
+| `log` | Each log message | `line`, `project` |
+| `coordinator_response` | Coordinator command result | `request_id`, `data` or `error` |
+| `worker_died` | Worker process died | `project` |
 
 ---
 
 ## Limitations
 
-- **Config is loaded once at startup.** Changes to the config file require restarting the server.
-- **Sequential execution.** Only one DAG runs at a time. Signals received during an active run are buffered by the ZMQ socket and processed one at a time after the current run completes. However, signals that arrive during an active run and match a pending propagation trigger within that run are consumed by the scheduler's drain loop — they won't trigger a separate serve-level run.
+- **Sequential execution per worker.** Each worker handles one DAG at a time. Signals received during an active run are buffered.
 - **No deduplication.** The same signal sent twice triggers two separate runs.
-- **Each signal type must map to exactly one execution.** Serve mode has no `--execution` flag, so execution selection is automatic. If multiple executions accept the same signal type (and payload filters don't disambiguate), every instance of that signal will fail with an error and no run will start. Use `when` filters to ensure each signal resolves to a single execution.
-- **Webhook is single-config only.** When using multi-config mode with `scripts/start.sh`, the webhook service only receives the first config. Webhooks are per-repository and don't support multi-config routing.
+- **Each signal type must map to exactly one execution.** Use `when` filters to disambiguate.
+- **No auto-restart.** If a worker dies, it must be reloaded manually via `/load` or `/reload`.
+- **Webhook is single-config only.** Webhooks don't support coordinator routing.
 
 ---
 
@@ -168,10 +203,10 @@ executions:
 # Terminal 1: start the server
 propagate serve --config config/propagate.yaml
 
-# Terminal 2: trigger a deploy
-propagate send-signal --config config/propagate.yaml \
-  --signal deploy \
-  --signal-payload '{branch: main}'
+# Terminal 2: interact via shell
+propagate shell
+propagate> /list
+propagate> /signal deploy branch:main
 ```
 
 ---

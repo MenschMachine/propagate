@@ -10,6 +10,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+pytestmark = pytest.mark.slow
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
 CLI_PYTHON = REPO_ROOT / "venv" / "bin" / "python"

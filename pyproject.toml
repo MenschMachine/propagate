@@ -21,6 +21,9 @@ include = ["propagate_app*", "propagate_webhook*", "propagate_telegram*"]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+markers = ["slow: tests that take >1s (git, serve, zmq)"]
+
 [tool.ruff]
 target-version = "py310"
 line-length = 140
