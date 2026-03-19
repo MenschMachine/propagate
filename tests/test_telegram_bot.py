@@ -214,18 +214,13 @@ def _make_update(user_id: int, username: str, text: str) -> MagicMock:
 def _make_context(config_signals: dict, push_socket, allowed_users: set[int]) -> MagicMock:
     from propagate_telegram.bot import ProjectState
 
-    project = ProjectState(
-        name="default",
-        config_signals=config_signals,
-        zmq_address="ipc:///tmp/fake.sock",
-        pub_address="ipc:///tmp/fake-pub.sock",
-        push_socket=push_socket,
-    )
+    project = ProjectState(name="default", config_signals=config_signals)
     context = MagicMock()
     context.bot_data = {
         "projects": {"default": project},
         "active_project": {},
         "allowed_users": allowed_users,
+        "push_socket": push_socket,
     }
     return context
 

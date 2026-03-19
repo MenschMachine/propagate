@@ -29,12 +29,7 @@ def zmq_socket():
 @pytest.fixture
 def app(zmq_socket):
     _, address = zmq_socket
-    signals = {
-        "pull_request.labeled": object(),
-        "push": object(),
-        "issue_comment.created": object(),
-    }
-    application = create_app(config_signals=signals, zmq_address=address, secret=None)
+    application = create_app(zmq_address=address, secret=None)
     application.state.push_socket = connect_push_socket(address)
     yield application
     if application.state.push_socket is not None:
@@ -45,8 +40,7 @@ def app(zmq_socket):
 @pytest.fixture
 def app_with_secret(zmq_socket):
     _, address = zmq_socket
-    signals = {"pull_request.labeled": object()}
-    application = create_app(config_signals=signals, zmq_address=address, secret="test-secret")
+    application = create_app(zmq_address=address, secret="test-secret")
     application.state.push_socket = connect_push_socket(address)
     yield application
     if application.state.push_socket is not None:
@@ -71,7 +65,7 @@ async def test_webhook_delivers_pr_labeled_signal(app, zmq_socket):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
     assert response.status_code == 200
-    assert response.json()["status"] == "delivered"
+    assert response.json()["status"] == "forwarded"
     assert response.json()["signal"] == "pull_request.labeled"
 
     result = receive_signal(pull, block=True, timeout_ms=2000)
@@ -94,7 +88,7 @@ async def test_webhook_delivers_push_signal(app, zmq_socket):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/webhook", json=body, headers={"X-GitHub-Event": "push"})
     assert response.status_code == 200
-    assert response.json()["status"] == "delivered"
+    assert response.json()["status"] == "forwarded"
 
     result = receive_signal(pull, block=True, timeout_ms=2000)
     assert result is not None
@@ -113,7 +107,9 @@ async def test_webhook_ignores_unsupported_event(app):
 
 
 @pytest.mark.anyio
-async def test_webhook_ignores_signal_not_in_config(app):
+async def test_webhook_forwards_any_supported_signal(app, zmq_socket):
+    """Without config_signals, all supported events are forwarded."""
+    pull, _ = zmq_socket
     body = {
         "action": "opened",
         "pull_request": {
@@ -127,8 +123,10 @@ async def test_webhook_ignores_signal_not_in_config(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
     assert response.status_code == 200
-    assert response.json()["status"] == "ignored"
-    assert response.json()["reason"] == "unknown_signal"
+    assert response.json()["status"] == "forwarded"
+    result = receive_signal(pull, block=True, timeout_ms=2000)
+    assert result is not None
+    assert result[0] == "pull_request.opened"
 
 
 @pytest.mark.anyio
@@ -158,7 +156,7 @@ async def test_webhook_validates_hmac_signature(app_with_secret, zmq_socket):
             },
         )
     assert response.status_code == 200
-    assert response.json()["status"] == "delivered"
+    assert response.json()["status"] == "forwarded"
 
 
 @pytest.mark.anyio
@@ -196,8 +194,7 @@ async def test_webhook_rejects_missing_signature_when_secret_configured(app_with
 async def test_webhook_returns_503_when_socket_not_connected(zmq_socket):
     """Without lifespan or manual setup, push_socket is None — should return 503."""
     _, address = zmq_socket
-    signals = {"pull_request.labeled": object()}
-    application = create_app(config_signals=signals, zmq_address=address, secret=None)
+    application = create_app(zmq_address=address, secret=None)
     assert application.state.push_socket is None
 
     body = {
@@ -214,13 +211,13 @@ async def test_webhook_returns_503_when_socket_not_connected(zmq_socket):
 
 def test_debug_flag_sets_debug_level():
     parser = build_parser()
-    args = parser.parse_args(["--config", "test.yaml", "--debug"])
+    args = parser.parse_args(["--debug"])
     assert args.debug is True
 
 
 def test_no_debug_flag_default():
     parser = build_parser()
-    args = parser.parse_args(["--config", "test.yaml"])
+    args = parser.parse_args([])
     assert args.debug is False
 
 
@@ -242,7 +239,7 @@ async def test_webhook_logs_on_delivery(app, zmq_socket, caplog):
             await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
 
     assert any("Webhook received: event=pull_request repo=owner/repo sender=alice" in r.message for r in caplog.records)
-    assert any("Delivered signal 'pull_request.labeled' for owner/repo" in r.message for r in caplog.records)
+    assert any("Forwarded signal 'pull_request.labeled' for owner/repo" in r.message for r in caplog.records)
 
 
 @pytest.mark.anyio
@@ -256,7 +253,7 @@ async def test_webhook_logs_ignored_event(app, caplog):
 
 
 @pytest.mark.anyio
-async def test_webhook_logs_unknown_signal(app, caplog):
+async def test_webhook_logs_forwarded_signal(app, caplog):
     body = {
         "action": "opened",
         "pull_request": {
@@ -271,4 +268,4 @@ async def test_webhook_logs_unknown_signal(app, caplog):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             await client.post("/webhook", json=body, headers={"X-GitHub-Event": "pull_request"})
 
-    assert any("not defined in config" in r.message and "pull_request.opened" in r.message and "defined:" in r.message for r in caplog.records)
+    assert any("Forwarded signal" in r.message and "pull_request.opened" in r.message for r in caplog.records)

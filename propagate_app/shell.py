@@ -9,11 +9,9 @@ import sys
 import threading
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import zmq
 
-from .config_load import load_config
 from .errors import PropagateError
 from .event_format import format_event_reply
 from .message_parser import validate_and_build_payload
@@ -25,16 +23,11 @@ from .signal_transport import (
     close_sub_socket,
     connect_push_socket,
     connect_sub_socket,
-    pub_socket_address,
     receive_event,
     send_command,
     send_coordinator_command,
     send_signal,
-    socket_address,
 )
-
-if TYPE_CHECKING:
-    from .models import Config
 
 PROMPT = "propagate> "
 _HISTORY_FILE = Path.home() / ".propagate_shell_history"
@@ -52,24 +45,17 @@ def _load_history() -> None:
 
 
 class _ShellState:
-    """Mutable session state for coordinator-mode shell."""
+    """Mutable session state for the shell."""
 
     def __init__(self) -> None:
         self.active_project: str | None = None
-        self.projects: dict[str, dict] = {}  # name -> {"signals": {...}, "status": ..., ...}
+        self.projects: dict[str, dict] = {}
         self.response_queue: queue.Queue[dict] = queue.Queue()
 
 
-def shell_command(config_value: str | None) -> int:
+def shell_command() -> int:
     """Interactive REPL for sending signals to a running propagate instance."""
     _load_history()
-    if config_value is not None:
-        return _shell_legacy(config_value)
-    return _shell_coordinator()
-
-
-def _shell_coordinator() -> int:
-    """Coordinator-mode shell: connect to coordinator sockets."""
     push_socket = connect_push_socket(COORDINATOR_ADDRESS)
     sub_socket = connect_sub_socket(COORDINATOR_PUB_ADDRESS)
 
@@ -85,38 +71,7 @@ def _shell_coordinator() -> int:
     listener.start()
 
     try:
-        _input_loop_coordinator(push_socket, log_buffer, state)
-    finally:
-        stop_event.set()
-        close_push_socket(push_socket)
-        close_sub_socket(sub_socket)
-
-    return 0
-
-
-def _shell_legacy(config_value: str) -> int:
-    """Legacy mode: connect directly to a single config's sockets."""
-    config_path = Path(config_value).expanduser()
-    config = load_config(config_path)
-
-    address = socket_address(config.config_path)
-    push_socket = connect_push_socket(address)
-
-    pub_address = pub_socket_address(config.config_path)
-    sub_socket = connect_sub_socket(pub_address)
-
-    log_buffer: collections.deque[str] = collections.deque(maxlen=500)
-    stop_event = threading.Event()
-
-    listener = threading.Thread(
-        target=_event_listener,
-        args=(sub_socket, log_buffer, stop_event),
-        daemon=True,
-    )
-    listener.start()
-
-    try:
-        _input_loop(config, push_socket, log_buffer)
+        _input_loop(push_socket, log_buffer, state)
     finally:
         stop_event.set()
         close_push_socket(push_socket)
@@ -129,7 +84,7 @@ def _event_listener(
     sub_socket: zmq.Socket,
     log_buffer: collections.deque[str],
     stop_event: threading.Event,
-    response_queue: queue.Queue[dict] | None = None,
+    response_queue: queue.Queue[dict],
 ) -> None:
     """Background thread that receives events from the PUB socket."""
     while not stop_event.is_set():
@@ -144,8 +99,7 @@ def _event_listener(
             log_buffer.append(line)
             continue
         if event.get("event") == "coordinator_response":
-            if response_queue is not None:
-                response_queue.put(event)
+            response_queue.put(event)
             continue
         project = event.get("project")
         text = format_event_reply(event)
@@ -187,16 +141,15 @@ def _wait_for_response(response_queue: queue.Queue[dict], request_id: str, timeo
 
 
 # ---------------------------------------------------------------------------
-# Coordinator-mode input loop and commands
+# Input loop and commands
 # ---------------------------------------------------------------------------
 
 
-def _input_loop_coordinator(
+def _input_loop(
     push_socket: zmq.Socket,
     log_buffer: collections.deque[str],
     state: _ShellState,
 ) -> None:
-    """Read user commands in coordinator mode."""
     print("Type /help for available commands, /quit to exit.")
     while True:
         try:
@@ -208,7 +161,7 @@ def _input_loop_coordinator(
         if not line:
             continue
         try:
-            result = _dispatch_coordinator(line, push_socket, log_buffer, state)
+            result = _dispatch(line, push_socket, log_buffer, state)
             if result is _QUIT:
                 break
         except PropagateError as exc:
@@ -217,7 +170,7 @@ def _input_loop_coordinator(
             print(f"Error: {exc}")
 
 
-def _dispatch_coordinator(
+def _dispatch(
     line: str,
     push_socket: zmq.Socket,
     log_buffer: collections.deque[str],
@@ -231,7 +184,7 @@ def _dispatch_coordinator(
         return _QUIT
 
     if cmd == "/help":
-        _cmd_help_coordinator(state)
+        _cmd_help()
     elif cmd == "/list":
         _cmd_list(push_socket, state)
     elif cmd == "/load":
@@ -243,11 +196,11 @@ def _dispatch_coordinator(
     elif cmd == "/project":
         _cmd_project(rest, state)
     elif cmd == "/signals":
-        _cmd_signals_coordinator(state)
+        _cmd_signals(state)
     elif cmd == "/signal":
-        _cmd_signal_coordinator(rest, push_socket, state)
+        _cmd_signal(rest, push_socket, state)
     elif cmd == "/resume":
-        _cmd_resume_coordinator(push_socket, state)
+        _cmd_resume(push_socket, state)
     elif cmd == "/logs":
         _cmd_logs(rest, log_buffer)
     else:
@@ -255,7 +208,7 @@ def _dispatch_coordinator(
     return None
 
 
-def _cmd_help_coordinator(state: _ShellState) -> None:
+def _cmd_help() -> None:
     print(
         "Commands:\n"
         "  /list                           — list loaded projects\n"
@@ -367,7 +320,7 @@ def _cmd_project(rest: str, state: _ShellState) -> None:
     print(f"Switched to project '{name}'.")
 
 
-def _cmd_signals_coordinator(state: _ShellState) -> None:
+def _cmd_signals(state: _ShellState) -> None:
     if not state.projects:
         print("No projects loaded. Use /list to refresh.")
         return
@@ -398,7 +351,7 @@ def _cmd_signals_coordinator(state: _ShellState) -> None:
     print("\n".join(lines))
 
 
-def _cmd_signal_coordinator(rest: str, push_socket: zmq.Socket, state: _ShellState) -> None:
+def _cmd_signal(rest: str, push_socket: zmq.Socket, state: _ShellState) -> None:
     if not rest:
         print("Usage: /signal <signal> [key:val ...]")
         return
@@ -426,7 +379,6 @@ def _cmd_signal_coordinator(rest: str, push_socket: zmq.Socket, state: _ShellSta
         print(f"Signal '{signal_type}' not defined (defined: {defined}).")
         return
 
-    # Reconstruct a SignalConfig for validation.
     sig_info = signals_info[signal_type]
     payload_fields = {}
     for fname, finfo in sig_info.get("payload", {}).items():
@@ -448,7 +400,7 @@ def _cmd_signal_coordinator(rest: str, push_socket: zmq.Socket, state: _ShellSta
     print(f"Signal '{signal_type}' delivered to '{project_name}'.")
 
 
-def _cmd_resume_coordinator(push_socket: zmq.Socket, state: _ShellState) -> None:
+def _cmd_resume(push_socket: zmq.Socket, state: _ShellState) -> None:
     project_name = state.active_project
     if project_name is None:
         if len(state.projects) == 1:
@@ -458,143 +410,6 @@ def _cmd_resume_coordinator(push_socket: zmq.Socket, state: _ShellState) -> None
             return
     send_command(push_socket, "resume", metadata={"project": project_name})
     print(f"Resume command delivered to '{project_name}'.")
-
-
-def _refresh_projects(push_socket: zmq.Socket, state: _ShellState) -> None:
-    """Silently fetch the project list from the coordinator to update the cache."""
-    request_id = str(uuid.uuid4())
-    send_coordinator_command(push_socket, "list", metadata={"request_id": request_id})
-    resp = _wait_for_response(state.response_queue, request_id, timeout=5.0)
-    if resp is not None and "error" not in resp:
-        projects = resp.get("data", {}).get("projects", [])
-        _update_cached_projects(state, projects)
-
-
-def _update_cached_projects(state: _ShellState, projects: list[dict]) -> None:
-    state.projects = {p["name"]: p for p in projects}
-    if state.active_project and state.active_project not in state.projects:
-        state.active_project = None
-
-
-# ---------------------------------------------------------------------------
-# Legacy (direct config) mode — unchanged interface
-# ---------------------------------------------------------------------------
-
-
-def _input_loop(config: Config, push_socket: zmq.Socket, log_buffer: collections.deque[str]) -> None:
-    """Read user commands in a loop."""
-    print("Type /help for available commands, /quit to exit.")
-    while True:
-        try:
-            line = input(PROMPT)
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            result = _dispatch(line, config, push_socket, log_buffer)
-            if result is _QUIT:
-                break
-        except PropagateError as exc:
-            print(f"Error: {exc}")
-        except ValueError as exc:
-            print(f"Error: {exc}")
-
-
-def _dispatch(
-    line: str,
-    config: Config,
-    push_socket: zmq.Socket,
-    log_buffer: collections.deque[str],
-) -> object | None:
-    """Dispatch a single user command.  Returns ``_QUIT`` to exit."""
-    parts = line.split(None, 1)
-    cmd = parts[0]
-    rest = parts[1] if len(parts) > 1 else ""
-
-    if cmd in ("/quit", "/exit"):
-        return _QUIT
-
-    if cmd == "/help":
-        _cmd_help(config)
-    elif cmd == "/signals":
-        _cmd_signals(config)
-    elif cmd == "/signal":
-        _cmd_signal(rest, config, push_socket)
-    elif cmd == "/resume":
-        _cmd_resume(push_socket)
-    elif cmd == "/logs":
-        _cmd_logs(rest, log_buffer)
-    else:
-        print(f"Unknown command: {cmd} (type /help for available commands)")
-    return None
-
-
-def _cmd_help(config: Config) -> None:
-    names = sorted(config.signals)
-    signals_line = ", ".join(names) if names else "(none)"
-    print(
-        "Commands:\n"
-        "  /signal <signal> [key:val ...]  — send a signal\n"
-        "  /resume                         — resume a failed run\n"
-        "  /signals                        — list available signals\n"
-        "  /logs [N]                       — show last N log lines (default 20)\n"
-        "  /help                           — show this message\n"
-        "  /quit, /exit                    — exit the shell\n"
-        f"\nAvailable signals: {signals_line}"
-    )
-
-
-def _cmd_signals(config: Config) -> None:
-    names = sorted(config.signals)
-    if not names:
-        print("No signals configured.")
-        return
-    lines: list[str] = ["Available signals:"]
-    for name in names:
-        lines.append(f"  {name}")
-        sig = config.signals[name]
-        for field_name, field_cfg in sig.payload.items():
-            if field_name == "sender":
-                continue
-            req = ", required" if field_cfg.required else ""
-            lines.append(f"    {field_name} ({field_cfg.field_type}{req})")
-    print("\n".join(lines))
-
-
-def _cmd_signal(rest: str, config: Config, push_socket: zmq.Socket) -> None:
-    if not rest:
-        print("Usage: /signal <signal> [key:val ...]")
-        return
-
-    parts = rest.split(None, 1)
-    signal_type = parts[0]
-    remaining = parts[1] if len(parts) > 1 else ""
-
-    if signal_type not in config.signals:
-        defined = ", ".join(sorted(config.signals))
-        print(f"Signal '{signal_type}' not defined in config (defined: {defined}).")
-        return
-
-    signal_config = config.signals[signal_type]
-
-    payload, errors = validate_and_build_payload(remaining, signal_config)
-    if errors:
-        print(errors[0])
-        return
-
-    if "sender" in signal_config.payload:
-        payload["sender"] = getpass.getuser()
-
-    send_signal(push_socket, signal_type, payload)
-    print(f"Signal '{signal_type}' delivered.")
-
-
-def _cmd_resume(push_socket: zmq.Socket) -> None:
-    send_command(push_socket, "resume")
-    print("Resume command delivered.")
 
 
 def _cmd_logs(rest: str, log_buffer: collections.deque[str]) -> None:
@@ -612,3 +427,19 @@ def _cmd_logs(rest: str, log_buffer: collections.deque[str]) -> None:
         print("No logs available.")
         return
     print("\n".join(lines))
+
+
+def _refresh_projects(push_socket: zmq.Socket, state: _ShellState) -> None:
+    """Silently fetch the project list from the coordinator to update the cache."""
+    request_id = str(uuid.uuid4())
+    send_coordinator_command(push_socket, "list", metadata={"request_id": request_id})
+    resp = _wait_for_response(state.response_queue, request_id, timeout=5.0)
+    if resp is not None and "error" not in resp:
+        projects = resp.get("data", {}).get("projects", [])
+        _update_cached_projects(state, projects)
+
+
+def _update_cached_projects(state: _ShellState, projects: list[dict]) -> None:
+    state.projects = {p["name"]: p for p in projects}
+    if state.active_project and state.active_project not in state.projects:
+        state.active_project = None

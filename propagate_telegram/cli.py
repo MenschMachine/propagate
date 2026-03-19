@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from pathlib import Path
 
 from propagate_app.constants import configure_logging
 from propagate_app.errors import PropagateError
@@ -13,7 +12,6 @@ logger = logging.getLogger("propagate.telegram")
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="propagate-telegram", description="Telegram bot bridge for propagate.")
-    parser.add_argument("--config", action="append", default=[], help="Path to a propagate YAML config (repeatable). If omitted, connects to coordinator.")
     parser.add_argument("--token", help="Telegram bot token.")
     parser.add_argument("--token-env", help="Environment variable name containing the bot token.")
     parser.add_argument("--allowed-users", help="Comma-separated Telegram user IDs allowed to send commands (default: $TELEGRAM_USERS).")
@@ -47,51 +45,12 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", error)
         return 1
 
-    from .bot import ProjectState, run_bot
+    from .bot import run_bot
 
-    config_values = args.config or []
-
-    if not config_values:
-        # Coordinator mode: discover projects at startup via list command.
-        projects = _discover_projects_from_coordinator()
-        if projects is None:
-            logger.warning("Could not discover projects from coordinator at startup. Bot will start with no projects — use /list to refresh.")
-            projects = {}
-        run_bot(
-            projects=projects,
-            token=token,
-            allowed_users=allowed_users,
-            coordinator_mode=True,
-        )
-        return 0
-
-    # Legacy mode: load configs directly.
-    from propagate_app.config_load import load_config
-    from propagate_app.signal_transport import pub_socket_address, socket_address
-
-    projects: dict[str, ProjectState] = {}
-    for config_value in config_values:
-        config_path = Path(config_value).expanduser().resolve()
-        try:
-            config = load_config(config_path)
-            zmq_address = socket_address(config.config_path)
-            pub_address = pub_socket_address(config.config_path)
-        except Exception as error:
-            logger.error("Failed to load config '%s': %s", config_value, error)
-            return 1
-
-        name = config_path.stem
-        if name in projects:
-            logger.error("Duplicate config name '%s' from '%s'. Config filenames must be unique.", name, config_value)
-            return 1
-        signal_names = sorted(config.signals)
-        logger.info("[%s] Loaded %d signal(s): %s", name, len(signal_names), ", ".join(signal_names))
-        projects[name] = ProjectState(
-            name=name,
-            config_signals=config.signals,
-            zmq_address=zmq_address,
-            pub_address=pub_address,
-        )
+    projects = _discover_projects_from_coordinator()
+    if projects is None:
+        logger.warning("Could not discover projects from coordinator at startup. Bot will start with no projects — use /list to refresh.")
+        projects = {}
 
     run_bot(
         projects=projects,
@@ -120,8 +79,6 @@ def _discover_projects_from_coordinator() -> dict | None:
     sub = connect_sub_socket(COORDINATOR_PUB_ADDRESS)
     try:
         import time
-        # Retry to handle the ZMQ slow-joiner problem: the SUB may miss
-        # the first response because it hasn't finished connecting yet.
         for attempt in range(3):
             request_id = str(uuid.uuid4())
             send_coordinator_command(push, "list", metadata={"request_id": request_id})

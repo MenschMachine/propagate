@@ -369,18 +369,13 @@ def _make_update(user_id, username, text, chat_id=111, message_id=222):
 def _make_context(config_signals, push_socket, allowed_users):
     from propagate_telegram.bot import ProjectState
 
-    project = ProjectState(
-        name="default",
-        config_signals=config_signals,
-        zmq_address="ipc:///tmp/fake.sock",
-        pub_address="ipc:///tmp/fake-pub.sock",
-        push_socket=push_socket,
-    )
+    project = ProjectState(name="default", config_signals=config_signals)
     context = MagicMock()
     context.bot_data = {
         "projects": {"default": project},
         "active_project": {},
         "allowed_users": allowed_users,
+        "push_socket": push_socket,
     }
     return context
 
@@ -544,6 +539,7 @@ async def test_poll_events_sends_reply():
 
     application = MagicMock()
     application.bot.send_message = AsyncMock()
+    application.bot_data = {"response_queue": asyncio.Queue()}
 
     task = asyncio.create_task(_poll_events(application, sub))
 
@@ -586,6 +582,7 @@ async def test_poll_events_skips_event_without_chat_id():
 
     application = MagicMock()
     application.bot.send_message = AsyncMock()
+    application.bot_data = {"response_queue": asyncio.Queue()}
 
     task = asyncio.create_task(_poll_events(application, sub))
 

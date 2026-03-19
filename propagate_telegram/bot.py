@@ -5,8 +5,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-import zmq
-
 from propagate_app.event_format import format_event_reply
 from propagate_app.message_parser import validate_and_build_payload
 from propagate_app.signal_transport import (
@@ -31,12 +29,6 @@ logger = logging.getLogger("propagate.telegram")
 class ProjectState:
     name: str
     config_signals: dict[str, Any]
-    # Legacy fields kept for backward compatibility in tests.
-    zmq_address: str = ""
-    pub_address: str = ""
-    push_socket: zmq.Socket | None = None
-    sub_socket: zmq.Socket | None = None
-    event_task: asyncio.Task | None = None
 
 
 def _is_allowed(update, allowed_users: set[int]) -> bool:
@@ -96,7 +88,6 @@ async def handle_project(update, context) -> None:
     chat_id = update.message.chat_id
 
     if len(parts) <= 1:
-        # List projects
         current = active_project.get(chat_id)
         lines: list[str] = []
         for name in sorted(projects):
@@ -159,7 +150,7 @@ async def handle_signal(update, context) -> None:
         "chat_id": str(update.message.chat_id),
         "message_id": str(update.message.message_id),
     }
-    push_socket = bot_data.get("push_socket") or project.push_socket
+    push_socket = bot_data["push_socket"]
     send_signal(push_socket, signal_type, payload, metadata=metadata)
     logger.info("Delivered signal '%s' from %s.", signal_type, sender)
     await update.message.reply_text(f"Signal '{signal_type}' delivered.")
@@ -185,7 +176,7 @@ async def handle_resume(update, context) -> None:
         "chat_id": str(update.message.chat_id),
         "message_id": str(update.message.message_id),
     }
-    push_socket = bot_data.get("push_socket") or project.push_socket
+    push_socket = bot_data["push_socket"]
     send_command(push_socket, "resume", metadata=metadata)
     sender = update.effective_user.username or str(update.effective_user.id)
     logger.info("Resume command from %s.", sender)
@@ -271,7 +262,6 @@ async def handle_help(update, context) -> None:
     if project is not None:
         config_signals = project.config_signals
     else:
-        # Merge all signals for help display
         config_signals = {}
         for p in context.bot_data["projects"].values():
             config_signals.update(p.config_signals)
@@ -280,13 +270,6 @@ async def handle_help(update, context) -> None:
     project_line = ""
     if len(context.bot_data["projects"]) > 1:
         project_line = "/project [name] — list or switch active project\n"
-    coordinator_lines = ""
-    if context.bot_data.get("push_socket") is not None:
-        coordinator_lines = (
-            "/list — list loaded projects\n"
-            "/unload <name> — stop and unload a project\n"
-            "/reload <name> — reload a project\n"
-        )
     await update.message.reply_text(
         "Commands:\n"
         "/signal <signal> [param:value ...] — send a signal to propagate\n"
@@ -294,7 +277,9 @@ async def handle_help(update, context) -> None:
         "/signals — list available signals\n"
         "/logs [N] — show last N log lines (default 20)\n"
         f"{project_line}"
-        f"{coordinator_lines}"
+        "/list — list loaded projects\n"
+        "/unload <name> — stop and unload a project\n"
+        "/reload <name> — reload a project\n"
         "/help — show this message\n"
         f"\nAvailable signals: {signals_line}"
     )
@@ -355,11 +340,7 @@ async def handle_list(update, context) -> None:
     if update.message is None:
         return
 
-    push_socket = bot_data.get("push_socket")
-    if push_socket is None:
-        await update.message.reply_text("Not connected to coordinator.")
-        return
-
+    push_socket = bot_data["push_socket"]
     request_id = str(uuid.uuid4())
     send_coordinator_command(push_socket, "list", metadata={"request_id": request_id})
     resp = await _wait_for_response(bot_data, request_id)
@@ -397,11 +378,7 @@ async def handle_unload(update, context) -> None:
     if update.message is None:
         return
 
-    push_socket = bot_data.get("push_socket")
-    if push_socket is None:
-        await update.message.reply_text("Not connected to coordinator.")
-        return
-
+    push_socket = bot_data["push_socket"]
     parts = update.message.text.strip().split()
     if len(parts) < 2:
         await update.message.reply_text("Usage: /unload <project>")
@@ -438,11 +415,7 @@ async def handle_reload(update, context) -> None:
     if update.message is None:
         return
 
-    push_socket = bot_data.get("push_socket")
-    if push_socket is None:
-        await update.message.reply_text("Not connected to coordinator.")
-        return
-
+    push_socket = bot_data["push_socket"]
     parts = update.message.text.strip().split()
     if len(parts) < 2:
         await update.message.reply_text("Usage: /reload <project>")
@@ -459,7 +432,7 @@ async def handle_reload(update, context) -> None:
         await update.message.reply_text(f"Error: {resp['error']}")
         return
 
-    # Refresh cache so signal definitions are up to date.
+    # Refresh cache.
     request_id2 = str(uuid.uuid4())
     send_coordinator_command(push_socket, "list", metadata={"request_id": request_id2})
     resp2 = await _wait_for_response(bot_data, request_id2, timeout=5.0)
@@ -479,7 +452,7 @@ async def _handle_unknown_command(update, context) -> None:
     await update.message.reply_text(f"Unknown command: {cmd}. Use /help to see available commands.")
 
 
-async def _poll_events(application, sub_socket, project_name: str | None = None) -> None:
+async def _poll_events(application, sub_socket) -> None:
     """Background task that polls the SUB socket and sends replies."""
     from propagate_app.log_buffer import append_line
 
@@ -503,8 +476,7 @@ async def _poll_events(application, sub_socket, project_name: str | None = None)
             continue
         message_id = metadata.get("message_id")
         text = format_event_reply(event)
-        # Use project field from coordinator events, or the explicit project_name arg.
-        display_project = event.get("project") or project_name
+        display_project = event.get("project")
         if display_project is not None:
             text = f"[{display_project}] {text}"
         try:
@@ -521,72 +493,41 @@ def run_bot(
     projects: dict[str, ProjectState],
     token: str,
     allowed_users: set[int],
-    coordinator_mode: bool = False,
 ) -> None:
     """Start the Telegram bot with long-polling."""
-    from telegram.ext import ApplicationBuilder, CommandHandler
-
-    multi = len(projects) > 1
+    from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
     async def post_init(application) -> None:
-        if coordinator_mode:
-            push_socket = connect_push_socket(COORDINATOR_ADDRESS)
-            sub_socket = connect_sub_socket(COORDINATOR_PUB_ADDRESS)
-            application.bot_data["push_socket"] = push_socket
-            application.bot_data["sub_socket"] = sub_socket
-            logger.info("Connected to coordinator at %s", COORDINATOR_ADDRESS)
-            # Single event poller on coordinator PUB.
-            application.bot_data["event_task"] = asyncio.create_task(
-                _poll_events(application, sub_socket, project_name=None)
-            )
-        else:
-            for name, project in projects.items():
-                project.push_socket = connect_push_socket(project.zmq_address)
-                logger.info("Connected to propagate '%s' at %s", name, project.zmq_address)
-                if project.pub_address is not None:
-                    project.sub_socket = connect_sub_socket(project.pub_address)
-                    prefix = name if multi else None
-                    project.event_task = asyncio.create_task(
-                        _poll_events(application, project.sub_socket, project_name=prefix)
-                    )
-                    logger.info("Subscribed to events for '%s' on %s", name, project.pub_address)
+        push_socket = connect_push_socket(COORDINATOR_ADDRESS)
+        sub_socket = connect_sub_socket(COORDINATOR_PUB_ADDRESS)
+        application.bot_data["push_socket"] = push_socket
+        application.bot_data["sub_socket"] = sub_socket
+        logger.info("Connected to coordinator at %s", COORDINATOR_ADDRESS)
+        application.bot_data["event_task"] = asyncio.create_task(
+            _poll_events(application, sub_socket)
+        )
 
     async def post_shutdown(application) -> None:
-        if coordinator_mode:
-            event_task = application.bot_data.get("event_task")
-            if event_task is not None:
-                event_task.cancel()
-                try:
-                    await event_task
-                except asyncio.CancelledError:
-                    pass
-            sub_socket = application.bot_data.get("sub_socket")
-            if sub_socket is not None:
-                close_sub_socket(sub_socket)
-            push_socket = application.bot_data.get("push_socket")
-            if push_socket is not None:
-                close_push_socket(push_socket)
-        else:
-            for project in projects.values():
-                if project.event_task is not None:
-                    project.event_task.cancel()
-                    try:
-                        await project.event_task
-                    except asyncio.CancelledError:
-                        pass
-                if project.sub_socket is not None:
-                    close_sub_socket(project.sub_socket)
-                if project.push_socket is not None:
-                    close_push_socket(project.push_socket)
-        logger.info("Disconnected from all projects.")
+        event_task = application.bot_data.get("event_task")
+        if event_task is not None:
+            event_task.cancel()
+            try:
+                await event_task
+            except asyncio.CancelledError:
+                pass
+        sub_socket = application.bot_data.get("sub_socket")
+        if sub_socket is not None:
+            close_sub_socket(sub_socket)
+        push_socket = application.bot_data.get("push_socket")
+        if push_socket is not None:
+            close_push_socket(push_socket)
+        logger.info("Disconnected from coordinator.")
 
     application = ApplicationBuilder().token(token).post_init(post_init).post_shutdown(post_shutdown).build()
     application.bot_data["projects"] = projects
     application.bot_data["active_project"] = {}
     application.bot_data["allowed_users"] = allowed_users
     application.bot_data["response_queue"] = asyncio.Queue()
-
-    from telegram.ext import MessageHandler, filters
 
     application.add_handler(CommandHandler("project", handle_project))
     application.add_handler(CommandHandler("signal", handle_signal))
