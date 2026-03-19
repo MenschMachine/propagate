@@ -54,6 +54,11 @@ GitHub events are mapped to propagate signal names using the convention `{event}
 | `pull_request` | `labeled` | `pull_request.labeled` |
 | `pull_request` | `opened` | `pull_request.opened` |
 | `pull_request` | `closed` | `pull_request.closed` |
+| `issues` | `labeled` | `issues.labeled` |
+| `issues` | `opened` | `issues.opened` |
+| `issues` | `closed` | `issues.closed` |
+| `issues` | `reopened` | `issues.reopened` |
+| `issues` | `unlabeled` | `issues.unlabeled` |
 | `push` | — | `push` |
 | `issue_comment` | `created` | `issue_comment.created` |
 
@@ -80,6 +85,19 @@ Unsupported event types are ignored with a 200 response.
 | `repository` | `owner/repo` |
 | `ref` | Git ref (e.g. `refs/heads/main`) |
 | `head_commit_sha` | HEAD commit SHA |
+| `sender` | GitHub username |
+
+**issues.\*:**
+
+| Field | Description |
+|-------|-------------|
+| `repository` | `owner/repo` |
+| `issue_number` | Issue number |
+| `issue_title` | Issue title |
+| `issue_body` | Issue body |
+| `state` | Issue state (`open`, `closed`) |
+| `action` | GitHub action (`opened`, `labeled`, etc.) |
+| `label` | Label name (only for `labeled` / `unlabeled`) |
 | `sender` | GitHub username |
 
 **issue_comment.created:**
@@ -177,7 +195,7 @@ For local development, GitHub can't reach `localhost`. [Smee.io](https://smee.io
 2. Reads your propagate config and extracts every GitHub `owner/repo` (deduped) — for `url:` repos it parses the URL directly, for `path:` repos it reads the git origin remote
 3. Creates a new Smee channel by hitting `https://smee.io/new` — or reuses the existing one if `.smee.json` already exists
 4. For each repo not already in `.smee.json`, creates a GitHub webhook (via `gh api`) pointing at the Smee channel URL
-5. Extracts all labels used in the config (from routes, propagation triggers, and `git:pr-labels-add` hooks) and creates any missing ones on each repo
+5. Extracts all labels used in the config (from execution signal filters, routes, propagation triggers, `git:pr-labels-add` hooks, and prompt annotations like `<!-- propagate-required-labels: my-label -->`) and creates any missing ones on each repo
 6. Writes `.smee.json` with the channel URL, port, secret, and webhook IDs for teardown
 
 ```bash
@@ -197,7 +215,7 @@ Options for `propagate-setup.py`:
 |------|---------|-------------|
 | `--config` | (required) | Path to propagate YAML config |
 | `--port` | `8080` | Port for the local webhook server (stored in `.smee.json` for `smee-start.sh`) |
-| `--events` | `push,pull_request,issue_comment` | Comma-separated GitHub event types to subscribe to |
+| `--events` | `push,pull_request,issues,issue_comment` | Comma-separated GitHub event types to subscribe to |
 | `--secret` | (random) | Webhook secret for HMAC verification. Auto-generated if omitted |
 | `--skip-smee` | off | Skip smee webhook setup |
 | `--skip-labels` | off | Skip label creation |
@@ -221,7 +239,7 @@ This deletes the GitHub webhooks and removes `.smee.json`.
 2. Set **Payload URL** to `http://your-server:8080/webhook`
 3. Set **Content type** to `application/json`
 4. Set a **Secret** and pass the same value via `--secret` or `--secret-env`
-5. Select the events you need (Pull requests, Pushes, Issue comments)
+5. Select the events you need (Pull requests, Issues, Pushes, Issue comments)
 
 ---
 

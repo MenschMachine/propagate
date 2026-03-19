@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 logger = logging.getLogger("propagate.setup")
+_PROMPT_LABEL_COMMENT_RE = re.compile(r"<!--\s*propagate-required-labels:\s*([^>]+?)\s*-->")
 
 
 def parse_github_url(url: str) -> str | None:
@@ -74,11 +75,19 @@ def extract_repos(config: dict, config_dir: Path) -> list[str]:
     return unique
 
 
-def extract_labels(config: dict) -> list[str]:
-    """Extract all labels used in the config from routes, propagation triggers, and hooks."""
+def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
+    """Extract all labels used in the config from signals, routes, triggers, and hooks."""
     labels = set()
 
-    # 1. executions[*].sub_tasks[*].routes[*].when.label
+    # 1. executions[*].signals[*].when.label
+    for exec_data in config.get("executions", {}).values():
+        for signal in exec_data.get("signals", []):
+            if isinstance(signal, dict):
+                label = signal.get("when", {}).get("label")
+                if label:
+                    labels.add(label)
+
+    # 2. executions[*].sub_tasks[*].routes[*].when.label
     for exec_data in config.get("executions", {}).values():
         for task in exec_data.get("sub_tasks", []):
             for route in task.get("routes", []):
@@ -86,13 +95,13 @@ def extract_labels(config: dict) -> list[str]:
                 if label:
                     labels.add(label)
 
-    # 2. propagation.triggers[*].when.label
+    # 3. propagation.triggers[*].when.label
     for trigger in config.get("propagation", {}).get("triggers", []):
         label = trigger.get("when", {}).get("label")
         if label:
             labels.add(label)
 
-    # 3. git:pr-labels-add <args> in before/after/on_failure hooks
+    # 4. git:pr-labels-add <args> in before/after/on_failure hooks
     label_cmd_re = re.compile(r"^git:pr-labels-add\s+(.+)$")
     for exec_data in config.get("executions", {}).values():
         for task in exec_data.get("sub_tasks", []):
@@ -107,6 +116,27 @@ def extract_labels(config: dict) -> list[str]:
                         # Skip context key references
                         if not arg.startswith(":"):
                             labels.add(arg)
+
+    # 5. Prompt annotations: <!-- propagate-required-labels: a, b -->
+    if config_dir is not None:
+        for exec_data in config.get("executions", {}).values():
+            for task in exec_data.get("sub_tasks", []):
+                prompt_value = task.get("prompt")
+                if not isinstance(prompt_value, str) or not prompt_value.strip():
+                    continue
+                prompt_path = Path(prompt_value).expanduser()
+                if not prompt_path.is_absolute():
+                    prompt_path = config_dir / prompt_path
+                try:
+                    prompt_text = prompt_path.read_text(encoding="utf-8")
+                except OSError:
+                    logger.warning("Could not read prompt file for label extraction: %s", prompt_path)
+                    continue
+                for match in _PROMPT_LABEL_COMMENT_RE.finditer(prompt_text):
+                    for label in match.group(1).split(","):
+                        normalized = label.strip()
+                        if normalized:
+                            labels.add(normalized)
 
     return sorted(labels)
 
@@ -227,7 +257,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Set up smee webhooks and GitHub labels for a propagate config")
     parser.add_argument("--config", required=True, help="Path to propagate YAML config")
     parser.add_argument("--port", type=int, default=8080, help="Smee proxy port (default: 8080)")
-    parser.add_argument("--events", default="push,pull_request,issue_comment", help="Webhook events (comma-separated)")
+    parser.add_argument("--events", default="push,pull_request,issues,issue_comment", help="Webhook events (comma-separated)")
     parser.add_argument("--secret", default=None, help="Webhook secret (auto-generated if omitted)")
     parser.add_argument("--skip-smee", action="store_true", help="Skip smee webhook setup")
     parser.add_argument("--skip-labels", action="store_true", help="Skip label creation")
@@ -254,7 +284,7 @@ def main() -> None:
 
     logger.info("Repos: %s", ", ".join(repos))
 
-    labels = extract_labels(config)
+    labels = extract_labels(config, config_dir)
     logger.info("Labels: %s", ", ".join(labels) if labels else "(none)")
 
     secret = args.secret or secrets.token_hex(20)

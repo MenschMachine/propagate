@@ -1,0 +1,132 @@
+# Website suggestion workflow for pdfdancer.
+#
+# Trigger 1:
+#   pull_request.labeled on MenschMachine/pdfdancer-backend with label suggestions_needed
+#   -> inspect the backend PR and create/update a planning issue in pdfdancer-www
+#
+# Trigger 2:
+#   issues.labeled on MenschMachine/pdfdancer-www with label approved
+#   -> validate that the issue is a generated planning issue, then implement the
+#      api-docs changes first and open a PR
+#
+# Trigger 3:
+#   approved label on the generated pdfdancer-api-docs PR
+#   -> validate it is the PR from Trigger 2, then implement the dependent website changes
+#
+# Typical setup:
+#   propagate serve --config config/pdfdancer-website-suggestions.yaml
+#   propagate-webhook --port 8080 --secret-env GITHUB_WEBHOOK_SECRET
+#   scripts/propagate-prod-setup.py --config config/pdfdancer-website-suggestions.yaml --url https://your-host/webhook
+
+version: "6"
+
+agent:
+  command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} and follow its instructions."'
+
+repositories:
+  pdfdancer-backend:
+    url: git@github.com:MenschMachine/pdfdancer-backend.git
+  pdfdancer-api-docs:
+    url: git@github.com:MenschMachine/pdfdancer-api-docs.git
+  pdfdancer-www:
+    url: git@github.com:MenschMachine/pdfdancer-www.git
+
+signals:
+  include:
+    - signals/default.yaml
+    - signals/github-signals.yaml
+
+executions:
+  suggest-website-updates:
+    repository: pdfdancer-www
+    signals:
+      - signal: pull_request.labeled
+        when:
+          repository: MenschMachine/pdfdancer-backend
+          label: suggestions_needed
+    sub_tasks:
+      - id: create-issue
+        prompt: ./prompts/pdfdancer/create-website-suggestions.md
+
+  implement-approved-api-docs-updates:
+    repository: pdfdancer-api-docs
+    signals:
+      - signal: issues.labeled
+        when:
+          repository: MenschMachine/pdfdancer-www
+          label: approved
+    git:
+      branch:
+        name_key: :api-docs-branch-name
+        base: main
+      commit:
+        message_key: :api-docs-commit-message
+      push:
+        remote: origin
+      pr:
+        base: main
+        body_key: :api-docs-pr-body
+        number_key: :api-docs-pr-number
+    sub_tasks:
+      - id: validate-issue
+        prompt: ./prompts/pdfdancer/validate-approved-website-suggestions.md
+      - id: implement
+        before:
+          - 'propagate context set :api-docs-branch-name "api-docs/issue-$(propagate context get :signal.issue_number | xargs)"'
+          - git:branch
+        prompt: ./prompts/pdfdancer/implement-approved-api-docs-suggestions.md
+      - id: summarize
+        prompt: ./prompts/pdfdancer/summarize-approved-api-docs-suggestions.md
+        after:
+          - git:commit
+      - id: publish
+        before:
+          - git:push
+          - git:pr
+      - id: wait-for-verdict
+        wait_for_signal: pull_request.labeled
+        routes:
+          - when:
+              repository: MenschMachine/pdfdancer-api-docs
+              label: approved
+            continue: true
+      - id: validate-approved-pr
+        before:
+          - '[ "$(propagate context get :signal.repository | xargs)" = "MenschMachine/pdfdancer-api-docs" ]'
+          - '[ "$(propagate context get :signal.label | xargs)" = "approved" ]'
+          - '[ "$(propagate context get :signal.pr_number | xargs)" = "$(propagate context get :api-docs-pr-number | xargs)" ]'
+
+  implement-approved-website-updates:
+    repository: pdfdancer-www
+    git:
+      branch:
+        name_key: :website-branch-name
+        base: main
+      commit:
+        message_key: :website-commit-message
+      push:
+        remote: origin
+      pr:
+        base: main
+        body_key: :website-pr-body
+        number_key: :website-pr-number
+    sub_tasks:
+      - id: validate-issue
+        prompt: ./prompts/pdfdancer/validate-approved-website-suggestions.md
+      - id: implement
+        before:
+          - 'propagate context set :website-branch-name "website/issue-$(propagate context get :signal.issue_number | xargs)"'
+          - git:branch
+        prompt: ./prompts/pdfdancer/implement-approved-website-suggestions.md
+      - id: summarize
+        prompt: ./prompts/pdfdancer/summarize-approved-website-suggestions.md
+        after:
+          - git:commit
+    after:
+      - git:push
+      - git:pr
+
+propagation:
+  triggers:
+    - after: implement-approved-api-docs-updates
+      run: implement-approved-website-updates

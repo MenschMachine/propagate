@@ -161,7 +161,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Set up production GitHub webhooks and labels for a propagate config")
     parser.add_argument("--config", required=True, help="Path to propagate YAML config")
     parser.add_argument("--url", help="Production webhook URL (e.g. https://webhook.example.com/webhook)")
-    parser.add_argument("--events", default="push,pull_request,issue_comment", help="Webhook events (comma-separated)")
+    parser.add_argument("--events", default="push,pull_request,issues,issue_comment", help="Webhook events (comma-separated)")
     parser.add_argument("--secret", default=None, help="Webhook secret (auto-generated if omitted)")
     parser.add_argument("--skip-labels", action="store_true", help="Skip label creation")
     parser.add_argument("--teardown", action="store_true", help="Delete webhooks from state file")
@@ -214,7 +214,7 @@ def main() -> None:
     setup_webhooks(repos, state_file, args.url, args.events, secret, args.dry_run)
 
     if not args.skip_labels:
-        labels = extract_labels(config)
+        labels = extract_labels(config, config_dir)
         logger.info("Labels: %s", ", ".join(labels) if labels else "(none)")
         ensure_labels(repos, labels, args.dry_run)
 

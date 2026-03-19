@@ -97,6 +97,62 @@ async def test_webhook_delivers_push_signal(app, zmq_socket):
 
 
 @pytest.mark.anyio
+async def test_webhook_delivers_issue_labeled_signal(app, zmq_socket):
+    pull, _ = zmq_socket
+    body = {
+        "action": "labeled",
+        "label": {"name": "approved"},
+        "issue": {
+            "number": 88,
+            "title": "Homepage follow-up",
+            "body": "Update the hero section.",
+            "state": "open",
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "zoe"},
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/webhook", json=body, headers={"X-GitHub-Event": "issues"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "forwarded"
+    assert response.json()["signal"] == "issues.labeled"
+
+    result = receive_signal(pull, block=True, timeout_ms=2000)
+    assert result is not None
+    signal_type, payload = result
+    assert signal_type == "issues.labeled"
+    assert payload["issue_number"] == 88
+    assert payload["label"] == "approved"
+
+
+@pytest.mark.anyio
+async def test_webhook_delivers_issue_reopened_signal(app, zmq_socket):
+    pull, _ = zmq_socket
+    body = {
+        "action": "reopened",
+        "issue": {
+            "number": 89,
+            "title": "Homepage follow-up",
+            "body": "Reopen the issue.",
+            "state": "open",
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "zoe"},
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/webhook", json=body, headers={"X-GitHub-Event": "issues"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "forwarded"
+    assert response.json()["signal"] == "issues.reopened"
+
+    result = receive_signal(pull, block=True, timeout_ms=2000)
+    assert result is not None
+    signal_type, payload = result
+    assert signal_type == "issues.reopened"
+    assert payload["issue_number"] == 89
+
+
+@pytest.mark.anyio
 async def test_webhook_ignores_unsupported_event(app):
     body = {"zen": "Keep it simple"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

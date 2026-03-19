@@ -109,6 +109,93 @@ def test_issue_comment_on_issue_not_pr():
     assert payload["is_pull_request"] is False
 
 
+def test_issues_labeled():
+    body = {
+        "action": "labeled",
+        "label": {"name": "approved"},
+        "issue": {
+            "number": 17,
+            "title": "Implement docs refresh",
+            "body": "Please update the website.",
+            "state": "open",
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "frank"},
+    }
+    result = parse_github_event("issues", body)
+    assert result is not None
+    signal_name, payload = result
+    assert signal_name == "issues.labeled"
+    assert payload["repository"] == "owner/repo"
+    assert payload["issue_number"] == 17
+    assert payload["label"] == "approved"
+    assert payload["issue_title"] == "Implement docs refresh"
+    assert payload["issue_body"] == "Please update the website."
+    assert payload["state"] == "open"
+    assert payload["sender"] == "frank"
+    assert payload["action"] == "labeled"
+
+
+def test_issues_opened_has_no_label_field():
+    body = {
+        "action": "opened",
+        "issue": {
+            "number": 3,
+            "title": "New feature",
+            "body": "",
+            "state": "open",
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "grace"},
+    }
+    result = parse_github_event("issues", body)
+    assert result is not None
+    signal_name, payload = result
+    assert signal_name == "issues.opened"
+    assert "label" not in payload
+
+
+def test_issues_reopened_has_no_label_field():
+    body = {
+        "action": "reopened",
+        "issue": {
+            "number": 4,
+            "title": "Retry feature",
+            "body": "Reopen this workflow item.",
+            "state": "open",
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "heidi"},
+    }
+    result = parse_github_event("issues", body)
+    assert result is not None
+    signal_name, payload = result
+    assert signal_name == "issues.reopened"
+    assert payload["issue_number"] == 4
+    assert "label" not in payload
+
+
+def test_issues_unlabeled():
+    body = {
+        "action": "unlabeled",
+        "label": {"name": "approved"},
+        "issue": {
+            "number": 18,
+            "title": "Remove approval",
+            "body": "Undo this label.",
+            "state": "open",
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "ivan"},
+    }
+    result = parse_github_event("issues", body)
+    assert result is not None
+    signal_name, payload = result
+    assert signal_name == "issues.unlabeled"
+    assert payload["issue_number"] == 18
+    assert payload["label"] == "approved"
+
+
 def test_unsupported_event_returns_none():
     result = parse_github_event("deployment", {"action": "created"})
     assert result is None

@@ -205,7 +205,7 @@ A GitHub webhook listener that maps events to signals and forwards them to a run
 propagate-webhook --config config.yaml --port 8080 --secret YOUR_SECRET
 ```
 
-Supports `pull_request`, `push`, `issue_comment`, and other GitHub events. See [docs/WEBHOOK.md](docs/WEBHOOK.md) for setup.
+Supports `pull_request`, `issues`, `push`, `issue_comment`, and other GitHub events. See [docs/WEBHOOK.md](docs/WEBHOOK.md) for setup.
 
 For local development, use `scripts/propagate-setup.py` to create Smee channels and GitHub webhooks. See [docs/WEBHOOK.md](docs/WEBHOOK.md) for details.
 

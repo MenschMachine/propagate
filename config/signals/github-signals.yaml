@@ -106,3 +106,109 @@
       action:
         type: string
     check: "! gh pr view {pr_number} --repo {repository} --json labels --jq '.labels[].name' | grep -q '^{label}$'"
+
+  issues.opened:
+    payload:
+      repository:
+        type: string
+        required: true
+      issue_number:
+        type: number
+        required: true
+      issue_title:
+        type: string
+      issue_body:
+        type: string
+      state:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+    check: "gh issue view {issue_number} --repo {repository} --json state --jq '.state' | grep -q '^OPEN$'"
+
+  issues.closed:
+    payload:
+      repository:
+        type: string
+        required: true
+      issue_number:
+        type: number
+        required: true
+      issue_title:
+        type: string
+      issue_body:
+        type: string
+      state:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+    check: "gh issue view {issue_number} --repo {repository} --json state --jq '.state' | grep -q '^CLOSED$'"
+
+  issues.reopened:
+    payload:
+      repository:
+        type: string
+        required: true
+      issue_number:
+        type: number
+        required: true
+      issue_title:
+        type: string
+      issue_body:
+        type: string
+      state:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+    check: "gh issue view {issue_number} --repo {repository} --json state --jq '.state' | grep -q '^OPEN$'"
+
+  issues.labeled:
+    payload:
+      repository:
+        type: string
+        required: true
+      issue_number:
+        type: number
+        required: true
+      label:
+        type: string
+        required: true
+      issue_title:
+        type: string
+      issue_body:
+        type: string
+      state:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+    check: "gh issue view {issue_number} --repo {repository} --json labels --jq '.labels[].name' | grep -q '^{label}$'"
+
+  issues.unlabeled:
+    payload:
+      repository:
+        type: string
+        required: true
+      issue_number:
+        type: number
+        required: true
+      label:
+        type: string
+        required: true
+      issue_title:
+        type: string
+      issue_body:
+        type: string
+      state:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string
+    check: "! gh issue view {issue_number} --repo {repository} --json labels --jq '.labels[].name' | grep -q '^{label}$'"
