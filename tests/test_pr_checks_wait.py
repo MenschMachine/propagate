@@ -205,23 +205,23 @@ def test_when_negated_empty_key(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_check(name: str, status: str, conclusion: str, workflow_name: str = "CI") -> dict:
+def _make_check(name: str, bucket: str, state: str, workflow_name: str = "CI") -> dict:
     return {
         "name": name,
-        "status": status,
-        "conclusion": conclusion,
+        "bucket": bucket,
+        "state": state,
         "workflow": {"name": workflow_name},
-        "detailsUrl": f"https://example.com/{name}",
+        "link": f"https://example.com/{name}",
     }
 
 
 def _make_non_action_check(name: str) -> dict:
     return {
         "name": name,
-        "status": "COMPLETED",
-        "conclusion": "SUCCESS",
+        "bucket": "pass",
+        "state": "SUCCESS",
         "workflow": {},
-        "detailsUrl": f"https://example.com/{name}",
+        "link": f"https://example.com/{name}",
     }
 
 
@@ -229,8 +229,8 @@ def _make_non_action_check(name: str) -> dict:
 @patch("propagate_app.git_publish.run_process_command")
 def test_poll_all_passing(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
     checks = [
-        _make_check("build", "COMPLETED", "SUCCESS"),
-        _make_check("test", "COMPLETED", "SUCCESS"),
+        _make_check("build", "pass", "SUCCESS"),
+        _make_check("test", "pass", "SUCCESS"),
         _make_non_action_check("codecov"),  # should be filtered out
     ]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
@@ -247,8 +247,8 @@ def test_poll_all_passing(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
 @patch("propagate_app.git_publish.run_process_command")
 def test_poll_with_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
     checks = [
-        _make_check("build", "COMPLETED", "SUCCESS"),
-        _make_check("test", "COMPLETED", "FAILURE"),
+        _make_check("build", "pass", "SUCCESS"),
+        _make_check("test", "fail", "FAILURE"),
     ]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
 
@@ -263,8 +263,8 @@ def test_poll_with_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
 @patch("propagate_app.git_publish.time.monotonic")
 @patch("propagate_app.git_publish.run_process_command")
 def test_poll_waits_for_completion(mock_run: MagicMock, mock_mono: MagicMock, mock_sleep: MagicMock) -> None:
-    pending = [_make_check("build", "IN_PROGRESS", "")]
-    completed = [_make_check("build", "COMPLETED", "SUCCESS")]
+    pending = [_make_check("build", "pending", "PENDING")]
+    completed = [_make_check("build", "pass", "SUCCESS")]
     mock_run.side_effect = [
         SimpleNamespace(stdout=json.dumps(pending)),
         SimpleNamespace(stdout=json.dumps(completed)),
@@ -284,7 +284,7 @@ def test_poll_waits_for_checks_to_appear(mock_run: MagicMock, mock_mono: MagicMo
     empty = [_make_non_action_check("codecov")]  # no actions checks yet
     with_actions = [
         _make_non_action_check("codecov"),
-        _make_check("build", "COMPLETED", "SUCCESS"),
+        _make_check("build", "pass", "SUCCESS"),
     ]
     mock_run.side_effect = [
         SimpleNamespace(stdout=json.dumps(empty)),
@@ -303,7 +303,7 @@ def test_poll_waits_for_checks_to_appear(mock_run: MagicMock, mock_mono: MagicMo
 @patch("propagate_app.git_publish.time.monotonic")
 @patch("propagate_app.git_publish.run_process_command")
 def test_poll_timeout_raises(mock_run: MagicMock, mock_mono: MagicMock, mock_sleep: MagicMock) -> None:
-    pending = [_make_check("build", "IN_PROGRESS", "")]
+    pending = [_make_check("build", "pending", "PENDING")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(pending))
     # Start at 0, then immediately past deadline
     mock_mono.side_effect = [0, 100]
@@ -315,7 +315,7 @@ def test_poll_timeout_raises(mock_run: MagicMock, mock_mono: MagicMock, mock_sle
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.run_process_command")
 def test_poll_cancelled_is_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
-    checks = [_make_check("deploy", "COMPLETED", "CANCELLED")]
+    checks = [_make_check("deploy", "cancel", "CANCELLED")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
 
     _, all_passed = poll_pr_action_checks(Path("/fake"), interval=10, timeout=60)
@@ -324,8 +324,8 @@ def test_poll_cancelled_is_failure(mock_run: MagicMock, mock_sleep: MagicMock) -
 
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.run_process_command")
-def test_poll_timed_out_conclusion_is_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
-    checks = [_make_check("slow-test", "COMPLETED", "TIMED_OUT")]
+def test_poll_fail_bucket_is_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
+    checks = [_make_check("slow-test", "fail", "TIMED_OUT")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
 
     _, all_passed = poll_pr_action_checks(Path("/fake"), interval=10, timeout=60)
@@ -334,8 +334,8 @@ def test_poll_timed_out_conclusion_is_failure(mock_run: MagicMock, mock_sleep: M
 
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.run_process_command")
-def test_poll_action_required_is_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
-    checks = [_make_check("review", "COMPLETED", "ACTION_REQUIRED")]
+def test_poll_action_required_fail_bucket_is_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
+    checks = [_make_check("review", "fail", "ACTION_REQUIRED")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
 
     _, all_passed = poll_pr_action_checks(Path("/fake"), interval=10, timeout=60)
@@ -344,18 +344,18 @@ def test_poll_action_required_is_failure(mock_run: MagicMock, mock_sleep: MagicM
 
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.run_process_command")
-def test_poll_stale_is_failure(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
-    checks = [_make_check("old-check", "COMPLETED", "STALE")]
+def test_poll_skipping_bucket_is_pass(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
+    checks = [_make_check("old-check", "skipping", "SKIPPED")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
 
     _, all_passed = poll_pr_action_checks(Path("/fake"), interval=10, timeout=60)
-    assert not all_passed
+    assert all_passed
 
 
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.run_process_command")
 def test_poll_neutral_is_pass(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
-    checks = [_make_check("lint", "COMPLETED", "NEUTRAL")]
+    checks = [_make_check("lint", "pass", "NEUTRAL")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
 
     _, all_passed = poll_pr_action_checks(Path("/fake"), interval=10, timeout=60)
@@ -365,7 +365,7 @@ def test_poll_neutral_is_pass(mock_run: MagicMock, mock_sleep: MagicMock) -> Non
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.run_process_command")
 def test_poll_skipped_is_pass(mock_run: MagicMock, mock_sleep: MagicMock) -> None:
-    checks = [_make_check("optional", "COMPLETED", "SKIPPED")]
+    checks = [_make_check("optional", "skipping", "SKIPPED")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
 
     _, all_passed = poll_pr_action_checks(Path("/fake"), interval=10, timeout=60)
@@ -389,7 +389,7 @@ def test_poll_malformed_json_raises(mock_run: MagicMock, mock_sleep: MagicMock) 
 @patch("propagate_app.git_publish.time.sleep")
 @patch("propagate_app.git_publish.run_process_command")
 def test_do_pr_checks_wait_stores_and_succeeds(mock_run: MagicMock, mock_sleep: MagicMock, tmp_path: Path) -> None:
-    checks = [_make_check("build", "COMPLETED", "SUCCESS")]
+    checks = [_make_check("build", "pass", "SUCCESS")]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
     runtime_context = _make_runtime_context(tmp_path)
 
@@ -408,8 +408,8 @@ def test_do_pr_checks_wait_stores_and_succeeds(mock_run: MagicMock, mock_sleep: 
 @patch("propagate_app.git_publish.run_process_command")
 def test_do_pr_checks_wait_failure_no_raise(mock_run: MagicMock, mock_sleep: MagicMock, tmp_path: Path) -> None:
     checks = [
-        _make_check("build", "COMPLETED", "SUCCESS"),
-        _make_check("test", "COMPLETED", "FAILURE"),
+        _make_check("build", "pass", "SUCCESS"),
+        _make_check("test", "fail", "FAILURE"),
     ]
     mock_run.return_value = SimpleNamespace(stdout=json.dumps(checks))
     runtime_context = _make_runtime_context(tmp_path)

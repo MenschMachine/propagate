@@ -262,7 +262,8 @@ def list_pr_comments(working_dir: Path) -> str:
     return result.stdout
 
 
-_FAILURE_CONCLUSIONS = {"FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STALE"}
+_FAILURE_BUCKETS = {"fail", "cancel"}
+_PENDING_BUCKET = "pending"
 
 
 def poll_pr_action_checks(working_dir: Path, interval: int, timeout: int) -> tuple[str, bool]:
@@ -270,7 +271,7 @@ def poll_pr_action_checks(working_dir: Path, interval: int, timeout: int) -> tup
     deadline = time.monotonic() + timeout
     while True:
         result = run_process_command(
-            ["gh", "pr", "checks", "--json", "name,status,conclusion,workflow,detailsUrl"],
+            ["gh", "pr", "checks", "--json", "bucket,description,event,link,name,state,workflow"],
             working_dir,
             failure_message="Failed to fetch PR checks.",
             start_failure_message="Failed to start gh pr checks: {error}",
@@ -281,9 +282,9 @@ def poll_pr_action_checks(working_dir: Path, interval: int, timeout: int) -> tup
         except json.JSONDecodeError as exc:
             raise PropagateError(f"Failed to parse PR checks output as JSON: {exc}") from exc
         filtered = [c for c in all_checks if isinstance(c.get("workflow"), dict) and c["workflow"].get("name")]
-        if filtered and all(c.get("status") == "COMPLETED" for c in filtered):
+        if filtered and all(c.get("bucket") != _PENDING_BUCKET for c in filtered):
             filtered_json = json.dumps(filtered)
-            all_passed = not any(c.get("conclusion") in _FAILURE_CONCLUSIONS for c in filtered)
+            all_passed = not any(c.get("bucket") in _FAILURE_BUCKETS for c in filtered)
             return filtered_json, all_passed
         if time.monotonic() >= deadline:
             raise PropagateError(f"Timed out after {timeout}s waiting for PR checks to complete.")
