@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
 
 def get_context_root(config_path: Path) -> Path:
-    return config_path.parent / ".propagate-context"
+    resolved = config_path.resolve()
+    return resolved.parent / f".propagate-context-{resolved.stem}"
 
 
 def get_global_context_dir(context_root: Path) -> Path:

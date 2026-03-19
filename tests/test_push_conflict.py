@@ -164,7 +164,7 @@ def test_push_conflict_rebase_fails_on_merge_conflict(ctx: SimpleNamespace) -> N
     )
     non_context_lines = [
         line for line in status.stdout.strip().splitlines()
-        if ".propagate-context/" not in line
+        if ".propagate-context-" not in line
     ]
     assert non_context_lines == []
 

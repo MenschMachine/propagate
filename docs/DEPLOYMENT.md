@@ -89,7 +89,7 @@ sudo bash deploy/install.sh --update
 | `/opt/propagate/.env` | Environment variables (secrets) |
 | `/opt/propagate/venv/` | Python virtual environment |
 | `/opt/propagate/config/` | Configuration files |
-| `/opt/propagate/.propagate-context/` | Context store |
+| `/opt/propagate/.propagate-context-*/` | Context store (namespaced per config) |
 | `/opt/propagate/.propagate-state-*.yaml` | Run state files |
 | `/etc/caddy/Caddyfile` | Caddy reverse proxy config |
 | `/etc/systemd/system/propagate-*.service` | systemd unit files |

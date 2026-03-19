@@ -240,7 +240,7 @@ class PropagateStage4GitTests(unittest.TestCase):
             commit_message,
         )
         self.assertEqual(
-            (self.repo / "config" / ".propagate-context" / "default" / ":commit-message").read_text(encoding="utf-8"),
+            (self.repo / "config" / ".propagate-context-propagate" / "default" / ":commit-message").read_text(encoding="utf-8"),
             commit_message,
         )
         self.run_git("rev-parse", "--verify", "refs/heads/propagate/build-stage5", cwd=self.remote_repo)

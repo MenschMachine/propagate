@@ -100,7 +100,7 @@ Named shell commands whose stdout is captured and stored as context under a rese
 ```yaml
 context_sources:
   change-summary:
-    command: 'printf "summary: %s" "$(cat .propagate-context/:signal.branch)"'
+    command: 'printf "summary: %s" "$(cat .propagate-context-propagate/:signal.branch)"'
   commit-msg:
     command: 'echo "feat: update docs"'
 ```
@@ -460,7 +460,7 @@ directory.
 
 ```yaml
 after:
-  - 'mkdir -p .propagate-context && echo "done" > .propagate-context/status'
+  - 'mkdir -p .propagate-context-propagate && echo "done" > .propagate-context-propagate/status'
 ```
 
 ### Git commands
@@ -498,7 +498,7 @@ after:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROPAGATE_CONTEXT_ROOT` | `.propagate-context` (relative to working directory) | Root directory for the context store. |
+| `PROPAGATE_CONTEXT_ROOT` | `.propagate-context-{config_stem}` (relative to config directory) | Root directory for the context store. Namespaced by config file stem (e.g. `.propagate-context-propagate` for `propagate.yaml`). |
 | `PROPAGATE_CLONE_DIR` | System temp directory | Directory for cloned repositories. Overrides the YAML `clone_dir` key. |
 
 ### Set at runtime
@@ -614,9 +614,9 @@ propagate send-signal --config config.yaml --signal name [--signal-payload '{...
 propagate send-signal --config config.yaml --signal-file path
 
 # Manage context
-propagate context set <key> <value> [--global | --local]
-propagate context get <key> [--global | --local | --task]
-propagate context dump
+propagate context [--config config.yaml] set <key> <value> [--global | --local]
+propagate context [--config config.yaml] get <key> [--global | --local | --task]
+propagate context [--config config.yaml] dump
 
 # Run as a long-lived server
 propagate serve --config config.yaml [--resume [execution/task]]
@@ -653,7 +653,7 @@ propagate clear --config config.yaml
 | `--config` | Path to YAML config file. Required. |
 | `-f`, `--force` | Also delete cloned repositories recorded in the run state file. Only directories whose name starts with `propagate-repo-` are removed. |
 
-Removes the `.propagate-context/` directory and the `.propagate-state-{name}.yaml` file associated with the config. With `-f`, also removes cloned repository directories that were created during the run.
+Removes the `.propagate-context-{name}/` directory and the `.propagate-state-{name}.yaml` file associated with the config. With `-f`, also removes cloned repository directories that were created during the run.
 
 ### `serve` options
 
@@ -684,7 +684,7 @@ repositories:
 
 context_sources:
   change-summary:
-    command: 'cat .propagate-context/:signal.branch'
+    command: 'cat .propagate-context-propagate/:signal.branch'
   commit-msg:
     command: 'echo "docs: update generated content"'
 
@@ -714,7 +714,7 @@ executions:
         before:
           - :change-summary
         on_failure:
-          - 'echo "triage failed" > .propagate-context/failure'
+          - 'echo "triage failed" > .propagate-context-propagate/failure'
 
   update-docs:
     repository: docs-site

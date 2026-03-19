@@ -68,7 +68,7 @@ Git stderr (which can contain auth failures, token fragments, private paths) is 
 ### 8. Context values stored as plaintext
 **`propagate_app/context_store.py:157-178`**
 
-All context values written to `.propagate-context/` as unencrypted files with default permissions. If context contains tokens or secrets, they're exposed at rest.
+All context values written to `.propagate-context-{name}/` as unencrypted files with default permissions. If context contains tokens or secrets, they're exposed at rest.
 
 ### 9. No rate limiting on any endpoint
 Webhook, Telegram bot, and ZMQ serve loop all accept unlimited requests. Signal queue grows unbounded in memory.

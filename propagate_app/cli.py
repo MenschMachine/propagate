@@ -50,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     send_signal_source.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
     send_signal_parser.add_argument("--signal-payload", help="Signal payload as a YAML or JSON mapping. Requires --signal.")
     context_parser = subparsers.add_parser("context", help="Manage local context values.")
+    context_parser.add_argument("--config", dest="context_config", default=None, help="Path to config file (used to derive context root when PROPAGATE_CONTEXT_ROOT is not set).")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
     set_parser = context_subparsers.add_parser("set", help="Store a local context value.")
     set_parser.add_argument("key")
@@ -125,7 +126,12 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
         context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
         execution_env = os.environ.get(ENV_EXECUTION, "")
         task_env = os.environ.get(ENV_TASK, "")
-        context_root = Path(context_root_env) if context_root_env else (working_dir / ".propagate-context")
+        if context_root_env:
+            context_root = Path(context_root_env)
+        elif args.context_config:
+            context_root = get_context_root(Path(args.context_config).expanduser())
+        else:
+            context_root = get_context_root(working_dir / "propagate.yaml")
         scope_global = getattr(args, "scope_global", False)
         scope_local = getattr(args, "scope_local", False)
         scope_task = getattr(args, "scope_task", None)
