@@ -239,6 +239,33 @@ def test_scheduler_exits_cleanly_without_signal_socket_when_signal_triggers_exis
     assert executions_run == ["a"]
 
 
+def test_scheduler_passes_signal_socket_into_execution_runtime_context(tmp_path):
+    exec_a = make_execution("a")
+    config = make_config(tmp_path, [exec_a])
+    fake_socket = object()
+    seen_signal_sockets = []
+
+    def mock_run_execution(
+        execution,
+        runtime_context,
+        completed_task_phases,
+        on_phase_completed,
+        completed_execution_phase,
+        on_runtime_context_updated=None,
+    ):
+        seen_signal_sockets.append(runtime_context.signal_socket)
+        return runtime_context
+
+    with (
+        patch("propagate_app.scheduler._drain_incoming_signals", side_effect=lambda *args: args[-1]),
+        patch("propagate_app.scheduler.run_configured_execution", side_effect=mock_run_execution),
+    ):
+        runtime_context = make_runtime_context()
+        run_execution_schedule(config, "a", runtime_context, signal_socket=fake_socket)
+
+    assert seen_signal_sockets == [fake_socket]
+
+
 def test_scheduler_deadlocks_when_dependency_never_completes(tmp_path):
     """A real deadlock: execution b depends on c, but c fails during execution."""
     exec_a = make_execution("a")

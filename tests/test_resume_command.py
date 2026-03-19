@@ -7,12 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from propagate_app.cli import _run_fresh, _run_resume
 from propagate_app.models import (
     AgentConfig,
     Config,
     ExecutionConfig,
+    ExecutionScheduleState,
     ExecutionSignalConfig,
     RepositoryConfig,
+    RunState,
     SignalConfig,
     SubTaskConfig,
 )
@@ -119,6 +122,17 @@ def _make_config(tmp_path, signals=None):
         propagation_triggers=[],
         executions={"a": exec_cfg},
         config_path=config_path,
+    )
+
+
+def _make_run_state(config: Config) -> RunState:
+    return RunState(
+        config_path=config.config_path,
+        initial_execution="a",
+        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        active_signal=None,
+        cloned_repos={},
+        initialized_signal_context_dirs=set(),
     )
 
 
@@ -229,6 +243,39 @@ def test_serve_ignores_unknown_command(tmp_path, caplog):
         sender.join()
 
     assert any("unknown command" in r.message.lower() for r in caplog.records)
+
+
+def test_run_fresh_binds_signal_socket_even_without_signal_triggers(tmp_path):
+    config = _make_config(tmp_path)
+
+    with (
+        patch("propagate_app.cli.select_initial_execution", return_value=config.executions["a"]),
+        patch("propagate_app.cli.bind_pull_socket", return_value=MagicMock()) as mock_bind,
+        patch("propagate_app.cli.close_pull_socket") as mock_close,
+        patch("propagate_app.cli.run_execution_schedule"),
+    ):
+        result = _run_fresh(config, execution_name=None, signal_name=None, signal_payload=None, signal_file=None)
+
+    assert result == 0
+    mock_bind.assert_called_once()
+    mock_close.assert_called_once()
+
+
+def test_run_resume_binds_signal_socket_even_without_signal_triggers(tmp_path):
+    config = _make_config(tmp_path)
+    run_state = _make_run_state(config)
+
+    with (
+        patch("propagate_app.cli.apply_forced_resume_if_targeted", return_value=run_state),
+        patch("propagate_app.cli.bind_pull_socket", return_value=MagicMock()) as mock_bind,
+        patch("propagate_app.cli.close_pull_socket") as mock_close,
+        patch("propagate_app.cli.run_execution_schedule"),
+    ):
+        result = _run_resume(config)
+
+    assert result == 0
+    mock_bind.assert_called_once()
+    mock_close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

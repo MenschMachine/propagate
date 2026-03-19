@@ -50,7 +50,7 @@ def run_execution_schedule(
         activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
     if stop_after is not None:
         _warn_if_stop_after_unreachable(config, initial_execution_name, stop_after, schedule_state)
-    current_runtime_context = runtime_context
+    current_runtime_context = replace(runtime_context, signal_socket=signal_socket)
     if run_state is not None:
         _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
     reconciled_triggers: set[tuple[str, str, str]] = set()

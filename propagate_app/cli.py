@@ -191,9 +191,8 @@ def _run_resume(config: Config, resume_target: str | None = None, stop_after: st
         log_active_signal(active_signal)
         initialized_dirs = set(run_state.initialized_signal_context_dirs)
         address = socket_address(config.config_path)
-        if _has_signal_gated_triggers(config):
-            signal_socket = bind_pull_socket(address)
-            LOGGER.info("Listening for external signals on %s", address)
+        signal_socket = bind_pull_socket(address)
+        LOGGER.info("Listening for external signals on %s", address)
         run_execution_schedule(
             config,
             run_state.initial_execution,
@@ -246,9 +245,8 @@ def _run_fresh(
     signal_socket = None
     address = socket_address(config.config_path)
     try:
-        if _has_signal_gated_triggers(config):
-            signal_socket = bind_pull_socket(address)
-            LOGGER.info("Listening for external signals on %s", address)
+        signal_socket = bind_pull_socket(address)
+        LOGGER.info("Listening for external signals on %s", address)
         run_execution_schedule(
             config,
             initial_execution.name,
@@ -358,12 +356,6 @@ def validate_command(config_value: str) -> int:
 def _validate_stop_after(stop_after: str, config: Config) -> None:
     if stop_after not in config.executions:
         raise PropagateError(f"--stop-after execution '{stop_after}' not found in config.")
-
-
-def _has_signal_gated_triggers(config: Config) -> bool:
-    return any(trigger.on_signal is not None for trigger in config.propagation_triggers)
-
-
 def _log_resume_hint(config_path: Path) -> None:
     if state_file_path(config_path).exists():
         LOGGER.error("Use --resume to continue from where it left off.")
