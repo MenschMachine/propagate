@@ -17,7 +17,6 @@ from .git_publish import (
     remove_pr_labels,
     split_commit_message,
 )
-from .git_templates import render_git_template
 from .git_repo import (
     ensure_clean_working_tree,
     ensure_git_repository,
@@ -26,6 +25,7 @@ from .git_repo import (
     resolve_execution_branch_name,
     working_tree_has_changes,
 )
+from .git_templates import render_git_template
 from .models import (
     GitBranchConfig,
     GitCommitConfig,
