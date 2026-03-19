@@ -107,6 +107,10 @@ def git_do_pr(execution_name: str, git_config: GitConfig, runtime_context: Runti
 
 
 def git_do_publish(execution_name: str, git_config: GitConfig, runtime_context: RuntimeContext) -> None:
+    if git_config.push is None or git_config.pr is None:
+        raise PropagateError(
+            f"Execution '{execution_name}' git:publish requires both git.push and git.pr to be configured."
+        )
     git_do_commit(execution_name, git_config, runtime_context)
     git_do_push(execution_name, git_config, runtime_context)
     git_do_pr(execution_name, git_config, runtime_context)

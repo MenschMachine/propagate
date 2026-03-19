@@ -49,18 +49,33 @@ def run_execution_schedule(
         activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
     if stop_after is not None:
         _warn_if_stop_after_unreachable(config, initial_execution_name, stop_after, schedule_state)
+    current_runtime_context = runtime_context
     if run_state is not None:
-        _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
+        _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
     reconciled_triggers: set[tuple[str, str, str]] = set()
     while True:
         if signal_socket is not None:
-            _drain_incoming_signals(signal_socket, config, execution_graph, schedule_state, received_signal_types)
+            current_runtime_context = _drain_incoming_signals(
+                signal_socket,
+                config,
+                execution_graph,
+                schedule_state,
+                received_signal_types,
+                current_runtime_context,
+            )
         execution_name = select_next_runnable_execution(config, execution_graph, schedule_state)
         if execution_name is None:
             if reconcile_pending_signals(config, execution_graph, schedule_state, received_signal_types, reconciled_triggers):
                 continue
             if signal_socket is not None and has_pending_signal_triggers(config, execution_graph, schedule_state, received_signal_types):
-                _wait_for_signal(signal_socket, config, execution_graph, schedule_state, received_signal_types, runtime_context)
+                current_runtime_context = _wait_for_signal(
+                    signal_socket,
+                    config,
+                    execution_graph,
+                    schedule_state,
+                    received_signal_types,
+                    current_runtime_context,
+                )
                 continue
             if schedule_state.completed_names == schedule_state.active_names:
                 if run_state is not None:
@@ -72,7 +87,7 @@ def run_execution_schedule(
         config = _ensure_repo_cloned(config, execution.repository, run_state)
         completed_task_phases = schedule_state.completed_tasks.get(execution_name, {})
         completed_execution_phase = schedule_state.completed_execution_phases.get(execution_name)
-        execution_runtime_context = prepare_execution_runtime_context(config, execution, runtime_context)
+        execution_runtime_context = prepare_execution_runtime_context(config, execution, current_runtime_context)
 
         def on_phase_completed(exec_name: str, task_id: str, phase: str) -> None:
             if task_id:
@@ -80,10 +95,18 @@ def run_execution_schedule(
             else:
                 schedule_state.completed_execution_phases[exec_name] = phase
             if run_state is not None:
-                _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
+                _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
 
         try:
-            run_configured_execution(execution, execution_runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase)
+            current_runtime_context = run_configured_execution(
+                execution,
+                execution_runtime_context,
+                completed_task_phases,
+                on_phase_completed,
+                completed_execution_phase,
+                lambda updated_context: _sync_and_save(run_state, schedule_state, updated_context, received_signal_types)
+                if run_state is not None else None,
+            )
         except PropagateError as error:
             raise wrap_execution_runtime_error(execution, error) from error
         schedule_state.completed_names.add(execution.name)
@@ -91,12 +114,12 @@ def run_execution_schedule(
             config,
             execution_graph,
             execution.name,
-            runtime_context.active_signal,
+            current_runtime_context.active_signal,
             schedule_state.active_names,
             schedule_state.completed_names,
         )
         if run_state is not None:
-            _sync_and_save(run_state, schedule_state, runtime_context, received_signal_types)
+            _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
         if stop_after is not None and execution.name == stop_after:
             LOGGER.info("Stopping after execution '%s' as requested by --stop-after.", execution.name)
             return
@@ -127,6 +150,7 @@ def _sync_and_save(
         completed_tasks={name: dict(phases) for name, phases in schedule_state.completed_tasks.items()},
         completed_execution_phases=dict(schedule_state.completed_execution_phases),
     )
+    run_state.active_signal = runtime_context.active_signal
     run_state.initialized_signal_context_dirs = set(runtime_context.initialized_signal_context_dirs)
     if received_signal_types is not None:
         run_state.received_signal_types = set(received_signal_types)
@@ -223,12 +247,16 @@ def _drain_incoming_signals(
     execution_graph: ExecutionGraph,
     schedule_state: ExecutionScheduleState,
     received_signal_types: set[str],
-) -> None:
+    runtime_context: RuntimeContext,
+) -> RuntimeContext:
+    current_runtime_context = runtime_context
     while True:
         result = receive_signal(signal_socket, block=False)
         if result is None:
-            return
-        _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
+            return current_runtime_context
+        active_signal = _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
+        if active_signal is not None:
+            current_runtime_context = replace(current_runtime_context, active_signal=active_signal)
 
 
 def _wait_for_signal(
@@ -238,7 +266,7 @@ def _wait_for_signal(
     schedule_state: ExecutionScheduleState,
     received_signal_types: set[str],
     runtime_context: RuntimeContext,
-) -> None:
+) -> RuntimeContext:
     pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
     LOGGER.info("Waiting for external signal (%s)...", ", ".join(sorted(pending)))
     publish_event_if_available(runtime_context.pub_socket, "waiting_for_signal", {
@@ -251,7 +279,7 @@ def _wait_for_signal(
         result = receive_signal(signal_socket, block=True, timeout_ms=1000)
         if result is None:
             continue
-        _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
+        active_signal = _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
         new_pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
         if new_pending != pending:
             signal_type, _ = result
@@ -262,7 +290,9 @@ def _wait_for_signal(
                 "signal": signal_type,
                 "metadata": runtime_context.metadata,
             })
-            return
+            if active_signal is not None:
+                return replace(runtime_context, active_signal=active_signal)
+            return runtime_context
 
 
 def _process_received_signal(
@@ -271,17 +301,17 @@ def _process_received_signal(
     execution_graph: ExecutionGraph,
     schedule_state: ExecutionScheduleState,
     received_signal_types: set[str],
-) -> None:
+) -> ActiveSignal | None:
     signal_type, payload = result
     if signal_type not in config.signals:
         LOGGER.warning("Received unknown signal '%s'; ignoring.", signal_type)
-        return
+        return None
     signal_config = config.signals[signal_type]
     try:
         validate_signal_payload(signal_config, payload)
     except PropagateError as error:
         LOGGER.warning("Received signal '%s' with invalid payload: %s; ignoring.", signal_type, error)
-        return
+        return None
     LOGGER.info("Received external signal '%s'.", signal_type)
     received_signal_types.add(signal_type)
     active_signal = ActiveSignal(signal_type=signal_type, payload=payload, source="external")
@@ -294,6 +324,7 @@ def _process_received_signal(
             schedule_state.active_names,
             schedule_state.completed_names,
         )
+    return active_signal
 
 
 def _pending_signal_types(

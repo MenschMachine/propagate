@@ -85,3 +85,13 @@ def test_render_git_template_validates_context_keys_before_read(tmp_path):
     rc = _make_runtime_context(tmp_path)
     with pytest.raises(PropagateError):
         render_git_template("value-{context[../secret]}", rc)
+
+
+def test_render_git_template_rejects_invalid_scoped_context_paths(tmp_path):
+    context_dir = tmp_path / "my-exec"
+    ensure_context_dir(context_dir)
+    (tmp_path / "other-exec").mkdir()
+
+    rc = _make_runtime_context(tmp_path)
+    with pytest.raises(PropagateError, match="must not contain '.' or '..'"):
+        render_git_template("value-{context[../other-exec][:source-backend-pr-number]}", rc)

@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
+from propagate_app.execution_flow import run_configured_execution
 from propagate_app.config_executions import parse_sub_task
 from propagate_app.errors import PropagateError
 from propagate_app.models import (
+    ActiveSignal,
     ExecutionConfig,
     RuntimeContext,
     SignalConfig,
@@ -352,6 +354,114 @@ def test_wait_for_signal_runs_before_and_after_hooks(tmp_path):
         assert ran_tasks == ["done"]
         assert marker_before.exists(), "before hook should have run"
         assert marker_after.exists(), "after hook should have run"
+    finally:
+        close_pull_socket(socket, address)
+
+
+def test_wait_for_signal_updates_active_signal_for_following_tasks(tmp_path):
+    address = socket_address(tmp_path / "test-active-signal.yaml")
+    socket = bind_pull_socket(address)
+    try:
+        sub_tasks = [
+            _make_wait_task("wait", "pull_request.labeled", [
+                SubTaskRouteConfig(when={"label": "approved"}, continue_flow=True),
+            ]),
+            _make_sub_task("done"),
+        ]
+        execution = ExecutionConfig(
+            name="my-exec", repository="repo", depends_on=[], signals=[],
+            sub_tasks=sub_tasks, git=None,
+        )
+        rc = RuntimeContext(
+            agent_command="echo",
+            context_sources={},
+            active_signal=ActiveSignal(
+                signal_type="pull_request.labeled",
+                payload={"label": "suggestions_needed", "repository": "org/repo", "pr_number": 1},
+                source="initial",
+            ),
+            initialized_signal_context_dirs=set(),
+            working_dir=Path("."),
+            context_root=tmp_path,
+            execution_name="my-exec",
+            task_id="",
+            signal_socket=socket,
+        )
+
+        observed_pr_numbers = []
+
+        def send():
+            push = connect_push_socket(address)
+            send_signal(push, "pull_request.labeled", {"label": "approved", "repository": "org/repo", "pr_number": 99})
+            close_push_socket(push)
+
+        def tracking_run(exec_name, sub_task, rt_ctx, git_config=None, completed_phase=None, on_phase_completed=None):
+            observed_pr_numbers.append(rt_ctx.active_signal.payload["pr_number"])
+
+        t = threading.Thread(target=send, daemon=True)
+        t.start()
+
+        with patch("propagate_app.sub_tasks.run_sub_task", side_effect=tracking_run):
+            run_execution_sub_tasks(execution, rc)
+
+        t.join(timeout=5)
+        assert observed_pr_numbers == [99]
+    finally:
+        close_pull_socket(socket, address)
+
+
+def test_wait_for_signal_updates_active_signal_for_execution_after_hooks(tmp_path):
+    address = socket_address(tmp_path / "test-after-hooks-signal.yaml")
+    socket = bind_pull_socket(address)
+    try:
+        observed_pr_numbers = []
+        execution = ExecutionConfig(
+            name="my-exec",
+            repository="repo",
+            depends_on=[],
+            signals=[],
+            sub_tasks=[
+                _make_wait_task(
+                    "wait",
+                    "pull_request.labeled",
+                    [SubTaskRouteConfig(when={"label": "approved"}, continue_flow=True)],
+                ),
+            ],
+            git=None,
+            after=["echo done"],
+        )
+        rc = RuntimeContext(
+            agent_command="echo",
+            context_sources={},
+            active_signal=ActiveSignal(
+                signal_type="pull_request.labeled",
+                payload={"label": "suggestions_needed", "repository": "org/repo", "pr_number": 1},
+                source="initial",
+            ),
+            initialized_signal_context_dirs=set(),
+            working_dir=Path("."),
+            context_root=tmp_path,
+            execution_name="my-exec",
+            task_id="",
+            signal_socket=socket,
+        )
+
+        def send():
+            push = connect_push_socket(address)
+            send_signal(push, "pull_request.labeled", {"label": "approved", "repository": "org/repo", "pr_number": 99})
+            close_push_socket(push)
+
+        def fake_run_hook_phase(context_id, phase, actions, runtime_context, git_config=None):
+            if context_id == "execution 'my-exec'" and phase == "after":
+                observed_pr_numbers.append(runtime_context.active_signal.payload["pr_number"])
+
+        t = threading.Thread(target=send, daemon=True)
+        t.start()
+        with patch("propagate_app.execution_flow.run_hook_phase", side_effect=fake_run_hook_phase):
+            run_configured_execution(execution, rc)
+        t.join(timeout=5)
+
+        assert observed_pr_numbers == [99]
     finally:
         close_pull_socket(socket, address)
 

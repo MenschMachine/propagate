@@ -62,9 +62,10 @@ executions:
         prompt: ./prompts/pdfdancer/implement-api-docs-from-backend-pr.md
       - id: summarize
         prompt: ./prompts/pdfdancer/summarize-api-docs-from-backend-pr.md
-      - id: wait-for-verdict
+      - id: publish
         before:
           - git:publish
+      - id: wait-for-verdict
         wait_for_signal: pull_request.labeled
         routes:
           - when:

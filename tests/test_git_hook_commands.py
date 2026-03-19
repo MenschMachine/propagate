@@ -577,3 +577,30 @@ def test_git_push_without_branch_raises_at_runtime(git_ctx: SimpleNamespace) -> 
     result = _run_cli("run", "--config", str(git_ctx.config_path), cwd=git_ctx.repo)
     assert result.returncode == 1
     assert "git:push requires git:branch" in result.stderr
+
+
+def test_git_publish_without_push_and_pr_raises_at_runtime(git_ctx: SimpleNamespace) -> None:
+    _write_config(
+        git_ctx,
+        {
+            "version": "6",
+            "agent": {"command": _agent_cmd(git_ctx.mutate_script, git_ctx.target_file)},
+            "repositories": {"repo": {"path": str(git_ctx.repo)}},
+            "context_sources": {"commit-msg": {"command": _emit_cmd(git_ctx, "feat: publish-no-pr\n")}},
+            "executions": {
+                "default": {
+                    "repository": "repo",
+                    "git": {
+                        "branch": {"name": "feat/publish-no-pr", "base": "main"},
+                        "commit": {"message_source": "commit-msg"},
+                    },
+                    "before": ["git:branch"],
+                    "after": ["git:publish"],
+                    "sub_tasks": [{"id": "task", "prompt": "./prompts/task.md"}],
+                }
+            },
+        },
+    )
+    result = _run_cli("run", "--config", str(git_ctx.config_path), cwd=git_ctx.repo)
+    assert result.returncode == 1
+    assert "git:publish requires both git.push and git.pr" in result.stderr

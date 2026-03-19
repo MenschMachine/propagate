@@ -14,7 +14,8 @@ def run_configured_execution(
     completed_task_phases: dict[str, str] | None = None,
     on_phase_completed: Callable[[str, str, str], None] | None = None,
     completed_execution_phase: str | None = None,
-) -> None:
+    on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
+) -> RuntimeContext:
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
     if execution.git and (completed_task_phases or completed_execution_phase):
         git_state = restore_git_run_state(runtime_context)
@@ -29,7 +30,13 @@ def run_configured_execution(
             run_hook_phase(context_id, "before", execution.before, ctx, execution.git)
             if on_phase_completed is not None and execution.before:
                 on_phase_completed(execution.name, "", PHASE_BEFORE)
-        run_execution_sub_tasks(execution, ctx, completed_task_phases, on_phase_completed)
+        ctx = run_execution_sub_tasks(
+            execution,
+            ctx,
+            completed_task_phases,
+            on_phase_completed,
+            on_runtime_context_updated,
+        )
         if completed_execution_phase == PHASE_AFTER:
             LOGGER.info("Skipping already completed execution 'after' hooks for '%s'.", execution.name)
         else:
@@ -45,3 +52,4 @@ def run_configured_execution(
             raise PropagateError(f"{str(error).rstrip('.')}; {on_failure_error}") from on_failure_error
         raise
     LOGGER.info("Execution '%s' completed successfully.", execution.name)
+    return ctx

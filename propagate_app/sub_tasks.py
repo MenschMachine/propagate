@@ -47,7 +47,9 @@ def run_execution_sub_tasks(
     runtime_context: RuntimeContext,
     completed_task_phases: dict[str, str] | None = None,
     on_phase_completed: Callable[[str, str, str], None] | None = None,
-) -> None:
+    on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
+) -> RuntimeContext:
+    current_runtime_context = runtime_context
     task_phases = dict(completed_task_phases or {})
     task_index = 0
     while task_index < len(execution.sub_tasks):
@@ -57,23 +59,33 @@ def run_execution_sub_tasks(
             LOGGER.info("Skipping already completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution.name)
             task_index += 1
             continue
-        if sub_task.when is not None and not evaluate_when_condition(sub_task.when, runtime_context):
+        if sub_task.when is not None and not evaluate_when_condition(sub_task.when, current_runtime_context):
             LOGGER.info("Skipping sub-task '%s' for execution '%s': 'when' condition '%s' is not met.", sub_task.task_id, execution.name, sub_task.when)
             task_index += 1
             continue
         if sub_task.wait_for_signal is not None:
-            task_runtime_context = replace(runtime_context, task_id=sub_task.task_id)
+            task_runtime_context = replace(current_runtime_context, task_id=sub_task.task_id)
             context_id = f"sub-task '{sub_task.task_id}'"
             run_sub_task_hook_phase(sub_task, "before", sub_task.before, task_runtime_context, execution.git, context_id)
-            goto_index = _handle_wait_for_signal(execution, sub_task, runtime_context, task_phases, on_phase_completed)
+            goto_index, current_runtime_context = _handle_wait_for_signal(
+                execution,
+                sub_task,
+                current_runtime_context,
+                task_phases,
+                on_phase_completed,
+            )
+            if on_runtime_context_updated is not None:
+                on_runtime_context_updated(current_runtime_context)
+            task_runtime_context = replace(task_runtime_context, active_signal=current_runtime_context.active_signal)
             run_sub_task_hook_phase(sub_task, "after", sub_task.after, task_runtime_context, execution.git, context_id)
             if goto_index is not None:
                 task_index = goto_index
             else:
                 task_index += 1
             continue
-        run_sub_task(execution.name, sub_task, runtime_context, execution.git, task_phase, on_phase_completed)
+        run_sub_task(execution.name, sub_task, current_runtime_context, execution.git, task_phase, on_phase_completed)
         task_index += 1
+    return current_runtime_context
 
 
 def evaluate_when_condition(when: str, runtime_context: RuntimeContext) -> bool:
@@ -91,7 +103,7 @@ def _handle_wait_for_signal(
     runtime_context: RuntimeContext,
     task_phases: dict[str, str],
     on_phase_completed: Callable[[str, str, str], None] | None,
-) -> int | None:
+) -> tuple[int | None, RuntimeContext]:
     """Handle a wait_for_signal sub-task. Returns goto index or None to continue."""
     LOGGER.info(
         "Sub-task '%s' waiting for signal '%s' for execution '%s'.",
@@ -107,7 +119,8 @@ def _handle_wait_for_signal(
     task_id_to_index = {t.task_id: i for i, t in enumerate(execution.sub_tasks)}
 
     # Block on ZMQ socket for incoming signal
-    matched_route = _wait_for_matching_signal(sub_task, runtime_context)
+    matched_route, active_signal = _wait_for_matching_signal(sub_task, runtime_context)
+    updated_runtime_context = replace(runtime_context, active_signal=active_signal)
 
     LOGGER.info("Signal '%s' received; resuming execution '%s'.", sub_task.wait_for_signal, execution.name)
     publish_event_if_available(runtime_context.pub_socket, "signal_received", {
@@ -123,7 +136,7 @@ def _handle_wait_for_signal(
 
     if matched_route.continue_flow:
         LOGGER.info("Route matched with 'continue' for sub-task '%s'.", sub_task.task_id)
-        return None
+        return None, updated_runtime_context
 
     # goto — reset task phases from the target onward
     goto_id = matched_route.goto
@@ -132,7 +145,7 @@ def _handle_wait_for_signal(
     for i in range(goto_index, len(execution.sub_tasks)):
         tid = execution.sub_tasks[i].task_id
         task_phases.pop(tid, None)
-    return goto_index
+    return goto_index, updated_runtime_context
 
 
 def _wait_for_matching_signal(sub_task: SubTaskConfig, runtime_context: RuntimeContext):
@@ -163,7 +176,7 @@ def _wait_for_matching_signal(sub_task: SubTaskConfig, runtime_context: RuntimeC
         # Match payload against routes
         for route in sub_task.routes:
             if signal_payload_matches_when(payload, route.when):
-                return route
+                return route, active_signal
         unmatched_count += 1
         LOGGER.warning(
             "Signal '%s' payload matched no route (%d unmatched so far); continuing to wait.",

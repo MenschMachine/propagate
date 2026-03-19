@@ -77,10 +77,11 @@ def resolve_context_dir_for_read(
 
 
 def _validate_task_path(task_path: str) -> None:
-    if "/" in task_path:
-        parts = task_path.split("/")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            raise PropagateError(f"--task value must be 'execution' or 'execution/task', got: '{task_path}'")
+    parts = task_path.split("/")
+    if len(parts) > 2 or any(not part for part in parts):
+        raise PropagateError(f"--task value must be 'execution' or 'execution/task', got: '{task_path}'")
+    if any(part in {".", ".."} for part in parts):
+        raise PropagateError(f"--task value must not contain '.' or '..' path components: '{task_path}'")
 
 
 def clear_all_context(context_root: Path) -> bool:
