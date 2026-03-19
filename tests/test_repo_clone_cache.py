@@ -171,7 +171,7 @@ def test_config_parsing_repo_cache_dir_absent(tmp_path, minimal_config_data):
     path = tmp_path / "propagate.yaml"
     path.write_text(yaml.dump(minimal_config_data))
     config = load_config(path)
-    assert config.repo_cache_dir is None
+    assert config.repo_cache_dir == (tmp_path / ".repo-cache").resolve()
 
 
 def test_env_clone_dir_bypasses_cache(tmp_path, repo, monkeypatch):

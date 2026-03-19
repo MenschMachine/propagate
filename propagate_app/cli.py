@@ -310,11 +310,18 @@ def clear_command(config_value: str, force: bool = False) -> int:
     config_path = Path(config_value).expanduser().resolve()
     if not config_path.exists():
         raise PropagateError(f"Config file not found: {config_path}")
-    context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
-    context_root = Path(context_root_env) if context_root_env else get_context_root(config_path)
     cleared = []
-    if clear_all_context(context_root):
-        cleared.append(f"context ({context_root})")
+    context_roots: list[Path] = []
+    default_context_root = get_context_root(config_path)
+    context_roots.append(default_context_root)
+    context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
+    if context_root_env:
+        env_context_root = Path(context_root_env).expanduser().resolve()
+        if env_context_root not in context_roots:
+            context_roots.append(env_context_root)
+    for context_root in context_roots:
+        if clear_all_context(context_root):
+            cleared.append(f"context ({context_root})")
     state_path = state_file_path(config_path)
     cloned_repos: dict[str, Path] = {}
     if force:

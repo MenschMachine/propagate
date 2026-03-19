@@ -41,15 +41,13 @@ If not set, clones land in the system temp directory.
 
 ## `repo_cache_dir`
 
-**Optional.** Directory for persistent bare-repo clone caches. When set, each remote repository is cloned once as a bare repo under `{repo_cache_dir}/{name}.git` and refreshed (`git fetch`) on subsequent runs. Each execution gets a fresh local clone from the bare repo, which is faster than a full remote clone.
+**Optional.** Directory for persistent bare-repo clone caches. Each remote repository is cloned once as a bare repo under `{repo_cache_dir}/{name}.git` and refreshed (`git fetch`) on subsequent runs. Each execution gets a fresh local clone from the bare repo, which is faster than a full remote clone.
 
-Relative paths are resolved from the config file directory. Safe for concurrent runs: a per-repo file lock (`fcntl.LOCK_EX`) serialises bare-repo access.
+Defaults to `.repo-cache` relative to the config file. Relative paths are resolved from the config file directory. Safe for concurrent runs: a per-repo file lock (`fcntl.LOCK_EX`) serialises bare-repo access.
 
 ```yaml
-repo_cache_dir: ./cache
+repo_cache_dir: ./cache   # default: .repo-cache
 ```
-
-If not set, each run performs a full remote clone (existing behaviour).
 
 ---
 

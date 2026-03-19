@@ -100,6 +100,21 @@ def test_clear_respects_context_root_env(tmp_path, monkeypatch):
     assert not get_context_root(config_path).exists()
 
 
+def test_clear_also_removes_default_context_when_context_root_env_is_set(tmp_path, monkeypatch):
+    config_path = _write_config(tmp_path)
+    default_root = _create_context(config_path)
+    custom_root = tmp_path / "custom-context"
+    custom_root.mkdir()
+    (custom_root / "key").write_text("value")
+    monkeypatch.setenv("PROPAGATE_CONTEXT_ROOT", str(custom_root))
+
+    result = main(["clear", "--config", str(config_path)])
+
+    assert result == 0
+    assert not default_root.exists()
+    assert not custom_root.exists()
+
+
 def test_clear_force_deletes_cloned_repos(tmp_path):
     config_path = _write_config(tmp_path)
     clone_dir = tmp_path / "project-repo-abc123"
