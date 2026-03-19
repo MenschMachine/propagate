@@ -72,9 +72,8 @@ def _run_with_event_publish(
         })
 
 
-def serve_command(config_value: str, resume: bool | str = False) -> int:
-    config_path = Path(config_value).expanduser()
-    config = load_config(config_path)
+def _bind_worker_sockets(config: Config) -> tuple[zmq.Socket, str, zmq.Socket, str]:
+    """Bind PULL + PUB sockets for a single config. Returns (pull, pull_addr, pub, pub_addr)."""
     address = socket_address(config.config_path)
     signal_socket = bind_pull_socket(address)
     LOGGER.info("Listening for signals on %s", address)
@@ -82,13 +81,98 @@ def serve_command(config_value: str, resume: bool | str = False) -> int:
     pub_address = pub_socket_address(config.config_path)
     pub_socket = bind_pub_socket(pub_address)
     LOGGER.info("Publishing events on %s", pub_address)
+    return signal_socket, address, pub_socket, pub_address
 
+
+def _run_worker_loop(
+    config: Config,
+    signal_socket: zmq.Socket,
+    address: str,
+    pub_socket: zmq.Socket,
+    pub_address: str,
+    shutdown: threading.Event,
+    resume: bool | str = False,
+) -> None:
+    """Attach log handler, resume if needed, enter serve loop. Cleans up on exit."""
     zmq_log_handler = ZmqLogHandler(pub_socket)
     zmq_log_handler.setFormatter(logging.Formatter(
         "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     ))
+    thread_ident = threading.current_thread().ident
+
+    class _ThreadFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return record.thread == thread_ident
+
+    if threading.current_thread() is not threading.main_thread():
+        zmq_log_handler.addFilter(_ThreadFilter())
+
     logging.getLogger().addHandler(zmq_log_handler)
+
+    resume_target = resume if isinstance(resume, str) else None
+    config_path = config.config_path
+    try:
+        if resume and not state_file_path(config_path).exists():
+            LOGGER.warning("--resume requested but no state file found; starting fresh.")
+        elif state_file_path(config_path).exists():
+            if resume_target:
+                apply_forced_resume_if_targeted(config_path, config, resume_target)
+            else:
+                LOGGER.info("Found existing state file, resuming previous run.")
+            try:
+                _resume_run(config, signal_socket, pub_socket)
+            except PropagateError as error:
+                LOGGER.error("Resume failed: %s", error)
+        _serve_loop(config, signal_socket, shutdown, pub_socket)
+    finally:
+        logging.getLogger().removeHandler(zmq_log_handler)
+        close_pull_socket(signal_socket, address)
+        close_pub_socket(pub_socket, pub_address)
+
+
+def serve_worker_command(config_value: str, resume: bool | str = False) -> int:
+    """Entry point for the ``serve-worker`` subcommand (spawned by coordinator)."""
+    import sys
+
+    config_path = Path(config_value).expanduser()
+    config = load_config(config_path)
+    shutdown = threading.Event()
+
+    def handle_shutdown(signum: int, frame: object) -> None:
+        if shutdown.is_set():
+            raise KeyboardInterrupt
+        LOGGER.debug("Worker received shutdown signal.")
+        shutdown.set()
+
+    signal_module.signal(signal_module.SIGTERM, handle_shutdown)
+    signal_module.signal(signal_module.SIGINT, handle_shutdown)
+
+    signal_socket, address, pub_socket, pub_address = _bind_worker_sockets(config)
+    # Tell the coordinator we are ready.
+    sys.stdout.write("READY\n")
+    sys.stdout.flush()
+    try:
+        _run_worker_loop(config, signal_socket, address, pub_socket, pub_address, shutdown, resume)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def serve_command(config_values: list[str], resume: bool | str = False) -> int:
+    from .coordinator import Coordinator
+
+    # Validate config stems are unique upfront.
+    seen_stems: dict[str, str] = {}
+    for cv in config_values:
+        config_path = Path(cv).expanduser()
+        stem = config_path.stem
+        if stem in seen_stems:
+            raise PropagateError(
+                f"Duplicate config name '{stem}' from '{cv}' and '{seen_stems[stem]}'. "
+                "Config filenames must be unique."
+            )
+        seen_stems[stem] = cv
 
     shutdown = threading.Event()
 
@@ -103,25 +187,13 @@ def serve_command(config_value: str, resume: bool | str = False) -> int:
     previous_sigint = signal_module.getsignal(signal_module.SIGINT)
     signal_module.signal(signal_module.SIGTERM, handle_shutdown)
     signal_module.signal(signal_module.SIGINT, handle_shutdown)
-    resume_target = resume if isinstance(resume, str) else None
+
     try:
-        if resume and not state_file_path(config_path).exists():
-            LOGGER.warning("--resume requested but no state file found; starting fresh.")
-        elif state_file_path(config_path).exists():
-            if resume_target:
-                apply_forced_resume_if_targeted(config_path, config, resume_target)
-            else:
-                LOGGER.info("Found existing state file, resuming previous run.")
-            try:
-                _resume_run(config, signal_socket, pub_socket)
-            except PropagateError as error:
-                LOGGER.error("Resume failed: %s", error)
-        _serve_loop(config, signal_socket, shutdown, pub_socket)
+        coordinator = Coordinator(shutdown)
+        coordinator.start(config_values, resume)
+        coordinator.run()
         return 0
     finally:
-        logging.getLogger().removeHandler(zmq_log_handler)
-        close_pull_socket(signal_socket, address)
-        close_pub_socket(pub_socket, pub_address)
         signal_module.signal(signal_module.SIGTERM, previous_sigterm)
         signal_module.signal(signal_module.SIGINT, previous_sigint)
 
@@ -229,7 +301,11 @@ def _handle_incoming_signal(
         return
     active_signal = ActiveSignal(signal_type=signal_type, payload=payload, source="external")
     LOGGER.info("Received signal '%s', selecting execution.", signal_type)
-    initial_execution = select_initial_execution(config, None, active_signal)
+    try:
+        initial_execution = select_initial_execution(config, None, active_signal)
+    except PropagateError as error:
+        LOGGER.warning("Signal '%s' ignored: %s", signal_type, error)
+        return
     run_metadata = metadata or {}
     run_state = RunState(
         config_path=config.config_path,

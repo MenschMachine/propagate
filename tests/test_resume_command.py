@@ -122,6 +122,7 @@ def _make_config(tmp_path, signals=None):
     )
 
 
+@pytest.mark.slow
 def test_serve_handles_resume_command_with_state_file(tmp_path):
     signal_cfg = SignalConfig(name="go", payload={})
     config = _make_config(tmp_path, signals={"go": signal_cfg})
@@ -162,6 +163,7 @@ def test_serve_handles_resume_command_with_state_file(tmp_path):
     assert resume_called == [True]
 
 
+@pytest.mark.slow
 def test_serve_handles_resume_command_without_state_file(tmp_path, caplog):
     signal_cfg = SignalConfig(name="go", payload={})
     config = _make_config(tmp_path, signals={"go": signal_cfg})
@@ -200,6 +202,7 @@ def test_serve_handles_resume_command_without_state_file(tmp_path, caplog):
     assert any("nothing to resume" in r.message.lower() for r in caplog.records)
 
 
+@pytest.mark.slow
 def test_serve_ignores_unknown_command(tmp_path, caplog):
     config = _make_config(tmp_path)
 
@@ -243,11 +246,15 @@ def _make_update(user_id, username, text=None):
 
 
 def _make_context(push_socket, allowed_users):
+    from propagate_telegram.bot import ProjectState
+
+    project = ProjectState(name="default", config_signals={})
     context = MagicMock()
     context.bot_data = {
-        "config_signals": {},
-        "push_socket": push_socket,
+        "projects": {"default": project},
+        "active_project": {},
         "allowed_users": allowed_users,
+        "push_socket": push_socket,
     }
     return context
 

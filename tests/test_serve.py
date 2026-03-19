@@ -2,6 +2,8 @@ import threading
 import time
 from unittest.mock import patch
 
+import pytest
+
 from propagate_app.errors import PropagateError
 from propagate_app.models import (
     AgentConfig,
@@ -55,6 +57,7 @@ def make_execution(name, repository="repo", depends_on=None, signals=None):
     )
 
 
+@pytest.mark.slow
 def test_serve_receives_signal_and_runs_execution(tmp_path):
     exec_a = make_execution(
         "a",
@@ -93,6 +96,7 @@ def test_serve_receives_signal_and_runs_execution(tmp_path):
     assert executions_run == ["a"]
 
 
+@pytest.mark.slow
 def test_serve_continues_after_failed_run(tmp_path):
     exec_a = make_execution(
         "a",
@@ -136,6 +140,7 @@ def test_serve_continues_after_failed_run(tmp_path):
     assert call_count == 2
 
 
+@pytest.mark.slow
 def test_serve_rejects_unknown_signal(tmp_path):
     exec_a = make_execution(
         "a",
@@ -174,6 +179,7 @@ def test_serve_rejects_unknown_signal(tmp_path):
     assert executions_run == []
 
 
+@pytest.mark.slow
 def test_serve_rejects_invalid_payload(tmp_path):
     exec_a = make_execution(
         "a",
@@ -217,6 +223,9 @@ def test_serve_rejects_invalid_payload(tmp_path):
 
 
 def test_serve_auto_resumes_on_startup(tmp_path):
+    """Worker auto-resumes when a state file exists on startup."""
+    from propagate_app.serve import _bind_worker_sockets, _run_worker_loop
+
     exec_a = make_execution(
         "a",
         signals=[ExecutionSignalConfig(signal_name="go")],
@@ -229,7 +238,7 @@ def test_serve_auto_resumes_on_startup(tmp_path):
     def mock_resume_run(config, signal_socket, pub_socket=None, metadata=None):
         resume_called.append(True)
 
-    # Create a fake state file so serve_command detects it
+    # Create a fake state file so the worker detects it
     from propagate_app.run_state import state_file_path
     state_path = state_file_path(config.config_path)
     state_path.touch()
@@ -241,16 +250,17 @@ def test_serve_auto_resumes_on_startup(tmp_path):
         with (
             patch("propagate_app.serve._resume_run", side_effect=mock_resume_run),
             patch("propagate_app.serve._serve_loop", side_effect=mock_serve_loop),
-            patch("propagate_app.serve.load_config", return_value=config),
         ):
-            result = serve_command(str(config.config_path))
+            shutdown = threading.Event()
+            sig_sock, addr, pub_sock, pub_addr = _bind_worker_sockets(config)
+            _run_worker_loop(config, sig_sock, addr, pub_sock, pub_addr, shutdown)
 
         assert resume_called == [True]
-        assert result == 0
     finally:
         state_path.unlink(missing_ok=True)
 
 
+@pytest.mark.slow
 def test_serve_passes_signal_socket_to_scheduler(tmp_path):
     exec_a = make_execution(
         "a",
@@ -308,6 +318,7 @@ def test_serve_graceful_shutdown_via_event(tmp_path):
     # If we get here, the loop exited cleanly
 
 
+@pytest.mark.slow
 def test_serve_malformed_message_ignored(tmp_path):
     exec_a = make_execution(
         "a",
@@ -351,6 +362,7 @@ def test_serve_malformed_message_ignored(tmp_path):
     assert executions_run == ["a"]
 
 
+@pytest.mark.slow
 def test_serve_ambiguous_signal_logs_error_and_continues(tmp_path):
     """When multiple executions accept the same signal, the error is logged
     and the server keeps running."""
@@ -436,7 +448,6 @@ def test_serve_forced_shutdown_on_second_signal(tmp_path):
     """Second shutdown signal raises KeyboardInterrupt to force exit."""
     import signal as signal_module
 
-    from propagate_app.serve import serve_command
 
     exec_a = make_execution(
         "a",
@@ -445,13 +456,9 @@ def test_serve_forced_shutdown_on_second_signal(tmp_path):
     signal_cfg = SignalConfig(name="go", payload={})
     config = make_config(tmp_path, [exec_a], signals={"go": signal_cfg})
 
-    shutdown_event = None
-
-    def mock_serve_loop(cfg, sock, shutdown, pub_socket=None):
-        nonlocal shutdown_event
-        shutdown_event = shutdown
+    def mock_coordinator_run(self):
         # Simulate first signal already received
-        shutdown.set()
+        self._shutdown.set()
         # Now simulate a second SIGINT hitting the handler
         handler = signal_module.getsignal(signal_module.SIGINT)
         # The second call should raise KeyboardInterrupt
@@ -462,9 +469,9 @@ def test_serve_forced_shutdown_on_second_signal(tmp_path):
             pass
 
     with (
-        patch("propagate_app.serve._serve_loop", side_effect=mock_serve_loop),
-        patch("propagate_app.serve.load_config", return_value=config),
+        patch("propagate_app.coordinator.Coordinator.start"),
+        patch("propagate_app.coordinator.Coordinator.run", mock_coordinator_run),
     ):
-        result = serve_command(str(config.config_path))
+        result = serve_command([str(config.config_path)])
 
     assert result == 0

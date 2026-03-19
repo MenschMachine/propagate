@@ -7,6 +7,10 @@ from pathlib import Path
 import zmq
 
 from .constants import LOGGER
+from .models import SignalConfig, SignalFieldConfig
+
+COORDINATOR_ADDRESS = "ipc:///tmp/propagate-coordinator.sock"
+COORDINATOR_PUB_ADDRESS = "ipc:///tmp/propagate-coordinator-pub.sock"
 
 
 def socket_address(config_path: Path) -> str:
@@ -21,7 +25,7 @@ def pub_socket_address(config_path: Path) -> str:
 
 def bind_pull_socket(address: str) -> zmq.Socket:
     _unlink_stale_socket(address)
-    ctx = zmq.Context()
+    ctx = zmq.Context.instance()
     socket = ctx.socket(zmq.PULL)
     socket.bind(address)
     LOGGER.debug("Bound PULL socket on %s", address)
@@ -29,7 +33,7 @@ def bind_pull_socket(address: str) -> zmq.Socket:
 
 
 def connect_push_socket(address: str) -> zmq.Socket:
-    ctx = zmq.Context()
+    ctx = zmq.Context.instance()
     socket = ctx.socket(zmq.PUSH)
     socket.setsockopt(zmq.LINGER, 5000)
     socket.connect(address)
@@ -51,6 +55,14 @@ def send_command(socket: zmq.Socket, command: str, metadata: dict | None = None)
         msg["metadata"] = metadata
     socket.send_json(msg)
     LOGGER.debug("Sent command '%s'", command)
+
+
+def send_coordinator_command(socket: zmq.Socket, action: str, metadata: dict | None = None, **kwargs: object) -> None:
+    msg: dict = {"coordinator": action, **kwargs}
+    if metadata:
+        msg["metadata"] = metadata
+    socket.send_json(msg)
+    LOGGER.debug("Sent coordinator command '%s'", action)
 
 
 def _recv_json(socket: zmq.Socket, *, block: bool, timeout_ms: int) -> dict | None:
@@ -100,6 +112,10 @@ def receive_message(
     if data is None:
         return None
     metadata = data.get("metadata") or {}
+    if "coordinator" in data and isinstance(data["coordinator"], str):
+        # Extract only the action-specific kwargs, not the wire envelope.
+        payload = {k: v for k, v in data.items() if k not in ("coordinator", "metadata")}
+        return "coordinator", data["coordinator"], payload, metadata
     if "command" in data and isinstance(data["command"], str):
         return "command", data["command"], {}, metadata
     if "signal_type" in data and "payload" in data:
@@ -109,23 +125,19 @@ def receive_message(
 
 
 def close_pull_socket(socket: zmq.Socket, address: str) -> None:
-    ctx = socket.context
     socket.close()
-    ctx.term()
     _unlink_stale_socket(address)
     LOGGER.debug("Closed PULL socket and cleaned up %s", address)
 
 
 def close_push_socket(socket: zmq.Socket) -> None:
-    ctx = socket.context
     socket.close()
-    ctx.term()
     LOGGER.debug("Closed PUSH socket.")
 
 
 def bind_pub_socket(address: str) -> zmq.Socket:
     _unlink_stale_socket(address)
-    ctx = zmq.Context()
+    ctx = zmq.Context.instance()
     socket = ctx.socket(zmq.PUB)
     socket.bind(address)
     LOGGER.debug("Bound PUB socket on %s", address)
@@ -133,7 +145,7 @@ def bind_pub_socket(address: str) -> zmq.Socket:
 
 
 def connect_sub_socket(address: str) -> zmq.Socket:
-    ctx = zmq.Context()
+    ctx = zmq.Context.instance()
     socket = ctx.socket(zmq.SUB)
     socket.setsockopt(zmq.SUBSCRIBE, b"")
     socket.connect(address)
@@ -169,18 +181,28 @@ def receive_event(socket: zmq.Socket, timeout_ms: int = 1000) -> dict | None:
 
 
 def close_pub_socket(socket: zmq.Socket, address: str) -> None:
-    ctx = socket.context
     socket.close()
-    ctx.term()
     _unlink_stale_socket(address)
     LOGGER.debug("Closed PUB socket and cleaned up %s", address)
 
 
 def close_sub_socket(socket: zmq.Socket) -> None:
-    ctx = socket.context
     socket.close()
-    ctx.term()
     LOGGER.debug("Closed SUB socket.")
+
+
+def parse_signals_from_coordinator(signals_raw: dict) -> dict[str, SignalConfig]:
+    """Build ``dict[str, SignalConfig]`` from the coordinator's wire format."""
+    result: dict[str, SignalConfig] = {}
+    for sig_name, sig_data in signals_raw.items():
+        payload_fields = {}
+        for fname, finfo in sig_data.get("payload", {}).items():
+            payload_fields[fname] = SignalFieldConfig(
+                field_type=finfo.get("field_type", "string"),
+                required=finfo.get("required", False),
+            )
+        result[sig_name] = SignalConfig(name=sig_name, payload=payload_fields)
+    return result
 
 
 def _unlink_stale_socket(address: str) -> None:

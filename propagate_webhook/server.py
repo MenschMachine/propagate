@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
 
@@ -15,7 +14,10 @@ from .github_events import parse_github_event
 logger = logging.getLogger("propagate.webhook")
 
 
-def create_app(config_signals: dict[str, Any], zmq_address: str, secret: str | None = None) -> FastAPI:
+def create_app(
+    zmq_address: str,
+    secret: str | None = None,
+) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         try:
@@ -31,7 +33,6 @@ def create_app(config_signals: dict[str, Any], zmq_address: str, secret: str | N
             logger.info("Disconnected from propagate.")
 
     app = FastAPI(title="propagate-webhook", lifespan=lifespan)
-    app.state.config_signals = config_signals
     app.state.zmq_address = zmq_address
     app.state.secret = secret
     app.state.push_socket = None
@@ -64,16 +65,12 @@ def create_app(config_signals: dict[str, Any], zmq_address: str, secret: str | N
         signal_name, payload = result
         logger.debug("Parsed signal '%s' with payload: %s", signal_name, payload)
 
-        if signal_name not in app.state.config_signals:
-            defined = ", ".join(sorted(app.state.config_signals))
-            logger.info("Signal '%s' not defined in config (defined: %s); ignoring.", signal_name, defined)
-            return {"status": "ignored", "reason": "unknown_signal"}
-
         if app.state.push_socket is None:
             raise HTTPException(status_code=503, detail="Signal transport not connected.")
+
         send_signal(app.state.push_socket, signal_name, payload)
-        logger.info("Delivered signal '%s' for %s.", signal_name, repo)
-        return {"status": "delivered", "signal": signal_name}
+        logger.info("Forwarded signal '%s' for %s to coordinator.", signal_name, repo)
+        return {"status": "forwarded", "signal": signal_name}
 
     return app
 

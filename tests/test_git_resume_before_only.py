@@ -86,6 +86,7 @@ def _emit_cmd(ctx: SimpleNamespace, text: str) -> str:
     return f"{_q(CLI_PYTHON)} {_q(ctx.emit_script)} {shlex.quote(text)}"
 
 
+@pytest.mark.slow
 def test_resume_after_before_hooks_only(ctx: SimpleNamespace) -> None:
     """Before hooks complete, sub-task fails immediately. Resume must restore git state."""
     fail_flag = ctx.scripts_dir / "fail_flag.txt"

@@ -240,6 +240,7 @@ def test_git_branch_in_before_hook_creates_branch(git_ctx: SimpleNamespace) -> N
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_git_commit_in_subtask_after_hook_commits_changes(git_ctx: SimpleNamespace) -> None:
     _write_config(
         git_ctx,
@@ -272,6 +273,7 @@ def test_git_commit_in_subtask_after_hook_commits_changes(git_ctx: SimpleNamespa
     assert git_ctx.target_file.read_text() == "updated\n"
 
 
+@pytest.mark.slow
 def test_git_commit_skips_when_tree_is_clean(git_ctx: SimpleNamespace) -> None:
     _write_config(
         git_ctx,
@@ -309,6 +311,7 @@ def test_git_commit_skips_when_tree_is_clean(git_ctx: SimpleNamespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_git_push_in_after_hook_pushes_branch(git_ctx: SimpleNamespace) -> None:
     _write_config(
         git_ctx,
@@ -376,6 +379,7 @@ def test_execution_on_failure_hook_runs_on_error(git_ctx: SimpleNamespace) -> No
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_git_pr_in_after_hook_invokes_gh(git_ctx: SimpleNamespace, tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

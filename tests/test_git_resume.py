@@ -91,6 +91,7 @@ def _emit_cmd(ctx: SimpleNamespace, text: str) -> str:
     return f"{_q(CLI_PYTHON)} {_q(ctx.emit_script)} {shlex.quote(text)}"
 
 
+@pytest.mark.slow
 def test_resume_preserves_git_state_and_context(resume_ctx: SimpleNamespace) -> None:
     """First run: task1 succeeds (git:branch + context:set), task2 fails.
     Resume: git state restored from repo, context preserved, task2 succeeds, git:push works.
@@ -180,6 +181,7 @@ def test_resume_preserves_git_state_and_context(resume_ctx: SimpleNamespace) -> 
     assert "origin/feat/resume-test" in remote_branches.stdout
 
 
+@pytest.mark.slow
 def test_resume_preserves_execution_context_keys(resume_ctx: SimpleNamespace) -> None:
     """Context keys written by task1's after hook survive into a resumed task2 run."""
     ctx = resume_ctx
@@ -248,6 +250,7 @@ def test_resume_preserves_execution_context_keys(resume_ctx: SimpleNamespace) ->
     assert result_file.read_text(encoding="utf-8") == "my-value"
 
 
+@pytest.mark.slow
 def test_resume_preserves_commit_message_for_pr(resume_ctx: SimpleNamespace) -> None:
     """git:pr on resume uses the commit message persisted by git:commit in the first run."""
     ctx = resume_ctx

@@ -245,6 +245,7 @@ def test_run_log_buffer_empty():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_serve_publishes_event_on_completion(tmp_path):
     exec_a = _make_execution("a", signals=[ExecutionSignalConfig(signal_name="go")])
     signal_cfg = SignalConfig(name="go", payload={})
@@ -292,6 +293,7 @@ def test_serve_publishes_event_on_completion(tmp_path):
     assert isinstance(event["messages"], list)
 
 
+@pytest.mark.slow
 def test_serve_publishes_event_on_failure(tmp_path):
     exec_a = _make_execution("a", signals=[ExecutionSignalConfig(signal_name="go")])
     signal_cfg = SignalConfig(name="go", payload={})
@@ -365,11 +367,15 @@ def _make_update(user_id, username, text, chat_id=111, message_id=222):
 
 
 def _make_context(config_signals, push_socket, allowed_users):
+    from propagate_telegram.bot import ProjectState
+
+    project = ProjectState(name="default", config_signals=config_signals)
     context = MagicMock()
     context.bot_data = {
-        "config_signals": config_signals,
-        "push_socket": push_socket,
+        "projects": {"default": project},
+        "active_project": {},
         "allowed_users": allowed_users,
+        "push_socket": push_socket,
     }
     return context
 
@@ -410,7 +416,7 @@ async def test_handle_signal_sends_metadata(zmq_pair):
 
 
 def test_format_event_reply_completed():
-    from propagate_telegram.bot import _format_event_reply
+    from propagate_app.event_format import format_event_reply as _format_event_reply
 
     reply = _format_event_reply({
         "event": "run_completed",
@@ -423,7 +429,7 @@ def test_format_event_reply_completed():
 
 
 def test_format_event_reply_failed():
-    from propagate_telegram.bot import _format_event_reply
+    from propagate_app.event_format import format_event_reply as _format_event_reply
 
     reply = _format_event_reply({
         "event": "run_failed",
@@ -436,7 +442,7 @@ def test_format_event_reply_failed():
 
 
 def test_format_event_reply_no_messages():
-    from propagate_telegram.bot import _format_event_reply
+    from propagate_app.event_format import format_event_reply as _format_event_reply
 
     reply = _format_event_reply({
         "event": "run_completed",
@@ -533,6 +539,7 @@ async def test_poll_events_sends_reply():
 
     application = MagicMock()
     application.bot.send_message = AsyncMock()
+    application.bot_data = {"response_queue": asyncio.Queue()}
 
     task = asyncio.create_task(_poll_events(application, sub))
 
@@ -575,6 +582,7 @@ async def test_poll_events_skips_event_without_chat_id():
 
     application = MagicMock()
     application.bot.send_message = AsyncMock()
+    application.bot_data = {"response_queue": asyncio.Queue()}
 
     task = asyncio.create_task(_poll_events(application, sub))
 

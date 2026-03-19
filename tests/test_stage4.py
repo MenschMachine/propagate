@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -187,6 +188,7 @@ class PropagateStage4GitTests(unittest.TestCase):
             config_data["context_sources"] = context_sources
         self.config_path.write_text(yaml.dump(config_data, sort_keys=False), encoding="utf-8")
 
+    @pytest.mark.slow
     def test_git_run_creates_branch_commit_push_and_pull_request(self) -> None:
         self.init_repo()
         self.run_git("init", "--bare", str(self.remote_repo), cwd=self.workspace)
@@ -260,6 +262,7 @@ class PropagateStage4GitTests(unittest.TestCase):
         self.assertEqual(gh_invocation["args"][-1], "--draft")
         self.assertEqual(gh_invocation["body"], "\nPR body line")
 
+    @pytest.mark.slow
     def test_git_run_can_source_commit_message_from_reserved_context_key(self) -> None:
         self.init_repo()
         commit_message = "Reserved key message\n\nBody line"
@@ -324,6 +327,7 @@ class PropagateStage4GitTests(unittest.TestCase):
         self.assertEqual(self.target_file.read_text(encoding="utf-8"), "initial content\n")
         self.assertEqual(int(self.run_git("rev-list", "--count", "HEAD").stdout.strip()), 1)
 
+    @pytest.mark.slow
     def test_git_run_reports_execution_phase_and_stderr_when_pr_creation_fails(self) -> None:
         self.init_repo()
         self.run_git("init", "--bare", str(self.remote_repo), cwd=self.workspace)

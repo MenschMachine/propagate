@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from pathlib import Path
 
 from propagate_app.constants import configure_logging
 from propagate_app.errors import PropagateError
@@ -13,7 +12,6 @@ logger = logging.getLogger("propagate.telegram")
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="propagate-telegram", description="Telegram bot bridge for propagate.")
-    parser.add_argument("--config", required=True, help="Path to the propagate YAML config.")
     parser.add_argument("--token", help="Telegram bot token.")
     parser.add_argument("--token-env", help="Environment variable name containing the bot token.")
     parser.add_argument("--allowed-users", help="Comma-separated Telegram user IDs allowed to send commands (default: $TELEGRAM_USERS).")
@@ -47,32 +45,75 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", error)
         return 1
 
-    config_path = Path(args.config).expanduser().resolve()
-
-    try:
-        from propagate_app.config_load import load_config
-        from propagate_app.signal_transport import pub_socket_address, socket_address
-
-        config = load_config(config_path)
-        zmq_address = socket_address(config.config_path)
-        pub_address = pub_socket_address(config.config_path)
-    except Exception as error:
-        logger.error("Failed to load config: %s", error)
-        return 1
-
-    signal_names = sorted(config.signals)
-    logger.info("Loaded %d signal(s): %s", len(signal_names), ", ".join(signal_names))
-
     from .bot import run_bot
 
+    projects = _discover_projects_from_coordinator()
+    if projects is None:
+        logger.warning("Could not discover projects from coordinator at startup. Bot will start with no projects — use /list to refresh.")
+        projects = {}
+
     run_bot(
-        config_signals=config.signals,
-        zmq_address=zmq_address,
+        projects=projects,
         token=token,
         allowed_users=allowed_users,
-        pub_address=pub_address,
     )
     return 0
+
+
+def _discover_projects_from_coordinator() -> dict | None:
+    """Send a list command to the coordinator and build ProjectState objects."""
+    import uuid
+
+    from propagate_app.signal_transport import (
+        COORDINATOR_ADDRESS,
+        COORDINATOR_PUB_ADDRESS,
+        close_push_socket,
+        close_sub_socket,
+        connect_push_socket,
+        connect_sub_socket,
+        receive_event,
+        send_coordinator_command,
+    )
+
+    push = connect_push_socket(COORDINATOR_ADDRESS)
+    sub = connect_sub_socket(COORDINATOR_PUB_ADDRESS)
+    try:
+        import time
+        for attempt in range(3):
+            request_id = str(uuid.uuid4())
+            send_coordinator_command(push, "list", metadata={"request_id": request_id})
+            deadline = time.monotonic() + 3.0
+            while time.monotonic() < deadline:
+                remaining_ms = int((deadline - time.monotonic()) * 1000)
+                if remaining_ms <= 0:
+                    break
+                event = receive_event(sub, timeout_ms=min(remaining_ms, 500))
+                if event is None:
+                    continue
+                if event.get("event") == "coordinator_response" and event.get("request_id") == request_id:
+                    return _parse_project_list(event)
+            logger.debug("Discovery attempt %d/3 timed out, retrying.", attempt + 1)
+        logger.error("Timeout waiting for coordinator list response.")
+        return None
+    finally:
+        close_push_socket(push)
+        close_sub_socket(sub)
+
+
+def _parse_project_list(event: dict) -> dict:
+    from propagate_app.signal_transport import parse_signals_from_coordinator
+
+    from .bot import ProjectState
+
+    data = event.get("data", {})
+    projects: dict[str, ProjectState] = {}
+    for proj_info in data.get("projects", []):
+        name = proj_info["name"]
+        config_signals = parse_signals_from_coordinator(proj_info.get("signals", {}))
+        projects[name] = ProjectState(name=name, config_signals=config_signals)
+        sig_names = sorted(config_signals)
+        logger.info("[%s] Discovered %d signal(s): %s", name, len(sig_names), ", ".join(sig_names))
+    return projects
 
 
 def _resolve_token(token: str | None, token_env: str | None) -> str:
