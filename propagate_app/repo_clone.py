@@ -121,13 +121,13 @@ def _ensure_bare_cache(
     token = os.environ.get("GITHUB_TOKEN")
     auth_url = _inject_token_into_url(_ssh_url_to_https(repo.url), token)
     clean_url = _ssh_url_to_https(repo.url)
-    LOGGER.info("Bare cache dir for '%s': %s (exists=%s)", name, cache_dir, cache_dir.exists())
+    LOGGER.debug("Bare cache dir for '%s': %s (exists=%s)", name, cache_dir, cache_dir.exists())
     cache_dir.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "w") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         try:
             if is_propagate_bare_cache(bare_path):
-                LOGGER.info("Cache hit for '%s' at '%s', fetching.", name, bare_path)
+                LOGGER.debug("Cache hit for '%s' at '%s', fetching.", name, bare_path)
                 subprocess.run(
                     ["git", "remote", "set-url", "origin", auth_url],
                     cwd=str(bare_path), check=True, capture_output=True, text=True,
@@ -141,7 +141,7 @@ def _ensure_bare_cache(
                     cwd=str(bare_path), check=True, capture_output=True, text=True,
                 )
             else:
-                LOGGER.info("Cache miss for '%s', cloning bare repo from '%s' to '%s'.", name, clean_url, bare_path)
+                LOGGER.debug("Cache miss for '%s', cloning bare repo from '%s' to '%s'.", name, clean_url, bare_path)
                 try:
                     subprocess.run(
                         ["git", "clone", "--bare", auth_url, str(bare_path)],
@@ -162,6 +162,7 @@ def _ensure_bare_cache(
                 subprocess.run(
                     ["git", "clone", str(bare_path), str(dest_dir)],
                     check=True, capture_output=True, text=True,
+                    env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"},
                 )
             except subprocess.CalledProcessError as error:
                 raise PropagateError(
@@ -189,7 +190,7 @@ def clone_single_repository(
     auth_url = _inject_token_into_url(clone_url, token)
     env_clone_dir = os.environ.get(ENV_CLONE_DIR)
     effective_dir = Path(env_clone_dir) if env_clone_dir else clone_dir
-    LOGGER.info(
+    LOGGER.debug(
         "clone_single_repository '%s': repo_cache_dir=%s env_clone_dir=%s",
         name, repo_cache_dir, env_clone_dir,
     )
@@ -215,7 +216,7 @@ def clone_single_repository(
         except OSError as error:
             raise PropagateError(f"Failed to mark clone directory '{dest_dir}': {error}") from error
         _configure_credential_helper(dest_dir)
-        LOGGER.info("Cloned repository '%s' from cache to '%s'.", name, dest_dir)
+        LOGGER.debug("Cloned repository '%s' from cache to '%s'.", name, dest_dir)
         return dest_dir
     if effective_dir is not None:
         try:
