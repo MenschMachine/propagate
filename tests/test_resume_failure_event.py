@@ -1,12 +1,12 @@
 """Tests for resume failure event publishing and formatting."""
 from unittest.mock import MagicMock
 
+from propagate_app.event_format import format_event_reply as _format_event_reply
 from propagate_app.models import (
     AgentConfig,
     Config,
 )
 from propagate_app.serve import _handle_command
-from propagate_telegram.bot import _format_event_reply
 
 
 def _make_config(tmp_path):

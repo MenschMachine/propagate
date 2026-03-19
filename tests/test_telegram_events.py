@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
+from propagate_app.event_format import format_event_reply as _format_event_reply
 from propagate_app.git_runtime import create_execution_git_pr
 from propagate_app.models import (
     GitBranchConfig,
@@ -13,7 +14,6 @@ from propagate_app.models import (
     RuntimeContext,
 )
 from propagate_app.signal_transport import publish_event_if_available
-from propagate_telegram.bot import _format_event_reply
 
 
 def test_format_waiting_for_signal_with_execution():

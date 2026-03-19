@@ -365,10 +365,19 @@ def _make_update(user_id, username, text, chat_id=111, message_id=222):
 
 
 def _make_context(config_signals, push_socket, allowed_users):
+    from propagate_telegram.bot import ProjectState
+
+    project = ProjectState(
+        name="default",
+        config_signals=config_signals,
+        zmq_address="ipc:///tmp/fake.sock",
+        pub_address="ipc:///tmp/fake-pub.sock",
+        push_socket=push_socket,
+    )
     context = MagicMock()
     context.bot_data = {
-        "config_signals": config_signals,
-        "push_socket": push_socket,
+        "projects": {"default": project},
+        "active_project": {},
         "allowed_users": allowed_users,
     }
     return context
@@ -410,7 +419,7 @@ async def test_handle_signal_sends_metadata(zmq_pair):
 
 
 def test_format_event_reply_completed():
-    from propagate_telegram.bot import _format_event_reply
+    from propagate_app.event_format import format_event_reply as _format_event_reply
 
     reply = _format_event_reply({
         "event": "run_completed",
@@ -423,7 +432,7 @@ def test_format_event_reply_completed():
 
 
 def test_format_event_reply_failed():
-    from propagate_telegram.bot import _format_event_reply
+    from propagate_app.event_format import format_event_reply as _format_event_reply
 
     reply = _format_event_reply({
         "event": "run_failed",
@@ -436,7 +445,7 @@ def test_format_event_reply_failed():
 
 
 def test_format_event_reply_no_messages():
-    from propagate_telegram.bot import _format_event_reply
+    from propagate_app.event_format import format_event_reply as _format_event_reply
 
     reply = _format_event_reply({
         "event": "run_completed",

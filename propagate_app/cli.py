@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_read_scope_flags(get_parser)
     context_subparsers.add_parser("dump", help="Dump all context keys as YAML.")
     serve_parser = subparsers.add_parser("serve", help="Run as a long-lived server, listening for signals.")
-    serve_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+    serve_parser.add_argument("--config", required=True, action="append", help="Path to a Propagate YAML config (repeatable).")
     serve_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
     clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
     clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")

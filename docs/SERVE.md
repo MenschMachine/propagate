@@ -10,19 +10,41 @@
 propagate serve --config config/propagate.yaml
 ```
 
+The `--config` flag is repeatable. Pass multiple configs to serve them all from a single process:
+
+```bash
+propagate serve --config config/project-a.yaml --config config/project-b.yaml
+```
+
 The server binds a ZMQ PULL socket unconditionally (not gated on whether signal-gated triggers exist) and waits for incoming signals.
 
 ---
 
 ## How it works
 
-1. Load config from the specified YAML file
-2. Bind ZMQ PULL socket at `ipc:///tmp/propagate-{hash}.sock`
+1. Load config from the specified YAML file(s)
+2. Bind ZMQ PULL socket at `ipc:///tmp/propagate-{hash}.sock` per config
 3. If a state file exists from a previous interrupted run, resume it
 4. Enter the serve loop: poll for signals, run the matching execution DAG for each one
 5. On SIGTERM or SIGINT, finish the current operation and exit
 
 Signals are processed sequentially — one DAG runs to completion before the next signal is handled.
+
+---
+
+## Multi-config mode
+
+When multiple `--config` flags are passed, each config runs in its own thread with isolated ZMQ sockets. They share a single shutdown event — a SIGTERM or SIGINT stops all configs.
+
+Each thread's ZMQ log handler is filtered to only publish log messages originating from its own thread, preventing cross-talk between configs.
+
+Configs are completely independent: each has its own PULL socket, PUB socket, serve loop, and state file. Signals sent to one config's socket are not visible to the others.
+
+Config filenames must be unique — two configs with the same stem (e.g. `repos/a/propagate.yaml` and `repos/b/propagate.yaml`) will be rejected at startup.
+
+If one config fails (e.g. socket bind error), all configs are shut down and the error is logged.
+
+**Note:** When using `scripts/start.sh` with multiple configs, the webhook service only receives the first config. Webhooks are per-repository and don't support multi-config routing.
 
 ---
 
@@ -109,6 +131,7 @@ The server knows nothing about subscribers — it publishes events regardless of
 - **Sequential execution.** Only one DAG runs at a time. Signals received during an active run are buffered by the ZMQ socket and processed one at a time after the current run completes. However, signals that arrive during an active run and match a pending propagation trigger within that run are consumed by the scheduler's drain loop — they won't trigger a separate serve-level run.
 - **No deduplication.** The same signal sent twice triggers two separate runs.
 - **Each signal type must map to exactly one execution.** Serve mode has no `--execution` flag, so execution selection is automatic. If multiple executions accept the same signal type (and payload filters don't disambiguate), every instance of that signal will fail with an error and no run will start. Use `when` filters to ensure each signal resolves to a single execution.
+- **Webhook is single-config only.** When using multi-config mode with `scripts/start.sh`, the webhook service only receives the first config. Webhooks are per-repository and don't support multi-config routing.
 
 ---
 
@@ -159,6 +182,9 @@ To start all services (`serve`, `webhook`, `telegram`) together with merged, lab
 
 ```bash
 scripts/start.sh --config config/propagate.yaml
+
+# Multiple configs:
+scripts/start.sh --config config/project-a.yaml --config config/project-b.yaml
 
 # Add --dev to also start smee for local webhook forwarding:
 scripts/start.sh --config config/propagate.yaml --dev

@@ -243,7 +243,7 @@ def test_serve_auto_resumes_on_startup(tmp_path):
             patch("propagate_app.serve._serve_loop", side_effect=mock_serve_loop),
             patch("propagate_app.serve.load_config", return_value=config),
         ):
-            result = serve_command(str(config.config_path))
+            result = serve_command([str(config.config_path)])
 
         assert resume_called == [True]
         assert result == 0
@@ -447,7 +447,7 @@ def test_serve_forced_shutdown_on_second_signal(tmp_path):
 
     shutdown_event = None
 
-    def mock_serve_loop(cfg, sock, shutdown, pub_socket=None):
+    def mock_serve_one_config(cfg, shutdown, resume):
         nonlocal shutdown_event
         shutdown_event = shutdown
         # Simulate first signal already received
@@ -462,9 +462,9 @@ def test_serve_forced_shutdown_on_second_signal(tmp_path):
             pass
 
     with (
-        patch("propagate_app.serve._serve_loop", side_effect=mock_serve_loop),
+        patch("propagate_app.serve._serve_one_config", side_effect=mock_serve_one_config),
         patch("propagate_app.serve.load_config", return_value=config),
     ):
-        result = serve_command(str(config.config_path))
+        result = serve_command([str(config.config_path)])
 
     assert result == 0

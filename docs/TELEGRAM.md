@@ -22,13 +22,13 @@ propagate-telegram --config config/propagate.yaml --token-env TELEGRAM_BOT_TOKEN
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--config` | (required) | Path to the propagate YAML config |
+| `--config` | (required) | Path to a propagate YAML config (repeatable) |
 | `--token` | (none) | Telegram bot token |
 | `--token-env` | (none) | Environment variable name containing the bot token |
 | `--allowed-users` | (required) | Comma-separated Telegram user IDs allowed to send commands |
 | `--debug` | off | Enable debug-level logging |
 
-The `--config` path must match the one used by `propagate serve` — it determines the ZeroMQ socket address.
+The `--config` path must match the one used by `propagate serve` — it determines the ZeroMQ socket address. Pass multiple `--config` flags to connect to multiple serve instances from a single bot.
 
 ---
 
@@ -100,11 +100,44 @@ Resume a previously failed run. If a state file exists from a failed execution, 
 
 ### `/signals`
 
-List all signals defined in the propagate config.
+List all signals defined in the propagate config. When multiple projects are loaded, shows signals for the active project.
+
+### `/project [name]`
+
+List or switch between loaded projects. Only available when multiple `--config` flags are passed.
+
+- `/project` — list all projects, marks the active one
+- `/project myproject` — switch the active project for this chat
+
+When only one config is loaded, project selection is automatic and the `/project` command is not needed.
 
 ### `/help`
 
 Show available commands and configured signals.
+
+---
+
+## Multi-Config Usage
+
+A single Telegram bot can bridge multiple propagate configs:
+
+```bash
+propagate-telegram \
+  --config config/project-a.yaml \
+  --config config/project-b.yaml \
+  --token-env TELEGRAM_BOT_TOKEN \
+  --allowed-users 123456
+```
+
+Each config becomes a "project" named after the config file stem (e.g. `project-a`, `project-b`). Use `/project <name>` to switch the active project before sending signals.
+
+When only one config is loaded, all commands work without `/project` — auto-selection is applied.
+
+Event replies are prefixed with `[project-name]` when multiple projects are loaded, so you can tell which project an event came from. With a single project, no prefix is added.
+
+Config filenames must be unique — two configs with the same stem (e.g. `repos/a/propagate.yaml` and `repos/b/propagate.yaml`) will be rejected.
+
+**Note:** `/logs` output is shared across all projects. When multiple configs are loaded, log lines are interleaved without per-project labels.
 
 ---
 

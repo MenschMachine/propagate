@@ -72,9 +72,8 @@ def _run_with_event_publish(
         })
 
 
-def serve_command(config_value: str, resume: bool | str = False) -> int:
-    config_path = Path(config_value).expanduser()
-    config = load_config(config_path)
+def _serve_one_config(config: Config, shutdown: threading.Event, resume: bool | str = False) -> None:
+    """Run the serve loop for a single config. Designed to run in its own thread."""
     address = socket_address(config.config_path)
     signal_socket = bind_pull_socket(address)
     LOGGER.info("Listening for signals on %s", address)
@@ -88,7 +87,54 @@ def serve_command(config_value: str, resume: bool | str = False) -> int:
         "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     ))
+    # When multiple configs are loaded, filter log records so each handler
+    # only publishes messages from its own thread.
+    thread_ident = threading.current_thread().ident
+
+    class _ThreadFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return record.thread == thread_ident
+
+    if threading.current_thread() is not threading.main_thread():
+        zmq_log_handler.addFilter(_ThreadFilter())
+
     logging.getLogger().addHandler(zmq_log_handler)
+
+    resume_target = resume if isinstance(resume, str) else None
+    config_path = config.config_path
+    try:
+        if resume and not state_file_path(config_path).exists():
+            LOGGER.warning("--resume requested but no state file found; starting fresh.")
+        elif state_file_path(config_path).exists():
+            if resume_target:
+                apply_forced_resume_if_targeted(config_path, config, resume_target)
+            else:
+                LOGGER.info("Found existing state file, resuming previous run.")
+            try:
+                _resume_run(config, signal_socket, pub_socket)
+            except PropagateError as error:
+                LOGGER.error("Resume failed: %s", error)
+        _serve_loop(config, signal_socket, shutdown, pub_socket)
+    finally:
+        logging.getLogger().removeHandler(zmq_log_handler)
+        close_pull_socket(signal_socket, address)
+        close_pub_socket(pub_socket, pub_address)
+
+
+def serve_command(config_values: list[str], resume: bool | str = False) -> int:
+    configs: list[Config] = []
+    seen_stems: dict[str, str] = {}
+    for cv in config_values:
+        config_path = Path(cv).expanduser()
+        config = load_config(config_path)
+        stem = config.config_path.stem
+        if stem in seen_stems:
+            raise PropagateError(
+                f"Duplicate config name '{stem}' from '{cv}' and '{seen_stems[stem]}'. "
+                "Config filenames must be unique."
+            )
+        seen_stems[stem] = cv
+        configs.append(config)
 
     shutdown = threading.Event()
 
@@ -103,25 +149,38 @@ def serve_command(config_value: str, resume: bool | str = False) -> int:
     previous_sigint = signal_module.getsignal(signal_module.SIGINT)
     signal_module.signal(signal_module.SIGTERM, handle_shutdown)
     signal_module.signal(signal_module.SIGINT, handle_shutdown)
-    resume_target = resume if isinstance(resume, str) else None
+
     try:
-        if resume and not state_file_path(config_path).exists():
-            LOGGER.warning("--resume requested but no state file found; starting fresh.")
-        elif state_file_path(config_path).exists():
-            if resume_target:
-                apply_forced_resume_if_targeted(config_path, config, resume_target)
-            else:
-                LOGGER.info("Found existing state file, resuming previous run.")
-            try:
-                _resume_run(config, signal_socket, pub_socket)
-            except PropagateError as error:
-                LOGGER.error("Resume failed: %s", error)
-        _serve_loop(config, signal_socket, shutdown, pub_socket)
+        if len(configs) == 1:
+            _serve_one_config(configs[0], shutdown, resume)
+        else:
+            errors: list[tuple[str, Exception]] = []
+            lock = threading.Lock()
+
+            def _run_thread(config: Config) -> None:
+                try:
+                    _serve_one_config(config, shutdown, resume)
+                except Exception as exc:
+                    with lock:
+                        errors.append((config.config_path.stem, exc))
+                    LOGGER.error("Config '%s' failed: %s", config.config_path.stem, exc)
+                    shutdown.set()
+
+            threads: list[threading.Thread] = []
+            for config in configs:
+                t = threading.Thread(
+                    target=_run_thread,
+                    args=(config,),
+                    name=config.config_path.stem,
+                )
+                t.start()
+                threads.append(t)
+            for t in threads:
+                t.join()
+            if errors:
+                return 1
         return 0
     finally:
-        logging.getLogger().removeHandler(zmq_log_handler)
-        close_pull_socket(signal_socket, address)
-        close_pub_socket(pub_socket, pub_address)
         signal_module.signal(signal_module.SIGTERM, previous_sigterm)
         signal_module.signal(signal_module.SIGINT, previous_sigint)
 

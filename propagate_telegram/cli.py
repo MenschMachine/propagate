@@ -13,7 +13,7 @@ logger = logging.getLogger("propagate.telegram")
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="propagate-telegram", description="Telegram bot bridge for propagate.")
-    parser.add_argument("--config", required=True, help="Path to the propagate YAML config.")
+    parser.add_argument("--config", required=True, action="append", help="Path to a propagate YAML config (repeatable).")
     parser.add_argument("--token", help="Telegram bot token.")
     parser.add_argument("--token-env", help="Environment variable name containing the bot token.")
     parser.add_argument("--allowed-users", help="Comma-separated Telegram user IDs allowed to send commands (default: $TELEGRAM_USERS).")
@@ -47,30 +47,41 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", error)
         return 1
 
-    config_path = Path(args.config).expanduser().resolve()
+    from propagate_app.config_load import load_config
+    from propagate_app.signal_transport import pub_socket_address, socket_address
 
-    try:
-        from propagate_app.config_load import load_config
-        from propagate_app.signal_transport import pub_socket_address, socket_address
+    from .bot import ProjectState
 
-        config = load_config(config_path)
-        zmq_address = socket_address(config.config_path)
-        pub_address = pub_socket_address(config.config_path)
-    except Exception as error:
-        logger.error("Failed to load config: %s", error)
-        return 1
+    projects: dict[str, ProjectState] = {}
+    for config_value in args.config:
+        config_path = Path(config_value).expanduser().resolve()
+        try:
+            config = load_config(config_path)
+            zmq_address = socket_address(config.config_path)
+            pub_address = pub_socket_address(config.config_path)
+        except Exception as error:
+            logger.error("Failed to load config '%s': %s", config_value, error)
+            return 1
 
-    signal_names = sorted(config.signals)
-    logger.info("Loaded %d signal(s): %s", len(signal_names), ", ".join(signal_names))
+        name = config_path.stem
+        if name in projects:
+            logger.error("Duplicate config name '%s' from '%s'. Config filenames must be unique.", name, config_value)
+            return 1
+        signal_names = sorted(config.signals)
+        logger.info("[%s] Loaded %d signal(s): %s", name, len(signal_names), ", ".join(signal_names))
+        projects[name] = ProjectState(
+            name=name,
+            config_signals=config.signals,
+            zmq_address=zmq_address,
+            pub_address=pub_address,
+        )
 
     from .bot import run_bot
 
     run_bot(
-        config_signals=config.signals,
-        zmq_address=zmq_address,
+        projects=projects,
         token=token,
         allowed_users=allowed_users,
-        pub_address=pub_address,
     )
     return 0
 

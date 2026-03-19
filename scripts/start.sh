@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # --- Defaults ---
-CONFIG=""
+CONFIGS=()
 DEV=false
 PORT=""
 SECRET=""
@@ -26,12 +26,12 @@ RESUME=""
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") --config <path> [OPTIONS]
+Usage: $(basename "$0") --config <path> [--config <path2> ...] [OPTIONS]
 
 Start all propagate services with merged, labeled output.
 
 Required:
-  --config <path>       Path to the propagate YAML config
+  --config <path>       Path to a propagate YAML config (repeatable)
 
 Options:
   --dev                 Also start smee (dev webhook forwarding)
@@ -51,7 +51,7 @@ EOF
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --config)     CONFIG="$2"; shift 2 ;;
+        --config)     CONFIGS+=("$2"); shift 2 ;;
         --dev)        DEV=true; shift ;;
         --port)       PORT="$2"; shift 2 ;;
         --secret)     SECRET="$2"; shift 2 ;;
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$CONFIG" ]]; then
+if [[ ${#CONFIGS[@]} -eq 0 ]]; then
     echo "Error: --config is required" >&2
     echo "Run $(basename "$0") --help for usage" >&2
     exit 1
@@ -111,14 +111,21 @@ start_service() {
 }
 
 # --- Build command args ---
-SERVE_ARGS=(--config "$CONFIG")
+SERVE_ARGS=()
+for cfg in "${CONFIGS[@]}"; do
+    SERVE_ARGS+=(--config "$cfg")
+done
 if [[ "$RESUME" == "__bare__" ]]; then
     SERVE_ARGS+=(--resume)
 elif [[ -n "$RESUME" ]]; then
     SERVE_ARGS+=(--resume "$RESUME")
 fi
 
-WEBHOOK_ARGS=(--config "$CONFIG")
+# Webhook uses first config only (webhook is per-repo)
+if [[ ${#CONFIGS[@]} -gt 1 ]]; then
+    echo -e "${BLUE}[webhook ]${NC} Warning: webhook only uses first config (${CONFIGS[0]})"
+fi
+WEBHOOK_ARGS=(--config "${CONFIGS[0]}")
 [[ -n "$PORT" ]] && WEBHOOK_ARGS+=(--port "$PORT")
 if [[ "$DEV" == true ]]; then
     # Skip signature verification in dev mode — smee re-serialises the body,
@@ -130,7 +137,10 @@ elif [[ -n "$SECRET_ENV" ]]; then
     WEBHOOK_ARGS+=(--secret-env "$SECRET_ENV")
 fi
 
-TELEGRAM_ARGS=(--config "$CONFIG")
+TELEGRAM_ARGS=()
+for cfg in "${CONFIGS[@]}"; do
+    TELEGRAM_ARGS+=(--config "$cfg")
+done
 [[ -n "$TOKEN" ]] && TELEGRAM_ARGS+=(--token "$TOKEN")
 [[ -n "$TOKEN_ENV" ]] && TELEGRAM_ARGS+=(--token-env "$TOKEN_ENV")
 [[ -n "$ALLOWED_USERS" ]] && TELEGRAM_ARGS+=(--allowed-users "$ALLOWED_USERS")
