@@ -31,7 +31,7 @@ class ContextStoreUnitTests(unittest.TestCase):
 
         config_path = self.root / "project" / "propagate.yaml"
         result = get_context_root(config_path)
-        self.assertEqual(result, self.root / "project" / ".propagate-context")
+        self.assertEqual(result, (self.root / "project").resolve() / ".propagate-context-propagate")
 
     def test_get_global_context_dir_returns_root(self) -> None:
         from propagate_app.context_store import get_global_context_dir
@@ -345,7 +345,7 @@ class ContextCLIScopeTests(unittest.TestCase):
         result = self.run_cli("context", "set", "key", "value", cwd=self.workspace)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            (self.workspace / ".propagate-context" / "key").read_text(encoding="utf-8"),
+            (self.workspace / ".propagate-context-propagate" / "key").read_text(encoding="utf-8"),
             "value",
         )
 
@@ -353,7 +353,7 @@ class ContextCLIScopeTests(unittest.TestCase):
         result = self.run_cli("context", "set", "release", "1.0", "--global", cwd=self.workspace)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            (self.workspace / ".propagate-context" / "release").read_text(encoding="utf-8"),
+            (self.workspace / ".propagate-context-propagate" / "release").read_text(encoding="utf-8"),
             "1.0",
         )
 
@@ -363,7 +363,7 @@ class ContextCLIScopeTests(unittest.TestCase):
         self.assertIn("--local requires a task context", result.stderr)
 
     def test_get_global_without_env_vars_reads_from_cwd_context_root(self) -> None:
-        context_root = self.workspace / ".propagate-context"
+        context_root = self.workspace / ".propagate-context-propagate"
         context_root.mkdir()
         (context_root / "release").write_text("1.0", encoding="utf-8")
         result = self.run_cli("context", "get", "release", "--global", cwd=self.workspace)
@@ -412,7 +412,7 @@ class ContextCLIScopeTests(unittest.TestCase):
         self.assertEqual(parsed, {"global": {}, "executions": {}})
 
     def test_dump_without_env_vars_uses_cwd(self) -> None:
-        context_root = self.workspace / ".propagate-context"
+        context_root = self.workspace / ".propagate-context-propagate"
         context_root.mkdir(parents=True)
         (context_root / "whoami").write_text("michael", encoding="utf-8")
 
@@ -459,7 +459,7 @@ class ContextCLIScopeTests(unittest.TestCase):
         })
 
     def test_get_task_without_env_vars_reads_from_task_path(self) -> None:
-        context_root = self.workspace / ".propagate-context"
+        context_root = self.workspace / ".propagate-context-propagate"
         target_dir = context_root / "sdk-python" / "review"
         target_dir.mkdir(parents=True)
         (target_dir / "findings").write_text("all good", encoding="utf-8")
@@ -556,7 +556,7 @@ class ContextEnvVarsIntegrationTests(unittest.TestCase):
         env_data = invocations[0]
         self.assertEqual(
             Path(env_data["PROPAGATE_CONTEXT_ROOT"]).resolve(),
-            (self.config_dir / ".propagate-context").resolve(),
+            (self.config_dir / ".propagate-context-propagate").resolve(),
         )
         self.assertEqual(env_data["PROPAGATE_EXECUTION"], "deploy")
         self.assertEqual(env_data["PROPAGATE_TASK"], "plan")
@@ -564,7 +564,7 @@ class ContextEnvVarsIntegrationTests(unittest.TestCase):
     def test_merged_context_in_prompt_global_plus_execution(self) -> None:
         """All pre-existing context (global and execution) is cleared on fresh runs."""
         (self.prompt_dir / "task.md").write_text("task prompt\n", encoding="utf-8")
-        context_root = self.config_dir / ".propagate-context"
+        context_root = self.config_dir / ".propagate-context-propagate"
         global_dir = context_root
         exec_dir = context_root / "deploy"
         global_dir.mkdir(parents=True)
@@ -679,7 +679,7 @@ class ContextEnvVarsIntegrationTests(unittest.TestCase):
         self.assertEqual(len(hook_data), 1)
         self.assertEqual(
             Path(hook_data[0]["PROPAGATE_CONTEXT_ROOT"]).resolve(),
-            (self.config_dir / ".propagate-context").resolve(),
+            (self.config_dir / ".propagate-context-propagate").resolve(),
         )
         self.assertEqual(hook_data[0]["PROPAGATE_EXECUTION"], "deploy")
         self.assertEqual(hook_data[0]["PROPAGATE_TASK"], "plan")

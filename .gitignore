@@ -1,5 +1,5 @@
 /.idea
-.propagate-context/
+.propagate-context-*/
 /.propagate*md
 .last-message.txt
 .env

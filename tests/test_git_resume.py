@@ -187,7 +187,7 @@ def test_resume_preserves_execution_context_keys(resume_ctx: SimpleNamespace) ->
     ctx = resume_ctx
     fail_flag = ctx.scripts_dir / "fail_flag2.txt"
     result_file = ctx.scripts_dir / "context_read_result.txt"
-    context_root = ctx.config_dir / ".propagate-context"
+    context_root = ctx.config_dir / ".propagate-context-propagate"
 
     # Dispatcher: task1 writes a context key via the context store directory directly,
     # task2 fails on first attempt, succeeds on second, and reads the context key.

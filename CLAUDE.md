@@ -57,7 +57,7 @@ Entry point: `propagate_app/cli.py` → `main()`
 
 - **Executions**: Named tasks operating on a repository, composed of sub-tasks
 - **Context Store** (`context_store.py`): 3-tier key-value store — global, execution-scoped, task-scoped. Root defaults
-  to `.propagate-context/`
+  to `.propagate-context-{config_stem}/`
 - **Signals**: Typed event triggers with payloads that activate executions
 - **Propagation Triggers**: DAG edges (`after: X, run: Y, on_signal: Z`)
 - **Run State** (`run_state.py`): Persisted to `.propagate-state-{name}.yaml` for resume support

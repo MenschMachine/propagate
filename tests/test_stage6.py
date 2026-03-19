@@ -125,10 +125,10 @@ class PropagateStage6DagTests(unittest.TestCase):
         docs_dir = self.workspace / "docs"
         core_dir.mkdir()
         docs_dir.mkdir()
-        (self.config_dir / ".propagate-context" / "build-core").mkdir(parents=True)
-        (self.config_dir / ".propagate-context" / "prepare-docs-context").mkdir(parents=True)
-        (self.config_dir / ".propagate-context" / "build-core" / ":signal.type").write_text("stale-core", encoding="utf-8")
-        (self.config_dir / ".propagate-context" / "prepare-docs-context" / ":signal.type").write_text("stale-docs", encoding="utf-8")
+        (self.config_dir / ".propagate-context-propagate" / "build-core").mkdir(parents=True)
+        (self.config_dir / ".propagate-context-propagate" / "prepare-docs-context").mkdir(parents=True)
+        (self.config_dir / ".propagate-context-propagate" / "build-core" / ":signal.type").write_text("stale-core", encoding="utf-8")
+        (self.config_dir / ".propagate-context-propagate" / "prepare-docs-context" / ":signal.type").write_text("stale-docs", encoding="utf-8")
 
         (self.prompt_dir / "build-core.md").write_text("build core\n", encoding="utf-8")
         (self.prompt_dir / "prepare-docs.md").write_text("prepare docs\n", encoding="utf-8")
@@ -210,11 +210,11 @@ class PropagateStage6DagTests(unittest.TestCase):
         self.assertIn("Activating dependency 'prepare-docs-context' for execution 'update-docs'.", result.stderr)
         self.assertIn("Activating dependency 'lint-docs' for execution 'update-docs'.", result.stderr)
         self.assertEqual(
-            (self.config_dir / ".propagate-context" / "build-core" / ":signal.type").read_text(encoding="utf-8"),
+            (self.config_dir / ".propagate-context-propagate" / "build-core" / ":signal.type").read_text(encoding="utf-8"),
             "repo-change",
         )
         self.assertEqual(
-            (self.config_dir / ".propagate-context" / "prepare-docs-context" / ":signal.type").read_text(encoding="utf-8"),
+            (self.config_dir / ".propagate-context-propagate" / "prepare-docs-context" / ":signal.type").read_text(encoding="utf-8"),
             "repo-change",
         )
 
@@ -426,9 +426,9 @@ class PropagateStage6DagTests(unittest.TestCase):
         core_dir.mkdir()
         docs_dir.mkdir()
 
-        local_context_dir = self.config_dir / ".propagate-context" / "start-local"
-        core_context_dir = self.config_dir / ".propagate-context" / "build-core"
-        docs_context_dir = self.config_dir / ".propagate-context" / "update-docs"
+        local_context_dir = self.config_dir / ".propagate-context-propagate" / "start-local"
+        core_context_dir = self.config_dir / ".propagate-context-propagate" / "build-core"
+        docs_context_dir = self.config_dir / ".propagate-context-propagate" / "update-docs"
         local_context_dir.mkdir(parents=True)
         core_context_dir.mkdir(parents=True)
         docs_context_dir.mkdir(parents=True)

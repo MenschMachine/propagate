@@ -138,7 +138,7 @@ def test_resume_after_before_hooks_only(ctx: SimpleNamespace) -> None:
     assert state.get("completed_execution_phases", {}).get("default") == "before"
 
     # Verify git state was persisted to context
-    context_dir = ctx.config_dir / ".propagate-context" / "default"
+    context_dir = ctx.config_dir / ".propagate-context-propagate" / "default"
     assert (context_dir / ":git.selected_branch").exists(), "git state must be persisted after git:branch"
 
     # Resume: before hooks skipped, sub-task succeeds, git:push must work
