@@ -1,16 +1,16 @@
-# Summarize Approved Website Suggestion Implementation
+# Summarize Website Changes From Backend PR
 
-Prepare the git metadata for the changes you just made.
+Prepare the git metadata for the website changes you just made.
 
 ## Inputs
 
-Read the issue again:
+Read the relevant PRs again:
 
 ```bash
-ISSUE_NUMBER="$(propagate context get :signal.issue_number | xargs)"
-gh issue view "$ISSUE_NUMBER" --repo MenschMachine/pdfdancer-www --json title,body,url
+BACKEND_PR_NUMBER="$(propagate context get :source-backend-pr-number --task implement-approved-api-docs-updates | xargs)"
 API_DOCS_PR_NUMBER="$(propagate context get :api-docs-pr-number --task implement-approved-api-docs-updates | xargs)"
-gh pr view "$API_DOCS_PR_NUMBER" --repo MenschMachine/pdfdancer-api-docs --json url
+gh pr view "$BACKEND_PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json title,url
+gh pr view "$API_DOCS_PR_NUMBER" --repo MenschMachine/pdfdancer-api-docs --json title,url
 ```
 
 Inspect the current diff:
@@ -30,14 +30,14 @@ Set these context keys:
 
 Requirements:
 
-- The commit message subject should be: `website: implement approved suggestions from issue #<number>`
+- The commit message subject should be: `website: reflect backend PR #<number>`
 - Add a short body line or two if it helps explain the change.
 - The PR body must be Markdown and include these sections:
-  - `## Source Issue`
+  - `## Source Backend PR`
   - `## Source API Docs PR`
   - `## Implemented Changes`
   - `## Testing`
-- In `## Source Issue`, include the issue URL.
+- In `## Source Backend PR`, include the backend PR URL.
 - In `## Source API Docs PR`, include the api-docs PR URL.
 - In `## Testing`, state what you actually ran. If you did not run tests, say so plainly.
 

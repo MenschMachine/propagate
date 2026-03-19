@@ -1,14 +1,14 @@
-# Summarize Approved API Docs Suggestion Implementation
+# Summarize API Docs Changes From Backend PR
 
 Prepare the git metadata for the api-docs changes you just made.
 
 ## Inputs
 
-Read the issue again:
+Read the source backend PR again:
 
 ```bash
-ISSUE_NUMBER="$(propagate context get :signal.issue_number | xargs)"
-gh issue view "$ISSUE_NUMBER" --repo MenschMachine/pdfdancer-www --json title,body,url
+PR_NUMBER="$(propagate context get :source-backend-pr-number | xargs)"
+gh pr view "$PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json title,url
 ```
 
 Inspect the current diff:
@@ -28,14 +28,15 @@ Set these context keys:
 
 Requirements:
 
-- The commit message subject should be: `api-docs: implement approved suggestions from issue #<number>`
+- The commit message subject should be: `api-docs: document backend PR #<number>`
 - Add a short body line or two if it helps explain the change.
 - The PR body must be Markdown and include these sections:
-  - `## Source Issue`
+  - `## Source Backend PR`
   - `## Implemented Changes`
   - `## Testing`
-- In `## Source Issue`, include the issue URL.
+  - `## Website Follow-Up`
+- In `## Source Backend PR`, include the backend PR URL.
 - In `## Testing`, state what you actually ran. If you did not run tests, say so plainly.
-- Mention that website follow-up will run after this PR is approved.
+- In `## Website Follow-Up`, state that the website workflow will run after this PR is approved.
 
 Use `propagate context set` to store both values.
