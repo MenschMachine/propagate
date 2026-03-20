@@ -29,3 +29,45 @@ Requirements:
 - Treat the approved API PR as the source of truth for the contract that actually landed.
 - If this run started from a backend PR, use that backend PR to understand intent, terminology, and examples.
 - Address check failures and review comments before adding unrelated changes.
+- Add or update e2e tests following the existing patterns. Tests should use `PDFAssertions` with deep, precise assertions; add helper methods there if needed.
+- If tests expose a server-side bug, keep the failing test, stop, and write a detailed markdown bug report for the `pdfdancer-api` team instead of working around it.
+- Commit `.api-url` if this repository uses it to point tests or examples at the local API instance.
+- Do not make changes to GitHub workflow files.
+
+## Starting the API Server
+
+Use the docker image from the upstream `pdfdancer-api` PR listed above. The image tag follows this pattern:
+
+```shell
+ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
+```
+
+Start it like this:
+
+```shell
+docker pull ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
+docker run \
+    -e PDFDANCER_API_KEY_ENCRYPTION_SECRET="$(openssl rand -hex 16)" \
+    -e FONTS_DIR=/tmp/fonts \
+    -e METRICS_ENABLED=false \
+    -e SWAGGER_ENABLED=true \
+    -v /tmp/fonts:/home/app/fonts \
+    --rm \
+    -p 8080:8080 \
+    ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
+```
+
+If port `8080` is occupied, use another port and point the SDK tests at that URL.
+Prefer testing against this local docker instance instead of any cloud environment.
+Swagger UI is available at `http://localhost:8080/swagger-ui`.
+Use `PDFDANCER_API_TOKEN=42` when authenticating against the API.
+
+## API Versioning and Page Indexing
+
+- Always prefer the latest API version.
+- API v0 uses 0-based page indexing.
+- API v1 uses 1-based page indexing.
+
+## Python SDK
+
+- Always use a virtual environment.

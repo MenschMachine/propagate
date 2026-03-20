@@ -21,3 +21,14 @@ Requirements:
 - Use the backend PR as the source of truth for behavior and naming.
 - Address failing checks and review comments from prior iterations before making new changes.
 - Keep changes scoped to the API work needed for the backend feature.
+- Follow existing API patterns strictly and keep the exposed API as simple as possible.
+- Add or update e2e tests following the existing patterns. Tests should use `PDFAssertion` with deep, precise assertions; add helper methods there if needed.
+- If tests expose a backend bug, keep the failing test, stop, and write a detailed markdown bug report for the backend team instead of papering over the problem.
+- Never swallow exceptions.
+- Use at least log level `WARN` when things go wrong or the system is not in the expected state.
+
+## API Versioning
+
+- API v0 is legacy and should only receive bug fixes.
+- API v1 is stable and should only receive non-breaking changes.
+- Breaking changes require a new version such as v2.

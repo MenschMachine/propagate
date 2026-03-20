@@ -22,3 +22,44 @@ propagate context get :client-java-examples-pr-number --task implement-client-ja
 If those upstream PR numbers exist, treat the approved upstream PRs as the source of truth for what landed. If they do not exist, this is the docs-only branch and the source PR is the only upstream input.
 
 If revising, also inspect `:review-check-results` and `:review-comments`.
+Do not make changes to GitHub workflow files.
+
+## Documentation Inputs
+
+- Check the exact upstream SDK and examples PR heads for the feature set and usage patterns that actually landed in this workflow.
+- Do not document speculative future behavior beyond what is present in the current upstream PRs.
+- Pay attention to e2e tests and examples in the upstream repositories; they are the most concrete source for usage patterns.
+
+## API Versioning and Page Indexing
+
+- Always prefer the latest API version.
+- API v0 uses 0-based page indexing.
+- API v1 uses 1-based page indexing.
+
+## SDK Dependency Reference
+
+When documentation needs install or dependency examples, prefer exact upstream PR head commits:
+
+```bash
+TS_PR_NUMBER="$(propagate context get :client-typescript-pr-number --task implement-client-typescript || true)"
+PY_PR_NUMBER="$(propagate context get :client-python-pr-number --task implement-client-python || true)"
+JAVA_PR_NUMBER="$(propagate context get :client-java-pr-number --task implement-client-java || true)"
+```
+
+For Python, use:
+
+```text
+git+https://github.com/MenschMachine/pdfdancer-client-python.git@<SDK_SHA>
+```
+
+For TypeScript, use:
+
+```shell
+npm install github:MenschMachine/pdfdancer-client-typescript#<SDK_SHA>
+```
+
+For Java, use JitPack with the exact upstream commit:
+
+```kotlin
+implementation("com.pdfdancer.client:pdfdancer-client-java:<SDK_SHA>")
+```
