@@ -122,7 +122,6 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "decide-backend-pipeline.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "validate-api-pr-trigger.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "decide-api-pipeline.md",
-            REPO_ROOT / "config" / "prompts" / "pdfdancer" / "validate-api-follow-up-context.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "implement-api-from-backend-pr.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "implement-client-sdk-from-api-pr.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "implement-client-typescript-examples-from-sdk-pr.md",
