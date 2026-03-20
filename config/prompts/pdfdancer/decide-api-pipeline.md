@@ -12,6 +12,10 @@ Tasks:
 
 ```bash
 propagate context set :source-api-pr-number "$PR_NUMBER"
+propagate context set --global :source-pr-number "$PR_NUMBER"
+propagate context set --global :source-repository "MenschMachine/pdfdancer-api"
+propagate context set --global :source-kind api
+propagate context set --global :upstream-api-pr-number "$PR_NUMBER"
 ```
 
 2. Decide the pipeline:
@@ -34,6 +38,7 @@ propagate context set run-docs-pipeline true
 
 ```bash
 propagate context set :pipeline-decision "<FULL or DOCS>: <one-sentence reason>"
+propagate context set --global :pipeline-decision "<FULL or DOCS>: <one-sentence reason>"
 ```
 
 Be decisive. Do not set both flags.

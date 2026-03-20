@@ -17,6 +17,7 @@
     - "{{ aggregate_after_command }}"
   sub_tasks:
     - id: validate-context
+      before: "{{ validate_before_actions }}"
       prompt: "{{ validate_prompt }}"
     - id: implement
       before:

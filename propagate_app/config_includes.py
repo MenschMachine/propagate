@@ -15,12 +15,13 @@ from .validation import validate_allowed_keys, validate_context_source_name
 _PLACEHOLDER_PATTERN: Pattern[str] = re.compile(r"{{\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*}}")
 _FULL_PLACEHOLDER_PATTERN: Pattern[str] = re.compile(r"^\s*{{\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*}}\s*$")
 _ScalarParameter = str | int | float | bool
+_ParameterValue = _ScalarParameter | list[str] | None
 
 
 @dataclass(frozen=True)
 class IncludeSpec:
     path: str
-    parameters: dict[str, _ScalarParameter]
+    parameters: dict[str, _ParameterValue]
 
 
 def resolve_mapping_includes(
@@ -102,23 +103,23 @@ def parse_include_spec(raw_item: Any, location: str) -> IncludeSpec:
     parameters_data = raw_item.get("with", {})
     if not isinstance(parameters_data, dict):
         raise PropagateError(f"{location}.with must be a mapping when provided.")
-    parameters: dict[str, _ScalarParameter] = {}
+    parameters: dict[str, _ParameterValue] = {}
     for key, value in parameters_data.items():
         parameter_name = validate_context_source_name(key)
-        if isinstance(value, bool):
+        if value is None or isinstance(value, bool) or isinstance(value, (str, int, float)):
             parameters[parameter_name] = value
-        elif isinstance(value, (str, int, float)):
+        elif isinstance(value, list) and all(isinstance(item, str) and item for item in value):
             parameters[parameter_name] = value
         else:
             raise PropagateError(
-                f"{location}.with['{parameter_name}'] must be a string, number, or boolean."
+                f"{location}.with['{parameter_name}'] must be null, a string, number, boolean, or list of non-empty strings."
             )
     return IncludeSpec(path=path, parameters=parameters)
 
 
 def render_included_mapping(
     data: dict[str, Any],
-    parameters: dict[str, _ScalarParameter],
+    parameters: dict[str, _ParameterValue],
     source_path: Path,
     *,
     allow_placeholder_keys: bool = False,
@@ -145,7 +146,7 @@ def render_included_mapping(
 
 def render_included_value(
     value: Any,
-    parameters: dict[str, _ScalarParameter],
+    parameters: dict[str, _ParameterValue],
     used_parameters: set[str],
     source_path: Path,
 ) -> Any:
@@ -174,7 +175,12 @@ def render_included_value(
         if parameter_name not in parameters:
             raise PropagateError(f"Include file {source_path} references unknown template parameter '{parameter_name}'.")
         used_parameters.add(parameter_name)
-        return str(parameters[parameter_name])
+        parameter_value = parameters[parameter_name]
+        if not isinstance(parameter_value, (str, int, float, bool)):
+            raise PropagateError(
+                f"Include file {source_path} references non-scalar template parameter '{parameter_name}' inside a larger string."
+            )
+        return str(parameter_value)
 
     return _PLACEHOLDER_PATTERN.sub(replace_placeholder, value)
 

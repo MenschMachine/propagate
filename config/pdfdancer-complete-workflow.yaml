@@ -89,10 +89,13 @@ executions:
         pr_body_key: :api-pr-body
         pr_number_key: :api-pr-number
         github_repository: MenschMachine/pdfdancer-api
-        validate_prompt: ./prompts/pdfdancer/validate-api-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=context:triage-backend-pr/:source-backend-pr-number require_merged=true
+          - validate:context-key key=:run-full-pipeline scope=triage-backend-pr
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-api-from-backend-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-api-from-backend-pr.md
-        aggregate_after_command: "true"
+        aggregate_after_command: 'UPSTREAM="$(propagate context get :api-pr-number | xargs)"; if [[ -n "$UPSTREAM" ]]; then propagate context set --global :upstream-api-pr-number "$UPSTREAM"; fi'
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-client-typescript
@@ -102,7 +105,10 @@ executions:
         pr_body_key: :client-typescript-pr-body
         pr_number_key: :client-typescript-pr-number
         github_repository: MenschMachine/pdfdancer-client-typescript
-        validate_prompt: ./prompts/pdfdancer/validate-client-sdk-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
         aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java >/dev/null 2>&1; then propagate context set all-sdks-approved true; fi'
@@ -115,7 +121,10 @@ executions:
         pr_body_key: :client-python-pr-body
         pr_number_key: :client-python-pr-number
         github_repository: MenschMachine/pdfdancer-client-python
-        validate_prompt: ./prompts/pdfdancer/validate-client-sdk-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
         aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java >/dev/null 2>&1; then propagate context set all-sdks-approved true; fi'
@@ -128,7 +137,10 @@ executions:
         pr_body_key: :client-java-pr-body
         pr_number_key: :client-java-pr-number
         github_repository: MenschMachine/pdfdancer-client-java
-        validate_prompt: ./prompts/pdfdancer/validate-client-sdk-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
         aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java >/dev/null 2>&1; then propagate context set all-sdks-approved true; fi'
@@ -141,7 +153,10 @@ executions:
         pr_body_key: :client-typescript-examples-pr-body
         pr_number_key: :client-typescript-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-typescript-examples
-        validate_prompt: ./prompts/pdfdancer/validate-client-typescript-examples-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-client-typescript pr_from=context:implement-client-typescript/:client-typescript-pr-number
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-typescript-examples-from-sdk-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
         aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java-examples >/dev/null 2>&1; then propagate context set all-examples-approved true; fi'
@@ -154,7 +169,10 @@ executions:
         pr_body_key: :client-python-examples-pr-body
         pr_number_key: :client-python-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-python-examples
-        validate_prompt: ./prompts/pdfdancer/validate-client-python-examples-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-client-python pr_from=context:implement-client-python/:client-python-pr-number
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-python-examples-from-sdk-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
         aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java-examples >/dev/null 2>&1; then propagate context set all-examples-approved true; fi'
@@ -167,7 +185,10 @@ executions:
         pr_body_key: :client-java-examples-pr-body
         pr_number_key: :client-java-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-java-examples
-        validate_prompt: ./prompts/pdfdancer/validate-client-java-examples-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-client-java pr_from=context:implement-client-java/:client-java-pr-number
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-java-examples-from-sdk-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
         aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java-examples >/dev/null 2>&1; then propagate context set all-examples-approved true; fi'
@@ -180,7 +201,10 @@ executions:
         pr_body_key: :api-docs-pr-body
         pr_number_key: :api-docs-pr-number
         github_repository: MenschMachine/pdfdancer-api-docs
-        validate_prompt: ./prompts/pdfdancer/validate-api-docs-follow-up-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:context-key key=:pipeline-decision scope=global
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-api-docs-from-workflow-context.md
         summarize_prompt: ./prompts/pdfdancer/summarize-api-docs-from-workflow-context.md
         aggregate_after_command: "true"
@@ -193,7 +217,10 @@ executions:
         pr_body_key: :website-pr-body
         pr_number_key: :website-pr-number
         github_repository: MenschMachine/pdfdancer-www
-        validate_prompt: ./prompts/pdfdancer/validate-website-workflow-context.md
+        validate_before_actions:
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-api-docs pr_from=context:implement-pdfdancer-api-docs/:api-docs-pr-number
+        validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-website-from-workflow-context.md
         summarize_prompt: ./prompts/pdfdancer/summarize-website-from-workflow-context.md
         aggregate_after_command: "true"

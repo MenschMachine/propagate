@@ -39,7 +39,7 @@ def test_parse_hook_actions_accepts_validate_github_pr(tmp_path):
 
 
 def test_parse_hook_actions_rejects_invalid_validate_github_pr(tmp_path):
-    with pytest.raises(PropagateError, match="requires 'repo=<owner/name>'"):
+    with pytest.raises(PropagateError, match="requires exactly one of 'repo=<owner/name>' or 'repo_from=<source>'"):
         parse_hook_actions(
             ["validate:github-pr pr_from=signal.pr_number"],
             "execution 'ex'.sub_tasks[0]",
@@ -52,6 +52,26 @@ def test_parse_hook_actions_rejects_unknown_validate_command(tmp_path):
     with pytest.raises(PropagateError, match="unknown validation command"):
         parse_hook_actions(
             ["validate:not-a-real-command repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number"],
+            "execution 'ex'.sub_tasks[0]",
+            "before",
+            set(),
+        )
+
+
+def test_parse_hook_actions_accepts_validate_context_key(tmp_path):
+    result = parse_hook_actions(
+        ["validate:context-key key=:pipeline-decision scope=global"],
+        "execution 'ex'.sub_tasks[0]",
+        "before",
+        set(),
+    )
+    assert result == ["validate:context-key key=:pipeline-decision scope=global"]
+
+
+def test_parse_hook_actions_rejects_invalid_context_key_scope(tmp_path):
+    with pytest.raises(PropagateError, match="scope must be 'global', 'execution', or 'execution/task'"):
+        parse_hook_actions(
+            ["validate:context-key key=:pipeline-decision scope=bad/scope/extra"],
             "execution 'ex'.sub_tasks[0]",
             "before",
             set(),
@@ -74,6 +94,35 @@ def test_run_validate_hook_command_resolves_signal_pr_number(tmp_path):
             runtime_context,
         )
     assert mock_run.call_args.args[0][0:6] == ["gh", "pr", "view", "42", "--repo", "MenschMachine/pdfdancer-api"]
+
+
+def test_run_validate_hook_command_resolves_repo_from_context(tmp_path):
+    runtime_context = _make_runtime_context(
+        tmp_path,
+        ActiveSignal(signal_type="pull_request.closed", payload={"pr_number": 42}, source="test"),
+    )
+    write_context_value(runtime_context.context_root, ":source-repository", "MenschMachine/pdfdancer-api")
+    completed = subprocess.CompletedProcess(
+        args=["gh"],
+        returncode=0,
+        stdout='{"number":42,"state":"MERGED","mergedAt":"2026-03-20T00:00:00Z"}',
+    )
+    with patch("propagate_app.validation_hooks.run_process_command", return_value=completed) as mock_run:
+        run_validate_hook_command(
+            "validate:github-pr repo_from=context:global/:source-repository pr_from=signal.pr_number require_merged=true",
+            runtime_context,
+        )
+    assert mock_run.call_args.args[0][5] == "MenschMachine/pdfdancer-api"
+
+
+def test_parse_hook_actions_rejects_github_pr_with_repo_and_repo_from(tmp_path):
+    with pytest.raises(PropagateError, match="requires exactly one of 'repo=<owner/name>' or 'repo_from=<source>'"):
+        parse_hook_actions(
+            ["validate:github-pr repo=MenschMachine/pdfdancer-api repo_from=context:global/:source-repository pr_from=signal.pr_number"],
+            "execution 'ex'.sub_tasks[0]",
+            "before",
+            set(),
+        )
 
 
 def test_run_validate_hook_command_resolves_context_pr_number(tmp_path):
@@ -110,3 +159,42 @@ def test_run_validate_hook_command_fails_when_pr_not_merged(tmp_path):
                 "validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number require_merged=true",
                 runtime_context,
             )
+
+
+def test_run_validate_context_key_reads_global_scope(tmp_path):
+    runtime_context = _make_runtime_context(tmp_path)
+    write_context_value(runtime_context.context_root, ":pipeline-decision", "FULL: test")
+    run_validate_hook_command(
+        "validate:context-key key=:pipeline-decision scope=global",
+        runtime_context,
+    )
+
+
+def test_run_validate_context_key_checks_equals(tmp_path):
+    runtime_context = _make_runtime_context(tmp_path)
+    write_context_value(runtime_context.context_root, ":pipeline-decision", "FULL: test")
+    run_validate_hook_command(
+        "validate:context-key key=:pipeline-decision scope=global 'equals=FULL: test'",
+        runtime_context,
+    )
+
+
+def test_run_validate_context_key_fails_when_empty(tmp_path):
+    runtime_context = _make_runtime_context(tmp_path)
+    write_context_value(runtime_context.context_root, ":pipeline-decision", "")
+    with pytest.raises(PropagateError, match="is empty"):
+        run_validate_hook_command(
+            "validate:context-key key=:pipeline-decision scope=global",
+            runtime_context,
+        )
+
+
+def test_run_validate_context_key_reads_execution_scope_by_name(tmp_path):
+    runtime_context = _make_runtime_context(tmp_path)
+    execution_dir = runtime_context.context_root / "triage-api-pr"
+    ensure_context_dir(execution_dir)
+    write_context_value(execution_dir, ":pipeline-decision", "DOCS: test")
+    run_validate_hook_command(
+        "validate:context-key key=:pipeline-decision scope=triage-api-pr 'equals=DOCS: test'",
+        runtime_context,
+    )
