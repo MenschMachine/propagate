@@ -95,7 +95,7 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
 
         ts_sdk = config.executions["implement-client-typescript"]
         self.assertEqual(ts_sdk.git.pr.number_key, ":client-typescript-pr-number")
-        self.assertEqual(ts_sdk.git.branch.name_template, "client-typescript/source-pr-{signal[pr_number]}")
+        self.assertEqual(ts_sdk.git.branch.name_template, "client-typescript/source-pr-{context[global][:source-pr-number]}")
         self.assertEqual(ts_sdk.after[1], ":mark-all-sdks-approved")
 
         ts_examples = config.executions["implement-client-typescript-examples"]
