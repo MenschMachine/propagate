@@ -12,3 +12,4 @@ __pycache__
 *.swp
 .env-marketing-data
 .pdfdancer-seo-service-account.json
+.webhooks.json
