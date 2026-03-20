@@ -4,7 +4,7 @@
 import argparse
 import json
 import logging
-import secrets
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -162,7 +162,7 @@ def main() -> None:
     parser.add_argument("--config", required=True, help="Path to propagate YAML config")
     parser.add_argument("--url", help="Production webhook URL (e.g. https://webhook.example.com/webhook)")
     parser.add_argument("--events", default="push,pull_request,issues,issue_comment", help="Webhook events (comma-separated)")
-    parser.add_argument("--secret", default=None, help="Webhook secret (auto-generated if omitted)")
+    parser.add_argument("--secret-env", default="GITHUB_WEBHOOK_SECRET", help="Env var containing the webhook secret (default: GITHUB_WEBHOOK_SECRET)")
     parser.add_argument("--skip-labels", action="store_true", help="Skip label creation")
     parser.add_argument("--teardown", action="store_true", help="Delete webhooks from state file")
     parser.add_argument("--clear", action="store_true", help="Remove ALL webhooks from repos in config")
@@ -209,7 +209,10 @@ def main() -> None:
         return
 
     # Normal setup: webhooks + labels
-    secret = args.secret or secrets.token_hex(20)
+    secret = os.environ.get(args.secret_env)
+    if not secret:
+        logger.error("Env var '%s' is not set. Set it in .env before running.", args.secret_env)
+        sys.exit(1)
 
     setup_webhooks(repos, state_file, args.url, args.events, secret, args.dry_run)
 
