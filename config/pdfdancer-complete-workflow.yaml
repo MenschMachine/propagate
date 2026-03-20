@@ -207,7 +207,8 @@ executions:
           merged: true
     sub_tasks:
       - id: validate-backend-pr
-        prompt: ./prompts/pdfdancer/validate-backend-pr-suggestions.md
+        before:
+          - validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=signal.pr_number require_merged=true
       - id: decide-pipeline
         prompt: ./prompts/pdfdancer/decide-backend-pipeline.md
 
@@ -220,7 +221,8 @@ executions:
           merged: true
     sub_tasks:
       - id: validate-api-pr
-        prompt: ./prompts/pdfdancer/validate-api-pr-trigger.md
+        before:
+          - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number require_merged=true
       - id: decide-pipeline
         prompt: ./prompts/pdfdancer/decide-api-pipeline.md
 

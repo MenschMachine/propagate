@@ -56,6 +56,10 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
             {"repository": "MenschMachine/pdfdancer-backend", "merged": True},
         )
         self.assertEqual([task.task_id for task in triage.sub_tasks], ["validate-backend-pr", "decide-pipeline"])
+        self.assertEqual(
+            triage.sub_tasks[0].before,
+            ["validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=signal.pr_number require_merged=true"],
+        )
 
         triage_api = config.executions["triage-api-pr"]
         self.assertEqual(triage_api.repository, "pdfdancer-api")
@@ -65,6 +69,10 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
             {"repository": "MenschMachine/pdfdancer-api", "merged": True},
         )
         self.assertEqual([task.task_id for task in triage_api.sub_tasks], ["validate-api-pr", "decide-pipeline"])
+        self.assertEqual(
+            triage_api.sub_tasks[0].before,
+            ["validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number require_merged=true"],
+        )
 
         api = config.executions["implement-pdfdancer-api"]
         self.assertEqual(api.repository, "pdfdancer-api")
