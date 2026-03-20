@@ -27,6 +27,10 @@ def format_event_reply(event: dict) -> str:
         execution = event.get("execution", "unknown")
         pr_url = event.get("pr_url", "")
         return f"PR created for '{execution}':\n{pr_url}"
+    if event_type == "pr_updated":
+        execution = event.get("execution", "unknown")
+        pr_url = event.get("pr_url", "")
+        return f"PR updated for '{execution}':\n{pr_url}"
     if event_type in ("run_completed", "run_failed"):
         signal_type = event.get("signal_type", "unknown")
         messages = event.get("messages") or []

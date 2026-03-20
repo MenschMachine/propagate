@@ -7,7 +7,7 @@ from .context_sources import run_context_source
 from .context_store import read_context_value, resolve_execution_context_dir
 from .errors import PropagateError
 from .git_templates import render_git_template
-from .models import GitCommitConfig, GitPrConfig, GitPushConfig, RuntimeContext
+from .models import GitCommitConfig, GitPrConfig, GitPushConfig, PullRequestResult, RuntimeContext
 from .processes import run_git_command, run_process_command
 from .temp_files import cleanup_temp_file, write_temp_text
 
@@ -162,7 +162,7 @@ def create_pull_request(
     title: str,
     body: str,
     working_dir: Path,
-) -> str:
+) -> PullRequestResult:
     LOGGER.info("Creating pull request from '%s' into '%s'.", head_branch, base_branch)
     body_path = write_temp_text(body, prefix="propagate-pr-", suffix=".md")
     try:
@@ -195,9 +195,9 @@ def create_pull_request(
             # This depends on gh's English error message wording.
             if "already exists" in stderr:
                 LOGGER.info("Pull request already exists for branch '%s'; skipping creation.", head_branch)
-                return _get_existing_pr_url(working_dir)
+                return PullRequestResult(url=_get_existing_pr_url(working_dir), created=False)
             raise PropagateError(f"Failed to create pull request for branch '{head_branch}'. stderr: {result.stderr}")
-        return result.stdout.strip()
+        return PullRequestResult(url=result.stdout.strip(), created=True)
     finally:
         cleanup_temp_file(body_path, "pull request body file")
 

@@ -228,7 +228,7 @@ def create_execution_git_pr(
         return
     try:
         title, body = load_pr_title_body(git_config.pr, commit_message, runtime_context)
-        pr_url = create_pull_request(
+        pr_result = create_pull_request(
             git_config.pr,
             git_config.pr.base or git_config.branch.base or prepared_execution.starting_branch,
             prepared_execution.selected_branch,
@@ -236,8 +236,10 @@ def create_execution_git_pr(
             body,
             runtime_context.working_dir,
         )
+        pr_url = pr_result.url
         if pr_url:
-            publish_event_if_available(runtime_context.pub_socket, "pr_created", {
+            event_type = "pr_created" if pr_result.created else "pr_updated"
+            publish_event_if_available(runtime_context.pub_socket, event_type, {
                 "execution": execution_name,
                 "pr_url": pr_url,
                 "metadata": runtime_context.metadata,

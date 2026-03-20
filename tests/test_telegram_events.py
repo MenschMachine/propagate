@@ -10,6 +10,7 @@ from propagate_app.models import (
     GitPrConfig,
     GitPushConfig,
     GitRunState,
+    PullRequestResult,
     PreparedGitExecution,
     RuntimeContext,
 )
@@ -44,6 +45,12 @@ def test_format_pr_created():
     event = {"event": "pr_created", "execution": "deploy-app", "pr_url": "https://github.com/org/repo/pull/42", "metadata": {}}
     result = _format_event_reply(event)
     assert result == "PR created for 'deploy-app':\nhttps://github.com/org/repo/pull/42"
+
+
+def test_format_pr_updated():
+    event = {"event": "pr_updated", "execution": "deploy-app", "pr_url": "https://github.com/org/repo/pull/42", "metadata": {}}
+    result = _format_event_reply(event)
+    assert result == "PR updated for 'deploy-app':\nhttps://github.com/org/repo/pull/42"
 
 
 def test_publish_event_if_available_noop_when_none():
@@ -97,7 +104,7 @@ def test_pr_created_event_published(tmp_path):
     metadata = {"chat_id": "123"}
     rc = _make_runtime_context(tmp_path, pub_socket="fake_socket", metadata=metadata)
 
-    with patch("propagate_app.git_runtime.create_pull_request", return_value="https://github.com/org/repo/pull/42"), \
+    with patch("propagate_app.git_runtime.create_pull_request", return_value=PullRequestResult(url="https://github.com/org/repo/pull/42", created=True)), \
          patch("propagate_app.git_runtime.publish_event_if_available") as mock_publish:
         create_execution_git_pr("my-exec", git_config, prepared, "Subject\n\nBody", rc)
 
@@ -119,11 +126,34 @@ def test_pr_created_event_not_published_when_no_url(tmp_path):
     prepared = PreparedGitExecution(starting_branch="main", selected_branch="feat/x")
     rc = _make_runtime_context(tmp_path, pub_socket="fake_socket")
 
-    with patch("propagate_app.git_runtime.create_pull_request", return_value=""), \
+    with patch("propagate_app.git_runtime.create_pull_request", return_value=PullRequestResult(url="", created=True)), \
          patch("propagate_app.git_runtime.publish_event_if_available") as mock_publish:
         create_execution_git_pr("my-exec", git_config, prepared, "Subject\n\nBody", rc)
 
     mock_publish.assert_not_called()
+
+
+def test_pr_updated_event_published_when_pr_already_exists(tmp_path):
+    pr_config = GitPrConfig(base="main", draft=False)
+    git_config = GitConfig(
+        branch=GitBranchConfig(name="feat/x", base="main", reuse=True),
+        commit=GitCommitConfig(message_source=None, message_key=":msg"),
+        push=GitPushConfig(remote="origin"),
+        pr=pr_config,
+    )
+    prepared = PreparedGitExecution(starting_branch="main", selected_branch="feat/x")
+    metadata = {"chat_id": "123"}
+    rc = _make_runtime_context(tmp_path, pub_socket="fake_socket", metadata=metadata)
+
+    with patch("propagate_app.git_runtime.create_pull_request", return_value=PullRequestResult(url="https://github.com/org/repo/pull/42", created=False)), \
+         patch("propagate_app.git_runtime.publish_event_if_available") as mock_publish:
+        create_execution_git_pr("my-exec", git_config, prepared, "Subject\n\nBody", rc)
+
+    mock_publish.assert_called_once_with("fake_socket", "pr_updated", {
+        "execution": "my-exec",
+        "pr_url": "https://github.com/org/repo/pull/42",
+        "metadata": metadata,
+    })
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ from propagate_app.signal_transport import (
 from .message_parser import parse_signal_message
 
 logger = logging.getLogger("propagate.telegram")
+_TELEGRAM_NOTIFY_EVENTS = {"pr_created", "pr_updated"}
 
 
 @dataclass
@@ -473,7 +474,7 @@ async def _poll_events(application, sub_socket) -> None:
         metadata = event.get("metadata") or {}
         chat_id = metadata.get("chat_id")
         origin_chat_id = int(chat_id) if chat_id is not None else None
-        if chat_id is None and not (event.get("event") == "pr_created" and notify_chats):
+        if chat_id is None and not (event.get("event") in _TELEGRAM_NOTIFY_EVENTS and notify_chats):
             logger.debug("Received event without chat_id metadata; skipping reply.")
             continue
         message_id = metadata.get("message_id")
@@ -484,7 +485,7 @@ async def _poll_events(application, sub_socket) -> None:
         target_chats: list[int] = []
         if origin_chat_id is not None:
             target_chats.append(origin_chat_id)
-        if event.get("event") == "pr_created":
+        if event.get("event") in _TELEGRAM_NOTIFY_EVENTS:
             for notify_chat_id in sorted(notify_chats):
                 if notify_chat_id not in target_chats:
                     target_chats.append(notify_chat_id)

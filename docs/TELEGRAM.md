@@ -184,7 +184,7 @@ Config filenames must be unique — two configs with the same stem will be rejec
 
 ## PR Notifications
 
-When propagate itself creates a pull request, it publishes a `pr_created` event. The Telegram bot can forward those events to fixed chats configured via `--notify-chats` or `.env`.
+When propagate opens a new pull request, it publishes `pr_created`. When it pushes more changes to a branch that already has an open PR, it publishes `pr_updated`. The Telegram bot forwards both event types to fixed chats configured via `--notify-chats` or `.env`.
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456:ABCDEF
@@ -199,7 +199,7 @@ propagate-telegram --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456
 Notes:
 
 - `TELEGRAM_NOTIFY_CHATS` is a comma-separated list of Telegram chat IDs.
-- These notifications are for propagate's internal `pr_created` event, not generic GitHub `pull_request.opened` webhooks.
+- These notifications are for propagate's internal `pr_created` and `pr_updated` events, not generic GitHub `pull_request.opened` webhooks.
 - If a run was started from Telegram and the origin chat is also in `TELEGRAM_NOTIFY_CHATS`, the bot sends only one message to that chat.
 
 ---

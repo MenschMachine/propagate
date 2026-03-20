@@ -31,6 +31,11 @@ def test_pr_created():
     assert format_event_reply(event) == "PR created for 'build':\nhttps://github.com/org/repo/pull/1"
 
 
+def test_pr_updated():
+    event = {"event": "pr_updated", "execution": "build", "pr_url": "https://github.com/org/repo/pull/1"}
+    assert format_event_reply(event) == "PR updated for 'build':\nhttps://github.com/org/repo/pull/1"
+
+
 def test_run_completed():
     event = {"event": "run_completed", "signal_type": "deploy"}
     assert format_event_reply(event) == "Run completed for signal 'deploy'."

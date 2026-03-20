@@ -79,6 +79,12 @@ class GitPrConfig:
 
 
 @dataclass(frozen=True)
+class PullRequestResult:
+    url: str
+    created: bool
+
+
+@dataclass(frozen=True)
 class GitConfig:
     branch: GitBranchConfig
     commit: GitCommitConfig

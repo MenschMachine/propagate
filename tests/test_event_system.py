@@ -687,3 +687,44 @@ async def test_poll_events_pr_created_dedupes_origin_chat_from_notify_chats():
     assert set(sent_calls) == {42, 99}
     assert sent_calls[42]["reply_to_message_id"] == 5
     assert "reply_to_message_id" not in sent_calls[99]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"], indirect=True)
+async def test_poll_events_sends_pr_updated_to_notify_chats():
+    """pr_updated without chat metadata is sent to configured notify chats."""
+    import asyncio
+
+    from propagate_telegram.bot import _poll_events
+
+    fake_event = {
+        "event": "pr_updated",
+        "execution": "deploy",
+        "pr_url": "https://github.com/org/repo/pull/7",
+        "metadata": {},
+    }
+    call_count = 0
+
+    def fake_receive(sub_socket, timeout_ms=1000):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return fake_event
+        raise asyncio.CancelledError
+
+    application = MagicMock()
+    application.bot.send_message = AsyncMock()
+    application.bot_data = {
+        "notify_chats": {42, 99},
+        "response_queue": asyncio.Queue(),
+    }
+
+    with patch("propagate_telegram.bot.receive_event", side_effect=fake_receive):
+        try:
+            await _poll_events(application, MagicMock())
+        except asyncio.CancelledError:
+            pass
+
+    assert application.bot.send_message.await_count == 2
+    sent_chat_ids = {call.kwargs["chat_id"] for call in application.bot.send_message.await_args_list}
+    assert sent_chat_ids == {42, 99}

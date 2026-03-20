@@ -22,9 +22,10 @@ def test_pr_already_exists_fetches_existing_url(tmp_path):
     view_result = _make_completed_process(0, stdout="https://github.com/org/repo/pull/99\n")
 
     with patch("propagate_app.git_publish.run_process_command", side_effect=[create_result, view_result]) as mock_run:
-        url = create_pull_request(pr_config, "main", "feat/x", "title", "body", tmp_path)
+        result = create_pull_request(pr_config, "main", "feat/x", "title", "body", tmp_path)
 
-    assert url == "https://github.com/org/repo/pull/99"
+    assert result.url == "https://github.com/org/repo/pull/99"
+    assert result.created is False
     assert mock_run.call_count == 2
 
 
@@ -46,6 +47,7 @@ def test_pr_create_success_returns_url(tmp_path):
     create_result = _make_completed_process(0, stdout="https://github.com/org/repo/pull/42\n")
 
     with patch("propagate_app.git_publish.run_process_command", return_value=create_result):
-        url = create_pull_request(pr_config, "main", "feat/x", "title", "body", tmp_path)
+        result = create_pull_request(pr_config, "main", "feat/x", "title", "body", tmp_path)
 
-    assert url == "https://github.com/org/repo/pull/42"
+    assert result.url == "https://github.com/org/repo/pull/42"
+    assert result.created is True
