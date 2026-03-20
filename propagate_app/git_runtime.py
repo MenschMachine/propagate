@@ -33,12 +33,19 @@ from .models import (
     GitPrConfig,
     GitPushConfig,
     GitRunState,
+    PullRequestResult,
     PreparedGitExecution,
     RuntimeContext,
 )
 from .signal_transport import publish_event_if_available
 
 _GIT_STATE_KEY_PREFIX = ":git."
+
+
+def _normalize_pr_result(result: PullRequestResult | str) -> PullRequestResult:
+    if isinstance(result, PullRequestResult):
+        return result
+    return PullRequestResult(url=result, created=True)
 
 
 def _persist_git_state(runtime_context: RuntimeContext, field: str, value: str) -> None:
@@ -228,14 +235,14 @@ def create_execution_git_pr(
         return
     try:
         title, body = load_pr_title_body(git_config.pr, commit_message, runtime_context)
-        pr_result = create_pull_request(
+        pr_result = _normalize_pr_result(create_pull_request(
             git_config.pr,
             git_config.pr.base or git_config.branch.base or prepared_execution.starting_branch,
             prepared_execution.selected_branch,
             title,
             body,
             runtime_context.working_dir,
-        )
+        ))
         pr_url = pr_result.url
         if pr_url:
             event_type = "pr_created" if pr_result.created else "pr_updated"
