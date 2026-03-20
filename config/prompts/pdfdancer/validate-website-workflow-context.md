@@ -10,3 +10,5 @@ gh pr view "$API_DOCS_PR_NUMBER" --repo MenschMachine/pdfdancer-api-docs --json 
 ```
 
 Fail fast unless the backend PR exists and is merged and the api-docs PR is the approved upstream docs implementation.
+
+Do not modify any files, write any code, or change context. This task is validation only — a workflow safety gate.
