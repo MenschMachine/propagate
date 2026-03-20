@@ -40,6 +40,7 @@ Edit `/opt/propagate/.env`:
 | `CONFIG_PATH` | Path to propagate YAML config (relative to `/opt/propagate`) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather |
 | `TELEGRAM_USERS` | Comma-separated Telegram user IDs allowed to use the bot |
+| `TELEGRAM_NOTIFY_CHATS` | Comma-separated Telegram chat IDs for outbound `pr_created` notifications |
 
 ## Architecture
 

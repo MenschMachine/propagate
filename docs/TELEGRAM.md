@@ -42,6 +42,7 @@ The `--config` path must match the one used by `propagate serve`. Pass multiple 
 | `--token` | (none) | Telegram bot token |
 | `--token-env` | (none) | Environment variable name containing the bot token |
 | `--allowed-users` | (required) | Comma-separated Telegram user IDs allowed to send commands |
+| `--notify-chats` | (none) | Comma-separated Telegram chat IDs for outbound `pr_created` notifications |
 | `--debug` | off | Enable debug-level logging |
 
 ---
@@ -178,6 +179,28 @@ When only one project is loaded, all commands work without `/project` — auto-s
 Event replies are prefixed with `[project-name]` when multiple projects are loaded, so you can tell which project an event came from. With a single project, no prefix is added.
 
 Config filenames must be unique — two configs with the same stem will be rejected.
+
+---
+
+## PR Notifications
+
+When propagate itself creates a pull request, it publishes a `pr_created` event. The Telegram bot can forward those events to fixed chats configured via `--notify-chats` or `.env`.
+
+```dotenv
+TELEGRAM_BOT_TOKEN=123456:ABCDEF
+TELEGRAM_USERS=123456
+TELEGRAM_NOTIFY_CHATS=-1001234567890
+```
+
+```bash
+propagate-telegram --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456
+```
+
+Notes:
+
+- `TELEGRAM_NOTIFY_CHATS` is a comma-separated list of Telegram chat IDs.
+- These notifications are for propagate's internal `pr_created` event, not generic GitHub `pull_request.opened` webhooks.
+- If a run was started from Telegram and the origin chat is also in `TELEGRAM_NOTIFY_CHATS`, the bot sends only one message to that chat.
 
 ---
 

@@ -7,7 +7,13 @@ import pytest
 
 from propagate_app.models import SignalConfig, SignalFieldConfig
 from propagate_app.signal_transport import bind_pull_socket, close_pull_socket, close_push_socket, connect_push_socket, receive_signal
-from propagate_telegram.cli import _parse_allowed_users, _resolve_allowed_users, _resolve_token
+from propagate_telegram.cli import (
+    _parse_allowed_users,
+    _parse_chat_ids,
+    _resolve_allowed_users,
+    _resolve_notify_chats,
+    _resolve_token,
+)
 from propagate_telegram.message_parser import parse_payload_params, parse_signal_message
 
 # ---------------------------------------------------------------------------
@@ -179,6 +185,34 @@ def test_resolve_allowed_users_from_env(monkeypatch):
 def test_resolve_allowed_users_none(monkeypatch):
     monkeypatch.delenv("TELEGRAM_USERS", raising=False)
     assert _resolve_allowed_users(None) is None
+
+
+def test_resolve_notify_chats_cli_wins(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_NOTIFY_CHATS", "999")
+    assert _resolve_notify_chats("123,456") == "123,456"
+
+
+def test_resolve_notify_chats_from_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_NOTIFY_CHATS", "111,222")
+    assert _resolve_notify_chats(None) == "111,222"
+
+
+def test_resolve_notify_chats_none(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_NOTIFY_CHATS", raising=False)
+    assert _resolve_notify_chats(None) is None
+
+
+def test_parse_chat_ids_none():
+    assert _parse_chat_ids(None, "--notify-chats") == set()
+
+
+def test_parse_chat_ids():
+    assert _parse_chat_ids("123, 456", "--notify-chats") == {123, 456}
+
+
+def test_parse_chat_ids_invalid():
+    with pytest.raises(Exception, match="Invalid chat ID"):
+        _parse_chat_ids("123,abc", "--notify-chats")
 
 
 # ---------------------------------------------------------------------------

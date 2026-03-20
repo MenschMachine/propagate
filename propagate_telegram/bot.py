@@ -457,6 +457,7 @@ async def _poll_events(application, sub_socket) -> None:
     from propagate_app.log_buffer import append_line
 
     response_queue: asyncio.Queue[dict] = application.bot_data["response_queue"]
+    notify_chats: set[int] = application.bot_data.get("notify_chats", set())
     loop = asyncio.get_running_loop()
     while True:
         event = await loop.run_in_executor(None, lambda: receive_event(sub_socket, timeout_ms=1000))
@@ -471,7 +472,8 @@ async def _poll_events(application, sub_socket) -> None:
             continue
         metadata = event.get("metadata") or {}
         chat_id = metadata.get("chat_id")
-        if chat_id is None:
+        origin_chat_id = int(chat_id) if chat_id is not None else None
+        if chat_id is None and not (event.get("event") == "pr_created" and notify_chats):
             logger.debug("Received event without chat_id metadata; skipping reply.")
             continue
         message_id = metadata.get("message_id")
@@ -479,20 +481,30 @@ async def _poll_events(application, sub_socket) -> None:
         display_project = event.get("project")
         if display_project is not None:
             text = f"[{display_project}] {text}"
-        try:
-            kwargs: dict[str, Any] = {"chat_id": int(chat_id), "text": text}
-            if message_id is not None:
-                kwargs["reply_to_message_id"] = int(message_id)
-            await application.bot.send_message(**kwargs)
-            logger.debug("Sent event reply to chat %s.", chat_id)
-        except Exception:
-            logger.exception("Failed to send event reply to chat %s.", chat_id)
+        target_chats: list[int] = []
+        if origin_chat_id is not None:
+            target_chats.append(origin_chat_id)
+        if event.get("event") == "pr_created":
+            for notify_chat_id in sorted(notify_chats):
+                if notify_chat_id not in target_chats:
+                    target_chats.append(notify_chat_id)
+
+        for target_chat_id in target_chats:
+            try:
+                kwargs: dict[str, Any] = {"chat_id": target_chat_id, "text": text}
+                if message_id is not None and origin_chat_id is not None and target_chat_id == origin_chat_id:
+                    kwargs["reply_to_message_id"] = int(message_id)
+                await application.bot.send_message(**kwargs)
+                logger.debug("Sent event reply to chat %s.", target_chat_id)
+            except Exception:
+                logger.exception("Failed to send event reply to chat %s.", target_chat_id)
 
 
 def run_bot(
     projects: dict[str, ProjectState],
     token: str,
     allowed_users: set[int],
+    notify_chats: set[int],
 ) -> None:
     """Start the Telegram bot with long-polling."""
     from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
@@ -527,6 +539,7 @@ def run_bot(
     application.bot_data["projects"] = projects
     application.bot_data["active_project"] = {}
     application.bot_data["allowed_users"] = allowed_users
+    application.bot_data["notify_chats"] = notify_chats
     application.bot_data["response_queue"] = asyncio.Queue()
 
     application.add_handler(CommandHandler("project", handle_project))

@@ -15,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--token", help="Telegram bot token.")
     parser.add_argument("--token-env", help="Environment variable name containing the bot token.")
     parser.add_argument("--allowed-users", help="Comma-separated Telegram user IDs allowed to send commands (default: $TELEGRAM_USERS).")
+    parser.add_argument("--notify-chats", help="Comma-separated Telegram chat IDs for outbound PR notifications (default: $TELEGRAM_NOTIFY_CHATS).")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
     return parser
 
@@ -45,6 +46,13 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", error)
         return 1
 
+    raw_notify_chats = _resolve_notify_chats(args.notify_chats)
+    try:
+        notify_chats = _parse_chat_ids(raw_notify_chats, "--notify-chats")
+    except PropagateError as error:
+        logger.error("%s", error)
+        return 1
+
     from .bot import run_bot
 
     projects = _discover_projects_from_coordinator()
@@ -56,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         projects=projects,
         token=token,
         allowed_users=allowed_users,
+        notify_chats=notify_chats,
     )
     return 0
 
@@ -135,8 +144,23 @@ def _resolve_allowed_users(cli_value: str | None) -> str | None:
     return os.environ.get("TELEGRAM_USERS")
 
 
+def _resolve_notify_chats(cli_value: str | None) -> str | None:
+    if cli_value is not None:
+        return cli_value
+    return os.environ.get("TELEGRAM_NOTIFY_CHATS")
+
+
 def _parse_allowed_users(raw: str) -> set[int]:
     try:
         return {int(uid.strip()) for uid in raw.split(",") if uid.strip()}
     except ValueError as error:
         raise PropagateError(f"Invalid user ID in --allowed-users: {error}") from error
+
+
+def _parse_chat_ids(raw: str | None, option_name: str) -> set[int]:
+    if raw is None:
+        return set()
+    try:
+        return {int(uid.strip()) for uid in raw.split(",") if uid.strip()}
+    except ValueError as error:
+        raise PropagateError(f"Invalid chat ID in {option_name}: {error}") from error
