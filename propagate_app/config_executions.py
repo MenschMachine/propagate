@@ -9,8 +9,8 @@ from .constants import LOGGER
 from .errors import PropagateError
 from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig, SubTaskRouteConfig
 from .signals import validate_signal_when_clause
-from .validation_hooks import validate_hook_action
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
+from .validation_hooks import validate_hook_action
 
 
 def resolve_execution_includes(executions_data: dict, config_dir: Path) -> dict:

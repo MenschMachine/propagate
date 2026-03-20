@@ -1,9 +1,11 @@
-# Complete downstream workflow for a merged `pdfdancer-backend` or `pdfdancer-api` PR.
+# Complete downstream workflow for a merged `pdfdancer-backend` PR or a labeled open
+# `pdfdancer-api` PR.
 #
 # Trigger semantics:
-# - This config starts from `pull_request.closed` on either
-#   `MenschMachine/pdfdancer-backend` or `MenschMachine/pdfdancer-api`
-#   and only accepts payloads where `merged=true`.
+# - This config starts from either:
+#   - `pull_request.closed` on `MenschMachine/pdfdancer-backend` with `merged=true`
+#   - `pull_request.labeled` on `MenschMachine/pdfdancer-api` with `label=propagate`
+#     while the PR is still open
 # - Review-loop labels such as `approved` and `changes_required` are only used for the
 #   downstream PRs created by this workflow. They do not start the workflow.
 #
@@ -12,8 +14,8 @@
 #    - `triage-backend-pr` validates a merged backend PR and decides whether the
 #      change needs downstream code implementation (`FULL`) or only docs/website
 #      follow-up (`DOCS`)
-#    - `triage-api-pr` validates a merged API PR and makes the same decision, but
-#      treats that API PR as the authoritative upstream input
+#    - `triage-api-pr` validates an open API PR labeled `propagate` and makes the same
+#      decision, treating that API PR as the authoritative upstream input
 #
 # 2. FULL pipeline
 #    - `implement-pdfdancer-api`
@@ -114,7 +116,7 @@ executions:
         pr_number_key: :client-typescript-pr-number
         github_repository: MenschMachine/pdfdancer-client-typescript
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
@@ -130,7 +132,7 @@ executions:
         pr_number_key: :client-python-pr-number
         github_repository: MenschMachine/pdfdancer-client-python
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
@@ -146,7 +148,7 @@ executions:
         pr_number_key: :client-java-pr-number
         github_repository: MenschMachine/pdfdancer-client-java
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
@@ -162,7 +164,7 @@ executions:
         pr_number_key: :client-typescript-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-typescript-examples
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:github-pr repo=MenschMachine/pdfdancer-client-typescript pr_from=context:implement-client-typescript/:client-typescript-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-typescript-examples-from-sdk-pr.md
@@ -178,7 +180,7 @@ executions:
         pr_number_key: :client-python-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-python-examples
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:github-pr repo=MenschMachine/pdfdancer-client-python pr_from=context:implement-client-python/:client-python-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-python-examples-from-sdk-pr.md
@@ -194,7 +196,7 @@ executions:
         pr_number_key: :client-java-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-java-examples
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:github-pr repo=MenschMachine/pdfdancer-client-java pr_from=context:implement-client-java/:client-java-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-java-examples-from-sdk-pr.md
@@ -210,7 +212,7 @@ executions:
         pr_number_key: :api-docs-pr-number
         github_repository: MenschMachine/pdfdancer-api-docs
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:context-key key=:pipeline-decision scope=global
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-api-docs-from-workflow-context.md
@@ -226,7 +228,7 @@ executions:
         pr_number_key: :website-pr-number
         github_repository: MenschMachine/pdfdancer-www
         validate_before_actions:
-          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number require_merged=true
+          - validate:github-pr repo_from=context:global/:source-repository pr_from=context:global/:source-pr-number
           - validate:github-pr repo=MenschMachine/pdfdancer-api-docs pr_from=context:implement-pdfdancer-api-docs/:api-docs-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-website-from-workflow-context.md
@@ -250,14 +252,15 @@ executions:
   triage-api-pr:
     repository: pdfdancer-api
     signals:
-      - signal: pull_request.closed
+      - signal: pull_request.labeled
         when:
           repository: MenschMachine/pdfdancer-api
-          merged: true
+          label: propagate
     sub_tasks:
       - id: validate-api-pr
         before:
-          - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number
+          - 'gh pr view "$(propagate context get :signal.pr_number | xargs)" --repo MenschMachine/pdfdancer-api --json state --jq ''.state'' | grep -q ''^OPEN$'''
       - id: decide-pipeline
         prompt: ./prompts/pdfdancer/decide-api-pipeline.md
 

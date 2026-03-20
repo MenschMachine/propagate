@@ -67,15 +67,18 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
 
         triage_api = config.executions["triage-api-pr"]
         self.assertEqual(triage_api.repository, "pdfdancer-api")
-        self.assertEqual(triage_api.signals[0].signal_name, "pull_request.closed")
+        self.assertEqual(triage_api.signals[0].signal_name, "pull_request.labeled")
         self.assertEqual(
             triage_api.signals[0].when,
-            {"repository": "MenschMachine/pdfdancer-api", "merged": True},
+            {"repository": "MenschMachine/pdfdancer-api", "label": "propagate"},
         )
         self.assertEqual([task.task_id for task in triage_api.sub_tasks], ["validate-api-pr", "decide-pipeline"])
         self.assertEqual(
             triage_api.sub_tasks[0].before,
-            ["validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number require_merged=true"],
+            [
+                "validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number",
+                "gh pr view \"$(propagate context get :signal.pr_number | xargs)\" --repo MenschMachine/pdfdancer-api --json state --jq '.state' | grep -q '^OPEN$'",
+            ],
         )
 
         api = config.executions["implement-pdfdancer-api"]

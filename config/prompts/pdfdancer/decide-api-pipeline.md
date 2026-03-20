@@ -1,9 +1,9 @@
-Read the merged API PR that triggered this workflow and decide whether downstream code implementation is required.
+Read the open API PR labeled `propagate` that triggered this workflow and decide whether downstream code implementation is required.
 
 Inputs:
 
 - `PR_NUMBER="$(propagate context get :signal.pr_number | xargs)"`
-- `gh pr view "$PR_NUMBER" --repo MenschMachine/pdfdancer-api --json number,title,body,files,url,mergedAt,headRefName,baseRefName`
+- `gh pr view "$PR_NUMBER" --repo MenschMachine/pdfdancer-api --json number,title,body,files,url,state,headRefName,baseRefName`
 - `gh pr diff "$PR_NUMBER" --repo MenschMachine/pdfdancer-api`
 
 Tasks:
