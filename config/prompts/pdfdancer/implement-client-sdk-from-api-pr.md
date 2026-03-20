@@ -31,7 +31,6 @@ Requirements:
 - Address check failures and review comments before adding unrelated changes.
 - Add or update e2e tests following the existing patterns. Tests should use `PDFAssertions` with deep, precise assertions; add helper methods there if needed.
 - If tests expose a server-side bug, keep the failing test, stop, and write a detailed markdown bug report for the `pdfdancer-api` team instead of working around it.
-- Commit `.api-url` if this repository uses it to point tests or examples at the local API instance.
 - Do not make changes to GitHub workflow files.
 
 ## Starting the API Server

@@ -37,6 +37,9 @@ propagate context set "${PR_BODY_KEY}" "<final body>"
 Structure:
 
 - `## Source API PR`
+  Include exactly these two machine-readable lines:
+  - `- Repository: MenschMachine/pdfdancer-api`
+  - `- PR: <API_PR_NUMBER>`
 - If the run started from a backend merge, also include `## Source Backend PR`
 - short summary of the SDK changes
 - `## Verification`
