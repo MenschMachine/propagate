@@ -10,8 +10,8 @@ from propagate_app.models import (
     GitPrConfig,
     GitPushConfig,
     GitRunState,
-    PullRequestResult,
     PreparedGitExecution,
+    PullRequestResult,
     RuntimeContext,
 )
 from propagate_app.signal_transport import publish_event_if_available
