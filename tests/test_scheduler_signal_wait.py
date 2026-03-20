@@ -12,15 +12,18 @@ from propagate_app.models import (
     Config,
     ExecutionConfig,
     ExecutionScheduleState,
+    ExecutionSignalConfig,
     PropagationTriggerConfig,
     RepositoryConfig,
     RunState,
     RuntimeContext,
     SignalConfig,
+    SignalFieldConfig,
     SubTaskConfig,
 )
 from propagate_app.scheduler import (
     _drain_incoming_signals,
+    _process_received_signal,
     has_pending_signal_triggers,
     run_execution_schedule,
 )
@@ -179,6 +182,41 @@ def test_drain_ignores_unknown_signals(tmp_path):
     finally:
         close_push_socket(push)
         close_pull_socket(pull, address)
+
+
+def test_process_received_signal_rejects_new_entry_signal_while_run_is_active(tmp_path):
+    triage = make_execution(
+        "triage",
+        signals=[ExecutionSignalConfig(signal_name="pull_request.closed", when={"repository": "MenschMachine/pdfdancer-api", "merged": True})],
+    )
+    active = make_execution("active")
+    signal_cfg = SignalConfig(
+        name="pull_request.closed",
+        payload={
+            "repository": SignalFieldConfig(field_type="string", required=True),
+            "merged": SignalFieldConfig(field_type="boolean", required=True),
+        },
+    )
+    config = make_config(tmp_path, [triage, active], signals={"pull_request.closed": signal_cfg})
+    from propagate_app.graph import build_execution_graph
+    graph = build_execution_graph(config)
+    schedule_state = ExecutionScheduleState(
+        active_names={"active"},
+        completed_names={"active"},
+    )
+    received = set()
+    with patch("propagate_app.scheduler.LOGGER.warning") as mock_warning:
+        result = _process_received_signal(
+            ("pull_request.closed", {"repository": "MenschMachine/pdfdancer-api", "merged": True}),
+            config,
+            graph,
+            schedule_state,
+            received,
+        )
+    assert result is None
+    assert "pull_request.closed" not in received
+    assert "triage" not in schedule_state.active_names
+    mock_warning.assert_any_call("Rejecting entry signal '%s' while a run is already active.", "pull_request.closed")
 
 
 def test_scheduler_waits_for_signal_then_runs_execution(tmp_path):
