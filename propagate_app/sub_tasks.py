@@ -115,7 +115,7 @@ def run_execution_sub_tasks(
 
 def evaluate_when_condition(when: str, runtime_context: RuntimeContext) -> bool:
     negated = when.startswith("!")
-    key = when[2:] if negated else when[1:]
+    key = when[1:] if negated else when
     context_dir = resolve_execution_context_dir(runtime_context)
     key_path = context_dir / key
     truthy = key_path.is_file() and key_path.read_text(encoding="utf-8") != ""

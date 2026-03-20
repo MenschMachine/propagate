@@ -156,7 +156,7 @@ def test_goto_within_limit_succeeds(tmp_path):
             reroute_count += 1
             # On the 2nd reroute invocation, set :done so the when condition stops it next time
             if reroute_count >= 2:
-                write_context_value(exec_ctx_dir, "done", "true")
+                write_context_value(exec_ctx_dir, ":done", "true")
 
     with patch("propagate_app.sub_tasks.run_sub_task", side_effect=tracking_run):
         run_execution_sub_tasks(execution, rc)
