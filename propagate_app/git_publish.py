@@ -308,11 +308,22 @@ def poll_pr_action_checks(working_dir: Path, interval: int, timeout: int) -> tup
             failure_message="Failed to fetch PR checks.",
             start_failure_message="Failed to start gh pr checks: {error}",
             capture_output=True,
+            check=False,
         )
-        try:
-            all_checks = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise PropagateError(f"Failed to parse PR checks output as JSON: {exc}") from exc
+        if result.returncode != 0:
+            if result.stdout.strip():
+                try:
+                    all_checks = json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    all_checks = []
+            else:
+                LOGGER.debug("gh pr checks exited non-zero with no output (no checks yet): %s", result.stderr.strip())
+                all_checks = []
+        else:
+            try:
+                all_checks = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise PropagateError(f"Failed to parse PR checks output as JSON: {exc}") from exc
         filtered = [c for c in all_checks if _extract_workflow_name(c)]
         if not wait_message_logged:
             LOGGER.info(

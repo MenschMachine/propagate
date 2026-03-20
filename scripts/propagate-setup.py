@@ -13,6 +13,8 @@ from pathlib import Path
 
 import yaml
 
+from propagate_app.config_executions import resolve_execution_includes
+
 logger = logging.getLogger("propagate.setup")
 _PROMPT_LABEL_COMMENT_RE = re.compile(r"<!--\s*propagate-required-labels:\s*([^>]+?)\s*-->")
 
@@ -78,9 +80,17 @@ def extract_repos(config: dict, config_dir: Path) -> list[str]:
 def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
     """Extract all labels used in the config from signals, routes, triggers, and hooks."""
     labels = set()
+    executions = config.get("executions", {})
+
+    if config_dir is not None and isinstance(executions, dict) and "include" in executions:
+        try:
+            executions = resolve_execution_includes(executions, config_dir)
+        except Exception as error:
+            logger.warning("Could not resolve execution includes for label extraction: %s", error)
+            executions = config.get("executions", {})
 
     # 1. executions[*].signals[*].when.label
-    for exec_data in config.get("executions", {}).values():
+    for exec_data in executions.values():
         if not isinstance(exec_data, dict):
             continue
         for signal in exec_data.get("signals", []):
@@ -90,7 +100,7 @@ def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
                     labels.add(label)
 
     # 2. executions[*].sub_tasks[*].routes[*].when.label
-    for exec_data in config.get("executions", {}).values():
+    for exec_data in executions.values():
         if not isinstance(exec_data, dict):
             continue
         for task in exec_data.get("sub_tasks", []):
@@ -107,7 +117,7 @@ def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
 
     # 4. git:pr-labels-add <args> in before/after/on_failure hooks
     label_cmd_re = re.compile(r"^git:pr-labels-add\s+(.+)$")
-    for exec_data in config.get("executions", {}).values():
+    for exec_data in executions.values():
         if not isinstance(exec_data, dict):
             continue
         for task in exec_data.get("sub_tasks", []):
@@ -125,7 +135,7 @@ def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
 
     # 5. Prompt annotations: <!-- propagate-required-labels: a, b -->
     if config_dir is not None:
-        for exec_data in config.get("executions", {}).values():
+        for exec_data in executions.values():
             if not isinstance(exec_data, dict):
                 continue
             for task in exec_data.get("sub_tasks", []):
