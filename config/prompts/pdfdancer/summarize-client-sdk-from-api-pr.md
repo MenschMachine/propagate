@@ -14,7 +14,25 @@ fi
 gh pr view "$API_PR_NUMBER" --repo MenschMachine/pdfdancer-api --json title,url
 ```
 
-Write the final body to the repository-specific `*-pr-body` context key already configured for this execution.
+Resolve the exact PR body context key from `PROPAGATE_EXECUTION` and store the final body there:
+
+```bash
+case "${PROPAGATE_EXECUTION}" in
+  implement-client-typescript) PR_BODY_KEY=":client-typescript-pr-body" ;;
+  implement-client-python) PR_BODY_KEY=":client-python-pr-body" ;;
+  implement-client-java) PR_BODY_KEY=":client-java-pr-body" ;;
+  *)
+    echo "Unsupported SDK execution: ${PROPAGATE_EXECUTION}" >&2
+    exit 1
+    ;;
+esac
+```
+
+Write the final body with a command equivalent to:
+
+```bash
+propagate context set "${PR_BODY_KEY}" "<final body>"
+```
 
 Structure:
 
