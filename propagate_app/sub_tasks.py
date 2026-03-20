@@ -54,6 +54,7 @@ def run_execution_sub_tasks(
     current_runtime_context = runtime_context
     task_phases = dict(completed_task_phases or {})
     task_id_to_index = {t.task_id: i for i, t in enumerate(execution.sub_tasks)}
+    goto_counts: dict[str, int] = {}
     task_index = 0
     while task_index < len(execution.sub_tasks):
         sub_task = execution.sub_tasks[task_index]
@@ -88,8 +89,16 @@ def run_execution_sub_tasks(
             else:
                 task_index += 1
             continue
+        if sub_task.goto is not None:
+            count = goto_counts.get(sub_task.task_id, 0) + 1
+            if count > sub_task.max_goto:
+                raise PropagateError(
+                    f"Sub-task '{sub_task.task_id}' in execution '{execution.name}' exceeded maximum goto count"
+                    f" ({sub_task.max_goto}). Target: '{sub_task.goto}'."
+                )
         run_sub_task(execution.name, sub_task, current_runtime_context, execution.git, task_phase, on_phase_completed)
         if sub_task.goto is not None:
+            goto_counts[sub_task.task_id] = goto_counts.get(sub_task.task_id, 0) + 1
             goto_index = _reset_tasks_from_goto(
                 execution,
                 sub_task.task_id,

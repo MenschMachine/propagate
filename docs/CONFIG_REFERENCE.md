@@ -397,6 +397,8 @@ sub_tasks:
 | `before` | list of strings | No | `[]` | Hook actions run before the agent. |
 | `after` | list of strings | No | `[]` | Hook actions run after the agent succeeds. |
 | `on_failure` | list of strings | No | `[]` | Hook actions run if the task fails. |
+| `goto` | string | No | `null` | Sub-task ID to jump to after this task completes (must be defined earlier in the list). Mutually exclusive with `wait_for_signal`. |
+| `max_goto` | integer | No | `3` | Maximum number of times this sub-task's `goto` can fire before raising an error. Requires `goto`. Prevents infinite retry loops. |
 | `wait_for_signal` | string | No | `null` | Signal name to wait for. Requires `routes`. Must not have `prompt` or `on_failure`. |
 | `routes` | list | No | `[]` | Route definitions for signal-gated sub-tasks. Requires `wait_for_signal`. |
 
@@ -430,6 +432,19 @@ Each route has:
 Each route must have exactly one of `goto` or `continue`.
 
 When `goto` fires, all sub-tasks from the target onward are re-run (their completed state is cleared). This creates a loop back through those sub-tasks until a `continue` route matches.
+
+#### Direct `goto` on sub-tasks
+
+A sub-task can use `goto` directly (without `wait_for_signal`) for automated retry loops. Direct `goto` requires `when` to prevent unconditional infinite loops. Use `max_goto` to limit retries:
+
+```yaml
+- id: reroute-on-check-failure
+  when: "!:checks-passed"
+  goto: implement
+  max_goto: 5                                 # default is 3
+```
+
+This is a control-flow node — no `prompt` is needed. The `when` condition and hooks do the work; the `goto` handles routing. When `max_goto` is exceeded, the execution fails with an error. This prevents infinite loops when an automated retry cannot resolve the issue.
 
 Signal-gated sub-tasks require `propagate serve` (they need a ZMQ socket to receive signals).
 
@@ -683,6 +698,8 @@ Signal payloads are written to context under the `:signal` namespace (e.g. `:sig
 - `wait_for_signal` and `routes` must both be present together on a sub-task.
 - Sub-tasks with `wait_for_signal` must not have `prompt` or `on_failure`.
 - Route `goto` targets must reference a sub-task ID defined earlier in the same execution.
+- `max_goto` requires `goto` to be set on the same sub-task and must be a positive integer.
+- Direct `goto` (without `wait_for_signal`) requires `when` to prevent unconditional loops.
 - Propagation `when` requires `on_signal` to be set.
 - `when` field names must exist in the referenced signal's payload definition.
 - `depends_on` entries must reference defined executions and cannot self-reference.
