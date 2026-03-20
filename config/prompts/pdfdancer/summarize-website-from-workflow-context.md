@@ -9,9 +9,11 @@ gh pr view "$BACKEND_PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json ti
 gh pr view "$API_DOCS_PR_NUMBER" --repo MenschMachine/pdfdancer-api-docs --json title,url
 ```
 
-Write the final body to:
+Store the final body using `propagate context set`:
 
-- `:website-pr-body`
+```bash
+propagate context set :website-pr-body "<final body>"
+```
 
 Structure:
 
