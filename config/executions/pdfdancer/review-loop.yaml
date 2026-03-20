@@ -36,7 +36,7 @@
       routes:
         - when:
             repository: "{{ github_repository }}"
-            label: changes_requested
+            label: changes_required
             pr_number:
               equals_context: "{{ pr_number_key }}"
           goto: implement
