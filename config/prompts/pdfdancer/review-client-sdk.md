@@ -19,7 +19,7 @@ Especially check for:
 - Sound and clear API design
 - E2E tests for the new API exist, following the existing patterns. All e2e tests must have deep and precise assertions using the PDFAssertion class.
 
-Always assume that new files were added intentionally, except build environment files like venv, gradle, etc. Especially the file `.api-url` must be committed.
+ Assume new files in the diff are intentional unless they are clearly local-only environment files, caches, or build artifacts.
 
 Your job is to review the production and test code. Infrastructure, like GitHub Actions, is none of your business.
 
