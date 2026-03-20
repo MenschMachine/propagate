@@ -30,6 +30,10 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
             ),
         )
         self.assertIn("pull_request.labeled", config.signals)
+        self.assertEqual(
+            tuple(config.context_sources),
+            ("capture-upstream-api-pr", "mark-all-sdks-approved", "mark-all-examples-approved"),
+        )
 
         self.assertEqual(
             tuple(config.executions),
@@ -85,11 +89,11 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
         ts_sdk = config.executions["implement-client-typescript"]
         self.assertEqual(ts_sdk.git.pr.number_key, ":client-typescript-pr-number")
         self.assertEqual(ts_sdk.git.branch.name_template, "client-typescript/source-pr-{signal[pr_number]}")
-        self.assertIn("all-sdks-approved", ts_sdk.after[1])
+        self.assertEqual(ts_sdk.after[1], ":mark-all-sdks-approved")
 
         ts_examples = config.executions["implement-client-typescript-examples"]
         self.assertEqual(ts_examples.git.pr.number_key, ":client-typescript-examples-pr-number")
-        self.assertIn("all-examples-approved", ts_examples.after[1])
+        self.assertEqual(ts_examples.after[1], ":mark-all-examples-approved")
 
         api_docs = config.executions["implement-pdfdancer-api-docs"]
         self.assertEqual(api_docs.git.pr.number_key, ":api-docs-pr-number")

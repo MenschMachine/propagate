@@ -78,6 +78,14 @@ signals:
     - signals/default.yaml
     - signals/github-signals.yaml
 
+context_sources:
+  capture-upstream-api-pr:
+    command: 'UPSTREAM="$(propagate context get :api-pr-number | xargs)"; if [[ -n "$UPSTREAM" ]]; then propagate context set --global :upstream-api-pr-number "$UPSTREAM"; fi'
+  mark-all-sdks-approved:
+    command: 'if propagate context get approved-marker --task implement-client-typescript >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java >/dev/null 2>&1; then propagate context set all-sdks-approved true; fi'
+  mark-all-examples-approved:
+    command: 'if propagate context get approved-marker --task implement-client-typescript-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java-examples >/dev/null 2>&1; then propagate context set all-examples-approved true; fi'
+
 executions:
   include:
     - path: executions/pdfdancer/review-loop.yaml
@@ -95,7 +103,7 @@ executions:
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-api-from-backend-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-api-from-backend-pr.md
-        aggregate_after_command: 'UPSTREAM="$(propagate context get :api-pr-number | xargs)"; if [[ -n "$UPSTREAM" ]]; then propagate context set --global :upstream-api-pr-number "$UPSTREAM"; fi'
+        aggregate_after_command: :capture-upstream-api-pr
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-client-typescript
@@ -111,7 +119,7 @@ executions:
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
-        aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java >/dev/null 2>&1; then propagate context set all-sdks-approved true; fi'
+        aggregate_after_command: :mark-all-sdks-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-client-python
@@ -127,7 +135,7 @@ executions:
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
-        aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java >/dev/null 2>&1; then propagate context set all-sdks-approved true; fi'
+        aggregate_after_command: :mark-all-sdks-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-client-java
@@ -143,7 +151,7 @@ executions:
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
-        aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java >/dev/null 2>&1; then propagate context set all-sdks-approved true; fi'
+        aggregate_after_command: :mark-all-sdks-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-client-typescript-examples
@@ -159,7 +167,7 @@ executions:
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-typescript-examples-from-sdk-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
-        aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java-examples >/dev/null 2>&1; then propagate context set all-examples-approved true; fi'
+        aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-client-python-examples
@@ -175,7 +183,7 @@ executions:
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-python-examples-from-sdk-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
-        aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java-examples >/dev/null 2>&1; then propagate context set all-examples-approved true; fi'
+        aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-client-java-examples
@@ -191,7 +199,7 @@ executions:
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-java-examples-from-sdk-pr.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
-        aggregate_after_command: 'if propagate context get approved-marker --task implement-client-typescript-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-python-examples >/dev/null 2>&1 && propagate context get approved-marker --task implement-client-java-examples >/dev/null 2>&1; then propagate context set all-examples-approved true; fi'
+        aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
         execution_name: implement-pdfdancer-api-docs
