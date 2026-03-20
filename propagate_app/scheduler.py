@@ -17,7 +17,7 @@ from .routing import prepare_execution_runtime_context, wrap_execution_runtime_e
 from .run_state import clear_run_state, save_run_state
 from .signal_reconcile import reconcile_pending_signals
 from .signal_transport import publish_event_if_available, receive_signal
-from .signals import signal_payload_matches_when, validate_signal_payload
+from .signals import select_initial_execution, signal_payload_matches_when, validate_signal_payload
 
 
 def run_execution_schedule(
@@ -351,9 +351,12 @@ def _process_received_signal(
     except PropagateError as error:
         LOGGER.warning("Received signal '%s' with invalid payload: %s; ignoring.", signal_type, error)
         return None
+    active_signal = ActiveSignal(signal_type=signal_type, payload=payload, source="external")
+    if _is_new_entry_signal(config, active_signal):
+        LOGGER.warning("Rejecting entry signal '%s' while a run is already active.", signal_type)
+        return None
     LOGGER.info("Received external signal '%s'.", signal_type)
     received_signal_types.add(signal_type)
-    active_signal = ActiveSignal(signal_type=signal_type, payload=payload, source="external")
     for completed_name in list(schedule_state.completed_names):
         activate_matching_triggers(
             config,
@@ -364,6 +367,14 @@ def _process_received_signal(
             schedule_state.completed_names,
         )
     return active_signal
+
+
+def _is_new_entry_signal(config: Config, active_signal: ActiveSignal) -> bool:
+    try:
+        select_initial_execution(config, None, active_signal)
+        return True
+    except PropagateError as error:
+        return "No execution accepts signal" not in str(error)
 
 
 def _pending_signal_types(

@@ -30,6 +30,10 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
             ),
         )
         self.assertIn("pull_request.labeled", config.signals)
+        self.assertEqual(
+            tuple(config.context_sources),
+            ("capture-upstream-api-pr", "mark-all-sdks-approved", "mark-all-examples-approved"),
+        )
 
         self.assertEqual(
             tuple(config.executions),
@@ -44,6 +48,7 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
                 "implement-pdfdancer-api-docs",
                 "implement-pdfdancer-www",
                 "triage-backend-pr",
+                "triage-api-pr",
             ),
         )
 
@@ -55,6 +60,26 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
             {"repository": "MenschMachine/pdfdancer-backend", "merged": True},
         )
         self.assertEqual([task.task_id for task in triage.sub_tasks], ["validate-backend-pr", "decide-pipeline"])
+        self.assertEqual(
+            triage.sub_tasks[0].before,
+            ["validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=signal.pr_number require_merged=true"],
+        )
+
+        triage_api = config.executions["triage-api-pr"]
+        self.assertEqual(triage_api.repository, "pdfdancer-api")
+        self.assertEqual(triage_api.signals[0].signal_name, "pull_request.labeled")
+        self.assertEqual(
+            triage_api.signals[0].when,
+            {"repository": "MenschMachine/pdfdancer-api", "label": "propagate"},
+        )
+        self.assertEqual([task.task_id for task in triage_api.sub_tasks], ["validate-api-pr", "decide-pipeline"])
+        self.assertEqual(
+            triage_api.sub_tasks[0].before,
+            [
+                "validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=signal.pr_number",
+                "gh pr view \"$(propagate context get :signal.pr_number | xargs)\" --repo MenschMachine/pdfdancer-api --json state --jq '.state' | grep -q '^OPEN$'",
+            ],
+        )
 
         api = config.executions["implement-pdfdancer-api"]
         self.assertEqual(api.repository, "pdfdancer-api")
@@ -66,22 +91,27 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
 
         ts_sdk = config.executions["implement-client-typescript"]
         self.assertEqual(ts_sdk.git.pr.number_key, ":client-typescript-pr-number")
-        self.assertIn("all-sdks-approved", ts_sdk.after[1])
+        self.assertEqual(ts_sdk.git.branch.name_template, "client-typescript/source-pr-{signal[pr_number]}")
+        self.assertEqual(ts_sdk.after[1], ":mark-all-sdks-approved")
 
         ts_examples = config.executions["implement-client-typescript-examples"]
         self.assertEqual(ts_examples.git.pr.number_key, ":client-typescript-examples-pr-number")
-        self.assertIn("all-examples-approved", ts_examples.after[1])
+        self.assertEqual(ts_examples.after[1], ":mark-all-examples-approved")
 
         api_docs = config.executions["implement-pdfdancer-api-docs"]
         self.assertEqual(api_docs.git.pr.number_key, ":api-docs-pr-number")
         website = config.executions["implement-pdfdancer-www"]
         self.assertEqual(website.git.pr.number_key, ":website-pr-number")
 
-        self.assertEqual(len(config.propagation_triggers), 18)
+        self.assertEqual(len(config.propagation_triggers), 22)
         triage_to_api = next(t for t in config.propagation_triggers if t.after == "triage-backend-pr" and t.run == "implement-pdfdancer-api")
         self.assertEqual(triage_to_api.when_context, ":run-full-pipeline")
         triage_to_docs = next(t for t in config.propagation_triggers if t.after == "triage-backend-pr" and t.run == "implement-pdfdancer-api-docs")
         self.assertEqual(triage_to_docs.when_context, ":run-docs-pipeline")
+        triage_api_to_ts = next(t for t in config.propagation_triggers if t.after == "triage-api-pr" and t.run == "implement-client-typescript")
+        self.assertEqual(triage_api_to_ts.when_context, ":run-full-pipeline")
+        triage_api_to_docs = next(t for t in config.propagation_triggers if t.after == "triage-api-pr" and t.run == "implement-pdfdancer-api-docs")
+        self.assertEqual(triage_api_to_docs.when_context, ":run-docs-pipeline")
 
         example_trigger = next(
             t for t in config.propagation_triggers
@@ -97,7 +127,8 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
 
         for prompt_path in [
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "decide-backend-pipeline.md",
-            REPO_ROOT / "config" / "prompts" / "pdfdancer" / "validate-api-follow-up-context.md",
+            REPO_ROOT / "config" / "prompts" / "pdfdancer" / "validate-api-pr-trigger.md",
+            REPO_ROOT / "config" / "prompts" / "pdfdancer" / "decide-api-pipeline.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "implement-api-from-backend-pr.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "implement-client-sdk-from-api-pr.md",
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "implement-client-typescript-examples-from-sdk-pr.md",

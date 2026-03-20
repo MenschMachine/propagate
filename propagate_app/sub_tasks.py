@@ -29,6 +29,7 @@ from .signal_context import store_active_signal_context
 from .signal_transport import publish_event_if_available, receive_signal
 from .signals import signal_payload_matches_when
 from .temp_files import cleanup_temp_file, write_temp_text
+from .validation_hooks import run_validate_hook_command
 
 
 def build_context_env(runtime_context: RuntimeContext) -> dict[str, str]:
@@ -297,6 +298,10 @@ def run_hook_phase(
         if action.startswith("git:"):
             LOGGER.info("Running git hook command '%s' (%s hook %d/%d) for %s.", action, phase, hook_index, total_actions, context_id)
             run_git_hook_command(action, git_config, runtime_context)
+            continue
+        if action.startswith("validate:"):
+            LOGGER.info("Running validation hook command '%s' (%s hook %d/%d) for %s.", action, phase, hook_index, total_actions, context_id)
+            run_validate_hook_command(action, runtime_context)
             continue
         LOGGER.info("Running %s hook %d/%d for %s.", phase, hook_index, total_actions, context_id)
         run_shell_command(

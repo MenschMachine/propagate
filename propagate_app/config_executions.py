@@ -10,6 +10,7 @@ from .errors import PropagateError
 from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig, SubTaskRouteConfig
 from .signals import validate_signal_when_clause
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
+from .validation_hooks import validate_hook_action
 
 
 def resolve_execution_includes(executions_data: dict, config_dir: Path) -> dict:
@@ -306,6 +307,8 @@ def parse_hook_actions(hook_data: Any, location: str, phase: str, context_source
                         raise PropagateError(
                             f"{location} '{phase}' hook #{hook_index} 'git:pr-checks-wait' interval and timeout must be positive integers."
                         )
+        elif action.startswith("validate:"):
+            validate_hook_action(action, location, phase, hook_index)
         actions.append(action)
     return actions
 

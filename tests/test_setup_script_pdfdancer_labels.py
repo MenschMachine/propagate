@@ -24,4 +24,4 @@ def test_extract_labels_resolves_execution_includes_for_pdfdancer_workflow():
 
     labels = extract_labels(config, config_path.parent)
 
-    assert labels == ["approved", "changes_required"]
+    assert labels == ["approved", "changes_required", "propagate"]
