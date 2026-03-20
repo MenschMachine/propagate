@@ -28,9 +28,14 @@
     - id: publish
       before:
         - git:publish
-    - id: wait-for-verdict
+    - id: wait-for-checks
       before:
         - git:pr-checks-wait :review-check-results :checks-passed 10 1800
+    - id: reroute-on-check-failure
+      when: "!:checks-passed"
+      goto: implement
+    - id: wait-for-verdict
+      when: ":checks-passed"
       after:
         - git:pr-comments-list :review-comments
       wait_for_signal: pull_request.labeled

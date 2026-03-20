@@ -617,3 +617,45 @@ def test_subtask_runs_when_condition_truthy(tmp_path: Path) -> None:
 
     assert "only-on-pass" in completed_tasks
     assert "only-on-fail" not in completed_tasks
+
+
+def test_subtask_goto_on_when_condition_resets_to_target(tmp_path: Path) -> None:
+    from propagate_app.models import ExecutionConfig, SubTaskConfig
+    from propagate_app.sub_tasks import run_execution_sub_tasks
+
+    rc = _make_runtime_context(tmp_path)
+    context_dir = resolve_execution_context_dir(rc)
+    ensure_context_dir(context_dir)
+    write_context_value(context_dir, "checks-passed", "")
+
+    sub_tasks = [
+        SubTaskConfig(task_id="implement", prompt_path=None, before=[], after=[], on_failure=[]),
+        SubTaskConfig(task_id="wait-for-checks", prompt_path=None, before=[], after=[], on_failure=[]),
+        SubTaskConfig(task_id="reroute-on-check-failure", prompt_path=None, before=[], after=[], on_failure=[], when="!:checks-passed", goto="implement"),
+    ]
+    execution = ExecutionConfig(
+        name="test-exec", repository="repo", depends_on=[], signals=[],
+        sub_tasks=sub_tasks, git=None,
+    )
+
+    completed_tasks: list[str] = []
+    resets: list[list[str]] = []
+
+    def track_phase(exec_name: str, task_id: str, phase: str) -> None:
+        if phase == "after":
+            completed_tasks.append(task_id)
+
+    def track_reset(exec_name: str, task_ids: list[str]) -> None:
+        resets.append(task_ids)
+        write_context_value(context_dir, "checks-passed", "true")
+
+    run_execution_sub_tasks(execution, rc, on_phase_completed=track_phase, on_tasks_reset=track_reset)
+
+    assert resets == [["implement", "wait-for-checks", "reroute-on-check-failure"]]
+    assert completed_tasks == [
+        "implement",
+        "wait-for-checks",
+        "reroute-on-check-failure",
+        "implement",
+        "wait-for-checks",
+    ]

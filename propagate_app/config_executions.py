@@ -171,7 +171,7 @@ def parse_sub_task(
     if not isinstance(sub_task_data, dict):
         raise PropagateError(f"Execution '{name}' sub-task #{index} must be a mapping.")
     location = f"Execution '{name}' sub-task #{index}"
-    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when", "wait_for_signal", "routes"}, location)
+    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when", "goto", "wait_for_signal", "routes"}, location)
     task_id = sub_task_data.get("id")
     prompt_value = sub_task_data.get("prompt")
     if not isinstance(task_id, str) or not task_id.strip():
@@ -180,12 +180,20 @@ def parse_sub_task(
         raise PropagateError(f"Execution '{name}' sub-task '{task_id}' 'prompt' must be a non-empty string when provided.")
     prompt_path = resolve_prompt_path(prompt_value, config_dir) if prompt_value else None
     when_value = parse_when_condition(sub_task_data.get("when"), location)
+    goto = sub_task_data.get("goto")
+    if goto is not None:
+        if not isinstance(goto, str) or not goto.strip():
+            raise PropagateError(f"{location} 'goto' must be a non-empty string when provided.")
+        if seen_task_ids is not None and goto not in seen_task_ids:
+            raise PropagateError(f"{location} 'goto' references unknown sub-task '{goto}'.")
     wait_for_signal = sub_task_data.get("wait_for_signal")
     routes_data = sub_task_data.get("routes")
     routes: list[SubTaskRouteConfig] = []
     if wait_for_signal is not None or routes_data is not None:
         if wait_for_signal is None or routes_data is None:
             raise PropagateError(f"{location} 'wait_for_signal' and 'routes' must both be present together.")
+        if goto is not None:
+            raise PropagateError(f"{location} must not define both 'goto' and 'wait_for_signal'.")
         if not isinstance(wait_for_signal, str) or not wait_for_signal.strip():
             raise PropagateError(f"{location} 'wait_for_signal' must be a non-empty string.")
         if signal_configs is not None and wait_for_signal not in signal_configs:
@@ -202,6 +210,7 @@ def parse_sub_task(
         after=parse_hook_actions(sub_task_data.get("after"), location, "after", context_source_names),
         on_failure=parse_hook_actions(sub_task_data.get("on_failure"), location, "on_failure", context_source_names),
         when=when_value,
+        goto=goto,
         wait_for_signal=wait_for_signal,
         routes=routes,
     )

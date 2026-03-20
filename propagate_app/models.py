@@ -101,6 +101,7 @@ class SubTaskConfig:
     after: list[str]
     on_failure: list[str]
     when: str | None = None
+    goto: str | None = None
     wait_for_signal: str | None = None
     routes: list[SubTaskRouteConfig] = field(default_factory=list)
 

@@ -85,9 +85,13 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
         self.assertEqual(api.repository, "pdfdancer-api")
         self.assertEqual(api.git.branch.name_template, "api/backend-pr-{context[triage-backend-pr][:source-backend-pr-number]}")
         self.assertEqual(api.git.pr.number_key, ":api-pr-number")
-        self.assertEqual([task.task_id for task in api.sub_tasks], ["validate-context", "implement", "summarize", "publish", "wait-for-verdict"])
-        self.assertEqual(api.sub_tasks[4].routes[0].when["repository"], "MenschMachine/pdfdancer-api")
-        self.assertEqual(api.sub_tasks[4].routes[0].when["pr_number"], {"equals_context": ":api-pr-number"})
+        self.assertEqual(
+            [task.task_id for task in api.sub_tasks],
+            ["validate-context", "implement", "summarize", "publish", "wait-for-checks", "reroute-on-check-failure", "wait-for-verdict"],
+        )
+        self.assertEqual(api.sub_tasks[5].goto, "implement")
+        self.assertEqual(api.sub_tasks[6].routes[0].when["repository"], "MenschMachine/pdfdancer-api")
+        self.assertEqual(api.sub_tasks[6].routes[0].when["pr_number"], {"equals_context": ":api-pr-number"})
 
         ts_sdk = config.executions["implement-client-typescript"]
         self.assertEqual(ts_sdk.git.pr.number_key, ":client-typescript-pr-number")
