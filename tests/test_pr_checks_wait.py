@@ -159,7 +159,7 @@ def test_when_truthy_key_exists_non_empty(tmp_path: Path) -> None:
     rc = _make_runtime_context(tmp_path)
     context_dir = resolve_execution_context_dir(rc)
     ensure_context_dir(context_dir)
-    write_context_value(context_dir, "checks-passed", "true")
+    write_context_value(context_dir, ":checks-passed", "true")
 
     assert evaluate_when_condition(":checks-passed", rc) is True
 
@@ -173,7 +173,7 @@ def test_when_falsy_key_empty(tmp_path: Path) -> None:
     rc = _make_runtime_context(tmp_path)
     context_dir = resolve_execution_context_dir(rc)
     ensure_context_dir(context_dir)
-    write_context_value(context_dir, "checks-passed", "")
+    write_context_value(context_dir, ":checks-passed", "")
 
     assert evaluate_when_condition(":checks-passed", rc) is False
 
@@ -182,7 +182,7 @@ def test_when_negated_truthy_key(tmp_path: Path) -> None:
     rc = _make_runtime_context(tmp_path)
     context_dir = resolve_execution_context_dir(rc)
     ensure_context_dir(context_dir)
-    write_context_value(context_dir, "checks-passed", "true")
+    write_context_value(context_dir, ":checks-passed", "true")
 
     assert evaluate_when_condition("!:checks-passed", rc) is False
 
@@ -196,7 +196,7 @@ def test_when_negated_empty_key(tmp_path: Path) -> None:
     rc = _make_runtime_context(tmp_path)
     context_dir = resolve_execution_context_dir(rc)
     ensure_context_dir(context_dir)
-    write_context_value(context_dir, "checks-passed", "")
+    write_context_value(context_dir, ":checks-passed", "")
 
     assert evaluate_when_condition("!:checks-passed", rc) is True
 
@@ -596,7 +596,7 @@ def test_subtask_runs_when_condition_truthy(tmp_path: Path) -> None:
     rc = _make_runtime_context(tmp_path)
     context_dir = resolve_execution_context_dir(rc)
     ensure_context_dir(context_dir)
-    write_context_value(context_dir, "checks-passed", "true")
+    write_context_value(context_dir, ":checks-passed", "true")
 
     sub_tasks = [
         SubTaskConfig(task_id="only-on-pass", prompt_path=None, before=[], after=[], on_failure=[], when=":checks-passed"),
@@ -626,7 +626,7 @@ def test_subtask_goto_on_when_condition_resets_to_target(tmp_path: Path) -> None
     rc = _make_runtime_context(tmp_path)
     context_dir = resolve_execution_context_dir(rc)
     ensure_context_dir(context_dir)
-    write_context_value(context_dir, "checks-passed", "")
+    write_context_value(context_dir, ":checks-passed", "")
 
     sub_tasks = [
         SubTaskConfig(task_id="implement", prompt_path=None, before=[], after=[], on_failure=[]),
@@ -647,7 +647,7 @@ def test_subtask_goto_on_when_condition_resets_to_target(tmp_path: Path) -> None
 
     def track_reset(exec_name: str, task_ids: list[str]) -> None:
         resets.append(task_ids)
-        write_context_value(context_dir, "checks-passed", "true")
+        write_context_value(context_dir, ":checks-passed", "true")
 
     run_execution_sub_tasks(execution, rc, on_phase_completed=track_phase, on_tasks_reset=track_reset)
 
