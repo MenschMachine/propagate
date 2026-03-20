@@ -33,8 +33,8 @@ from .models import (
     GitPrConfig,
     GitPushConfig,
     GitRunState,
-    PullRequestResult,
     PreparedGitExecution,
+    PullRequestResult,
     RuntimeContext,
 )
 from .signal_transport import publish_event_if_available
