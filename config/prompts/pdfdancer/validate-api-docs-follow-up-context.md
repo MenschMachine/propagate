@@ -18,3 +18,5 @@ propagate context get :client-java-examples-pr-number --task implement-client-ja
 ```
 
 Fail fast unless the backend PR exists and is merged.
+
+Do not modify any files or write any code. This task is validation only — a workflow safety gate.

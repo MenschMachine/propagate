@@ -11,4 +11,4 @@ Fail fast unless:
 - the backend PR exists and is merged
 - the pipeline decision starts with `FULL:`
 
-If validation passes, do not modify any context here.
+Do not modify any files, write any code, or change context. This task is validation only — a workflow safety gate.

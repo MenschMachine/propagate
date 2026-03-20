@@ -10,3 +10,5 @@ gh pr view "$SDK_PR_NUMBER" --repo MenschMachine/pdfdancer-client-typescript --j
 ```
 
 Fail fast unless both PRs exist and the SDK PR is the approved upstream TypeScript implementation for this backend PR.
+
+Do not modify any files, write any code, or change context. This task is validation only — a workflow safety gate.

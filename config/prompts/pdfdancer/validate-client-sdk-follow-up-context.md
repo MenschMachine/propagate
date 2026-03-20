@@ -15,4 +15,4 @@ Fail fast unless:
 - the API PR exists
 - the API PR is the approved upstream implementation for this backend PR
 
-Do not change context in this task.
+Do not modify any files, write any code, or change context. This task is validation only — a workflow safety gate.
