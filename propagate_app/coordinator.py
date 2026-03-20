@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 import sys
@@ -59,7 +60,7 @@ class WorkerInfo:
 
 
 class Coordinator:
-    def __init__(self, shutdown: threading.Event) -> None:
+    def __init__(self, shutdown: threading.Event, worker_stdout_log_path: Path | None = None) -> None:
         self._shutdown = shutdown
         self._workers: dict[str, WorkerInfo] = {}
         self._lock = threading.Lock()
@@ -67,6 +68,21 @@ class Coordinator:
         self._pull_socket: zmq.Socket | None = None
         self._pub_socket: zmq.Socket | None = None
         self._proxy_rebuild = threading.Event()
+        self._worker_stdout_logger: logging.Logger | None = None
+        self._worker_stdout_handler: logging.Handler | None = None
+        if worker_stdout_log_path is not None:
+            worker_stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
+            handler = logging.FileHandler(worker_stdout_log_path, encoding="utf-8")
+            handler.setFormatter(logging.Formatter(
+                "%(asctime)s %(levelname)-8s [%(threadName)s] %(name)s: %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            ))
+            logger = logging.getLogger(f"propagate.worker_stdout.{id(self)}")
+            logger.setLevel(logging.INFO)
+            logger.propagate = False
+            logger.addHandler(handler)
+            self._worker_stdout_logger = logger
+            self._worker_stdout_handler = handler
 
     def start(self, initial_configs: list[str], resume: bool | str = False) -> None:
         # Bind coordinator sockets first so clients (webhook, telegram, shell)
@@ -94,6 +110,7 @@ class Coordinator:
             self._shutdown_all_workers()
             close_pull_socket(self._pull_socket, COORDINATOR_ADDRESS)
             close_pub_socket(self._pub_socket, COORDINATOR_PUB_ADDRESS)
+            self._close_worker_stdout_log()
 
     def _main_loop(self) -> None:
         while not self._shutdown.is_set():
@@ -406,14 +423,26 @@ class Coordinator:
                 self._publish({"event": "worker_died", "project": name})
                 notified.add(name)
 
-    @staticmethod
-    def _drain_stdout(process: subprocess.Popen, name: str) -> None:
-        """Forward worker stdout into the propagate logger."""
+    def _drain_stdout(self, process: subprocess.Popen, name: str) -> None:
+        """Forward worker stdout to a transcript file or the propagate logger."""
         try:
             for line in process.stdout:
-                LOGGER.info("[%s] %s", name, line.rstrip("\n"))
+                message = "[%s] %s"
+                text = line.rstrip("\n")
+                if self._worker_stdout_logger is not None:
+                    self._worker_stdout_logger.info(message, name, text)
+                else:
+                    LOGGER.info(message, name, text)
         except (OSError, ValueError):
             pass
+
+    def _close_worker_stdout_log(self) -> None:
+        if self._worker_stdout_logger is None or self._worker_stdout_handler is None:
+            return
+        self._worker_stdout_logger.removeHandler(self._worker_stdout_handler)
+        self._worker_stdout_handler.close()
+        self._worker_stdout_logger = None
+        self._worker_stdout_handler = None
 
     def _shutdown_all_workers(self) -> None:
         with self._lock:

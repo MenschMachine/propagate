@@ -476,3 +476,33 @@ def test_coordinator_handle_reload(tmp_path):
 
     assert "alpha" in coordinator._workers
     assert coordinator._workers["alpha"].process is new_proc
+
+
+def test_coordinator_drain_stdout_logs_to_file_when_configured(tmp_path):
+    shutdown = threading.Event()
+    log_path = tmp_path / "worker-stdout.log"
+    coordinator = Coordinator(shutdown, worker_stdout_log_path=log_path)
+
+    fake_proc = MagicMock()
+    fake_proc.stdout = iter(["first line\n", "second line\n"])
+
+    with patch("propagate_app.coordinator.LOGGER.info") as mock_info:
+        coordinator._drain_stdout(fake_proc, "alpha")
+
+    mock_info.assert_not_called()
+    contents = log_path.read_text(encoding="utf-8")
+    assert "[alpha] first line" in contents
+    assert "[alpha] second line" in contents
+
+
+def test_coordinator_drain_stdout_logs_to_logger_without_file(tmp_path):
+    shutdown = threading.Event()
+    coordinator = Coordinator(shutdown)
+
+    fake_proc = MagicMock()
+    fake_proc.stdout = iter(["only line\n"])
+
+    with patch("propagate_app.coordinator.LOGGER.info") as mock_info:
+        coordinator._drain_stdout(fake_proc, "alpha")
+
+    mock_info.assert_called_once_with("[%s] %s", "alpha", "only line")

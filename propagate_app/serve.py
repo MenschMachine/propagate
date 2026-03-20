@@ -159,7 +159,11 @@ def serve_worker_command(config_value: str, resume: bool | str = False) -> int:
     return 0
 
 
-def serve_command(config_values: list[str], resume: bool | str = False) -> int:
+def serve_command(
+    config_values: list[str],
+    resume: bool | str = False,
+    worker_stdout_log: str | None = None,
+) -> int:
     from .coordinator import Coordinator
 
     # Validate config stems are unique upfront.
@@ -189,7 +193,10 @@ def serve_command(config_values: list[str], resume: bool | str = False) -> int:
     signal_module.signal(signal_module.SIGINT, handle_shutdown)
 
     try:
-        coordinator = Coordinator(shutdown)
+        worker_stdout_log_path = None
+        if worker_stdout_log:
+            worker_stdout_log_path = Path(worker_stdout_log).expanduser().resolve()
+        coordinator = Coordinator(shutdown, worker_stdout_log_path=worker_stdout_log_path)
         coordinator.start(config_values, resume)
         coordinator.run()
         return 0

@@ -111,3 +111,16 @@ def test_no_configs_starts_empty_coordinator(tmp_path):
         mock_start.assert_called_once()
         args = mock_start.call_args
         assert args[0][0] == []
+
+
+def test_serve_passes_worker_stdout_log_to_coordinator(tmp_path):
+    config = _make_config(tmp_path, "solo")
+    log_path = tmp_path / "worker-stdout.log"
+
+    with (
+        patch("propagate_app.coordinator.Coordinator") as mock_coordinator,
+    ):
+        serve_command([str(config.config_path)], worker_stdout_log=str(log_path))
+
+    mock_coordinator.assert_called_once()
+    assert mock_coordinator.call_args.kwargs["worker_stdout_log_path"] == log_path.resolve()

@@ -63,6 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="Run as a long-lived server, listening for signals.")
     serve_parser.add_argument("--config", action="append", default=[], help="Path to a Propagate YAML config (repeatable).")
     serve_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
+    serve_parser.add_argument(
+        "--worker-stdout-log",
+        help="Write worker stdout transcripts to this file instead of mirroring them to stdout.",
+    )
     worker_parser = subparsers.add_parser("serve-worker", help=argparse.SUPPRESS)
     worker_parser.add_argument("--config", required=True)
     worker_parser.add_argument("--resume", nargs="?", const=True, default=False)
@@ -111,7 +115,7 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "send-signal":
         return send_signal_command(args.project, args.signal, args.signal_payload, args.signal_file)
     if args.command == "serve":
-        return serve_command(args.config, resume=args.resume)
+        return serve_command(args.config, resume=args.resume, worker_stdout_log=args.worker_stdout_log)
     if args.command == "serve-worker":
         from .serve import serve_worker_command
         return serve_worker_command(args.config, resume=args.resume)
