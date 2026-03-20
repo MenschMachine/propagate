@@ -48,6 +48,7 @@ def run_execution_sub_tasks(
     completed_task_phases: dict[str, str] | None = None,
     on_phase_completed: Callable[[str, str, str], None] | None = None,
     on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
+    on_tasks_reset: Callable[[str, list[str]], None] | None = None,
 ) -> RuntimeContext:
     current_runtime_context = runtime_context
     task_phases = dict(completed_task_phases or {})
@@ -73,6 +74,7 @@ def run_execution_sub_tasks(
                 current_runtime_context,
                 task_phases,
                 on_phase_completed,
+                on_tasks_reset,
             )
             if on_runtime_context_updated is not None:
                 on_runtime_context_updated(current_runtime_context)
@@ -103,6 +105,7 @@ def _handle_wait_for_signal(
     runtime_context: RuntimeContext,
     task_phases: dict[str, str],
     on_phase_completed: Callable[[str, str, str], None] | None,
+    on_tasks_reset: Callable[[str, list[str]], None] | None = None,
 ) -> tuple[int | None, RuntimeContext]:
     """Handle a wait_for_signal sub-task. Returns goto index or None to continue."""
     LOGGER.info(
@@ -142,9 +145,13 @@ def _handle_wait_for_signal(
     goto_id = matched_route.goto
     goto_index = task_id_to_index[goto_id]
     LOGGER.info("Route matched with 'goto: %s' (index %d) for sub-task '%s'.", goto_id, goto_index, sub_task.task_id)
+    reset_task_ids = []
     for i in range(goto_index, len(execution.sub_tasks)):
         tid = execution.sub_tasks[i].task_id
         task_phases.pop(tid, None)
+        reset_task_ids.append(tid)
+    if on_tasks_reset is not None:
+        on_tasks_reset(execution.name, reset_task_ids)
     return goto_index, updated_runtime_context
 
 

@@ -15,6 +15,7 @@ def run_configured_execution(
     on_phase_completed: Callable[[str, str, str], None] | None = None,
     completed_execution_phase: str | None = None,
     on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
+    on_tasks_reset: Callable[[str, list[str]], None] | None = None,
 ) -> RuntimeContext:
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
     if execution.git and (completed_task_phases or completed_execution_phase):
@@ -36,6 +37,7 @@ def run_configured_execution(
             completed_task_phases,
             on_phase_completed,
             on_runtime_context_updated,
+            on_tasks_reset,
         )
         if completed_execution_phase == PHASE_AFTER:
             LOGGER.info("Skipping already completed execution 'after' hooks for '%s'.", execution.name)

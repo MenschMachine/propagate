@@ -193,7 +193,7 @@ def test_scheduler_waits_for_signal_then_runs_execution(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -228,7 +228,7 @@ def test_scheduler_exits_cleanly_without_signal_socket_when_signal_triggers_exis
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -252,6 +252,7 @@ def test_scheduler_passes_signal_socket_into_execution_runtime_context(tmp_path)
         on_phase_completed,
         completed_execution_phase,
         on_runtime_context_updated=None,
+        on_tasks_reset=None,
     ):
         seen_signal_sockets.append(runtime_context.signal_socket)
         return runtime_context
@@ -274,7 +275,7 @@ def test_scheduler_deadlocks_when_dependency_never_completes(tmp_path):
     trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None)
     config = make_config(tmp_path, [exec_a, exec_b, exec_c], triggers=[trigger])
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         if execution.name == "c":
             raise PropagateError("c failed")
         return runtime_context
@@ -292,7 +293,7 @@ def test_scheduler_completes_without_waiting_when_no_signal_triggers(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -320,7 +321,7 @@ def test_multiple_signals_activate_different_triggers(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -382,7 +383,7 @@ def test_resume_restores_received_signal_types(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -429,7 +430,7 @@ def test_scheduler_uses_updated_signal_for_execution_after_hooks_and_triggers(tm
         )
     )
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         if execution.name == "a":
             return final_ctx
@@ -468,7 +469,7 @@ def test_scheduler_persists_updated_signal_to_run_state(tmp_path):
         )
     )
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None):
+    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
         if on_runtime_context_updated is not None:
             on_runtime_context_updated(updated_ctx)
         return updated_ctx

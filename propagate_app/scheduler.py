@@ -98,6 +98,13 @@ def run_execution_schedule(
             if run_state is not None:
                 _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
 
+        def on_tasks_reset(exec_name: str, task_ids: list[str]) -> None:
+            exec_tasks = schedule_state.completed_tasks.get(exec_name, {})
+            for task_id in task_ids:
+                exec_tasks.pop(task_id, None)
+            if run_state is not None:
+                _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
+
         try:
             current_runtime_context = run_configured_execution(
                 execution,
@@ -107,6 +114,7 @@ def run_execution_schedule(
                 completed_execution_phase,
                 lambda updated_context: _sync_and_save(run_state, schedule_state, updated_context, received_signal_types)
                 if run_state is not None else None,
+                on_tasks_reset,
             )
         except PropagateError as error:
             raise wrap_execution_runtime_error(execution, error) from error

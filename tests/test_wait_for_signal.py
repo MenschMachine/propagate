@@ -544,6 +544,59 @@ def test_wait_for_signal_route_equals_context_matches(tmp_path):
         close_pull_socket(socket, address)
 
 
+def test_goto_calls_on_tasks_reset(tmp_path):
+    """on_tasks_reset is called with the reset task IDs when a goto route is taken."""
+    address = socket_address(tmp_path / "test-reset.yaml")
+    socket = bind_pull_socket(address)
+    try:
+        sub_tasks = [
+            _make_sub_task("implement"),
+            _make_sub_task("publish"),
+            _make_wait_task("wait", "pull_request.labeled", [
+                SubTaskRouteConfig(when={"label": "changes_required"}, goto="implement"),
+                SubTaskRouteConfig(when={"label": "approved"}, continue_flow=True),
+            ]),
+        ]
+        execution = ExecutionConfig(
+            name="my-exec", repository="repo", depends_on=[], signals=[],
+            sub_tasks=sub_tasks, git=None,
+        )
+        ctx_dir = tmp_path / "my-exec"
+        ctx_dir.mkdir(parents=True, exist_ok=True)
+        rc = _make_runtime_context(tmp_path, signal_socket=socket, signal_configs=SIGNAL_CONFIGS)
+
+        reset_calls: list[tuple[str, list[str]]] = []
+
+        def on_tasks_reset(exec_name: str, task_ids: list[str]) -> None:
+            reset_calls.append((exec_name, list(task_ids)))
+
+        def send():
+            import time
+            time.sleep(0.3)
+            push = connect_push_socket(address)
+            send_signal(push, "pull_request.labeled", {"label": "changes_required", "repository": "org/repo", "pr_number": 1})
+            time.sleep(0.5)
+            send_signal(push, "pull_request.labeled", {"label": "approved", "repository": "org/repo", "pr_number": 1})
+            close_push_socket(push)
+
+        t = threading.Thread(target=send, daemon=True)
+        t.start()
+
+        def tracking_run(exec_name, sub_task, rt_ctx, git_config=None, completed_phase=None, on_phase_completed=None):
+            pass
+
+        with patch("propagate_app.sub_tasks.run_sub_task", side_effect=tracking_run):
+            run_execution_sub_tasks(execution, rc, on_tasks_reset=on_tasks_reset)
+
+        t.join(timeout=5)
+        assert len(reset_calls) == 1
+        exec_name, task_ids = reset_calls[0]
+        assert exec_name == "my-exec"
+        assert task_ids == ["implement", "publish", "wait"]
+    finally:
+        close_pull_socket(socket, address)
+
+
 def test_wait_for_signal_no_socket_raises(tmp_path):
     """wait_for_signal without a signal socket raises an error."""
     sub_tasks = [
