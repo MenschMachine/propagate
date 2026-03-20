@@ -22,6 +22,7 @@ def test_delete_nonexistent_key(tmp_path: Path) -> None:
 
 def test_delete_respects_key_validation(tmp_path: Path) -> None:
     import pytest
+
     from propagate_app.errors import PropagateError
 
     with pytest.raises(PropagateError):
