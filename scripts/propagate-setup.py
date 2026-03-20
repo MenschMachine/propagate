@@ -81,6 +81,8 @@ def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
 
     # 1. executions[*].signals[*].when.label
     for exec_data in config.get("executions", {}).values():
+        if not isinstance(exec_data, dict):
+            continue
         for signal in exec_data.get("signals", []):
             if isinstance(signal, dict):
                 label = signal.get("when", {}).get("label")
@@ -89,6 +91,8 @@ def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
 
     # 2. executions[*].sub_tasks[*].routes[*].when.label
     for exec_data in config.get("executions", {}).values():
+        if not isinstance(exec_data, dict):
+            continue
         for task in exec_data.get("sub_tasks", []):
             for route in task.get("routes", []):
                 label = route.get("when", {}).get("label")
@@ -104,6 +108,8 @@ def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
     # 4. git:pr-labels-add <args> in before/after/on_failure hooks
     label_cmd_re = re.compile(r"^git:pr-labels-add\s+(.+)$")
     for exec_data in config.get("executions", {}).values():
+        if not isinstance(exec_data, dict):
+            continue
         for task in exec_data.get("sub_tasks", []):
             for hook_key in ("before", "after", "on_failure"):
                 for cmd in task.get(hook_key, []):
@@ -120,6 +126,8 @@ def extract_labels(config: dict, config_dir: Path | None = None) -> list[str]:
     # 5. Prompt annotations: <!-- propagate-required-labels: a, b -->
     if config_dir is not None:
         for exec_data in config.get("executions", {}).values():
+            if not isinstance(exec_data, dict):
+                continue
             for task in exec_data.get("sub_tasks", []):
                 prompt_value = task.get("prompt")
                 if not isinstance(prompt_value, str) or not prompt_value.strip():
