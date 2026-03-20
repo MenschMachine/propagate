@@ -23,7 +23,7 @@ git diff
 
 ## Task
 
-Set this context key:
+Write the final body to:
 
 - `:website-pr-body`
 
@@ -38,4 +38,8 @@ Requirements:
 - In `## Source API Docs PR`, include the api-docs PR URL.
 - In `## Testing`, state what you actually ran. If you did not run tests, say so plainly.
 
-Use `propagate context set` to store the PR body.
+Important:
+
+- Store `:website-pr-body` in the execution-level context so the later `git:publish` step can read it.
+- `propagate context set` already writes to execution scope by default in this workflow. Do not use `--local`.
+- If you use a command, it should be equivalent to `propagate context set :website-pr-body "<final body>"`.
