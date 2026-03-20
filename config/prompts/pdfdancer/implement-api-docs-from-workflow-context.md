@@ -21,7 +21,14 @@ propagate context get :client-java-examples-pr-number --task implement-client-ja
 
 If those upstream PR numbers exist, treat the approved upstream PRs as the source of truth for what landed. If they do not exist, this is the docs-only branch and the source PR is the only upstream input.
 
-If revising, also inspect `:review-check-results` and `:review-comments`.
+Always inspect prior revision context before making changes:
+
+```bash
+propagate context get :revision-reason || true
+propagate context get :review-check-results || true
+propagate context get :review-comments || true
+```
+
 Do not make changes to GitHub workflow files.
 
 ## Documentation Inputs

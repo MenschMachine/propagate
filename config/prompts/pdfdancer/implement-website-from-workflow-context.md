@@ -18,6 +18,12 @@ gh pr view "$API_DOCS_PR_NUMBER" --repo MenschMachine/pdfdancer-api-docs --json 
 gh pr diff "$API_DOCS_PR_NUMBER" --repo MenschMachine/pdfdancer-api-docs
 ```
 
-If revising, also inspect `:review-check-results` and `:review-comments`.
+Always inspect prior revision context before making changes:
+
+```bash
+propagate context get :revision-reason || true
+propagate context get :review-check-results || true
+propagate context get :review-comments || true
+```
 
 Use the approved docs PR as the source of truth for what landed upstream.

@@ -33,6 +33,8 @@
         - git:pr-checks-wait :review-check-results :checks-passed 10 1800
     - id: reroute-on-check-failure
       when: "!:checks-passed"
+      after:
+        - 'propagate context set :revision-reason check-failure'
       goto: implement
     - id: wait-for-verdict
       when: ":checks-passed"

@@ -8,9 +8,10 @@ gh pr view "$BACKEND_PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json ti
 gh pr diff "$BACKEND_PR_NUMBER" --repo MenschMachine/pdfdancer-backend
 ```
 
-If this is a revision pass, also inspect:
+Always inspect prior revision context before making changes:
 
 ```bash
+propagate context get :revision-reason || true
 propagate context get :review-check-results || true
 propagate context get :review-comments || true
 ```
@@ -19,7 +20,7 @@ Requirements:
 
 - Implement the API support implied by the backend PR in this repository.
 - Use the backend PR as the source of truth for behavior and naming.
-- Address failing checks and review comments from prior iterations before making new changes.
+- Address the revision reason, failing checks, and review comments from prior iterations before making new changes.
 - Keep changes scoped to the API work needed for the backend feature.
 - Follow existing API patterns strictly and keep the exposed API as simple as possible.
 - Add or update e2e tests following the existing patterns. Tests should use `PDFAssertion` with deep, precise assertions; add helper methods there if needed.

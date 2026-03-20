@@ -18,7 +18,13 @@ gh pr view "$SDK_PR_NUMBER" --repo MenschMachine/pdfdancer-client-java --json ti
 gh pr diff "$SDK_PR_NUMBER" --repo MenschMachine/pdfdancer-client-java
 ```
 
-If revising, also inspect `:review-check-results` and `:review-comments`.
+Always inspect prior revision context before making changes:
+
+```bash
+propagate context get :revision-reason || true
+propagate context get :review-check-results || true
+propagate context get :review-comments || true
+```
 
 Keep changes scoped to Java examples or sample applications that must reflect the approved client changes.
 Run the examples you change and make sure they work.

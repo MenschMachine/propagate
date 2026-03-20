@@ -16,9 +16,10 @@ gh pr view "$API_PR_NUMBER" --repo MenschMachine/pdfdancer-api --json title,body
 gh pr diff "$API_PR_NUMBER" --repo MenschMachine/pdfdancer-api
 ```
 
-If this is a revision pass, also inspect:
+Always inspect prior revision context before making changes:
 
 ```bash
+propagate context get :revision-reason || true
 propagate context get :review-check-results || true
 propagate context get :review-comments || true
 ```
@@ -28,7 +29,7 @@ Requirements:
 - Implement the SDK support required by the approved upstream changes.
 - Treat the approved API PR as the source of truth for the contract that actually landed.
 - If this run started from a backend PR, use that backend PR to understand intent, terminology, and examples.
-- Address check failures and review comments before adding unrelated changes.
+- Address the revision reason, check failures, and review comments before adding unrelated changes.
 - Add or update e2e tests following the existing patterns. Tests should use `PDFAssertions` with deep, precise assertions; add helper methods there if needed.
 - If tests expose a server-side bug, keep the failing test, stop, and write a detailed markdown bug report for the `pdfdancer-api` team instead of working around it.
 - Do not make changes to GitHub workflow files.
