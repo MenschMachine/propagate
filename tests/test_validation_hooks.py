@@ -115,6 +115,22 @@ def test_run_validate_hook_command_resolves_repo_from_context(tmp_path):
     assert mock_run.call_args.args[0][5] == "MenschMachine/pdfdancer-api"
 
 
+def test_run_validate_hook_command_resolves_pr_from_global_context(tmp_path):
+    runtime_context = _make_runtime_context(tmp_path)
+    write_context_value(runtime_context.context_root, ":source-pr-number", "64")
+    completed = subprocess.CompletedProcess(
+        args=["gh"],
+        returncode=0,
+        stdout='{"number":64,"state":"OPEN","mergedAt":null}',
+    )
+    with patch("propagate_app.validation_hooks.run_process_command", return_value=completed) as mock_run:
+        run_validate_hook_command(
+            "validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:source-pr-number",
+            runtime_context,
+        )
+    assert mock_run.call_args.args[0][3] == "64"
+
+
 def test_parse_hook_actions_rejects_github_pr_with_repo_and_repo_from(tmp_path):
     with pytest.raises(PropagateError, match="requires exactly one of 'repo=<owner/name>' or 'repo_from=<source>'"):
         parse_hook_actions(
