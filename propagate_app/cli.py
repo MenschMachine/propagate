@@ -10,6 +10,7 @@ from .config_load import load_config
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, configure_logging
 from .context_store import (
     clear_all_context,
+    context_delete_command,
     context_dump_command,
     context_get_command,
     context_set_command,
@@ -56,6 +57,9 @@ def build_parser() -> argparse.ArgumentParser:
     set_parser.add_argument("key")
     set_parser.add_argument("value")
     _add_write_scope_flags(set_parser)
+    delete_parser = context_subparsers.add_parser("delete", help="Delete a local context value.")
+    delete_parser.add_argument("key")
+    _add_write_scope_flags(delete_parser)
     get_parser = context_subparsers.add_parser("get", help="Read a local context value.")
     get_parser.add_argument("key")
     _add_read_scope_flags(get_parser)
@@ -148,6 +152,15 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
                 scope_local=scope_local,
             )
             return context_set_command(args.key, args.value, context_dir)
+        if args.context_command == "delete":
+            context_dir = resolve_context_dir_for_write(
+                context_root,
+                execution_env,
+                task_env,
+                scope_global=scope_global,
+                scope_local=scope_local,
+            )
+            return context_delete_command(args.key, context_dir)
         if args.context_command == "get":
             context_dir = resolve_context_dir_for_read(
                 context_root,

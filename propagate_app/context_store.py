@@ -100,6 +100,17 @@ def context_set_command(key: str, value: str, context_dir: Path) -> int:
     return 0
 
 
+def context_delete_command(key: str, context_dir: Path) -> int:
+    validated_key = validate_context_key(key)
+    target_path = context_dir / validated_key
+    if not target_path.is_file():
+        LOGGER.debug("Context key '%s' does not exist in %s.", validated_key, context_dir)
+        return 0
+    target_path.unlink()
+    LOGGER.debug("Deleted context key '%s'.", validated_key)
+    return 0
+
+
 def context_get_command(key: str, context_dir: Path) -> int:
     sys.stdout.write(read_context_value(context_dir, validate_context_key(key)))
     return 0

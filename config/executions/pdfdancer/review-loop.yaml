@@ -23,6 +23,15 @@
       before:
         - git:branch
       prompt: "{{ implement_prompt }}"
+    - id: review
+      before:
+        - 'propagate context delete :review-findings'
+      prompt: "{{ review_prompt }}"
+    - id: reroute-on-review-findings
+      when: ":review-findings"
+      after:
+        - 'propagate context set :revision-reason review-findings'
+      goto: implement
     - id: summarize
       prompt: "{{ summarize_prompt }}"
     - id: publish

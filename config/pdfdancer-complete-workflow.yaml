@@ -104,6 +104,7 @@ executions:
           - validate:context-key key=:run-full-pipeline scope=triage-backend-pr
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-api-from-backend-pr.md
+        review_prompt: ./prompts/pdfdancer/review-api.md
         summarize_prompt: ./prompts/pdfdancer/summarize-api-from-backend-pr.md
         aggregate_after_command: :capture-upstream-api-pr
     - path: executions/pdfdancer/review-loop.yaml
@@ -120,6 +121,7 @@ executions:
           - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
+        review_prompt: ./prompts/pdfdancer/review-client-sdk.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
         aggregate_after_command: :mark-all-sdks-approved
     - path: executions/pdfdancer/review-loop.yaml
@@ -136,6 +138,7 @@ executions:
           - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
+        review_prompt: ./prompts/pdfdancer/review-client-sdk.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
         aggregate_after_command: :mark-all-sdks-approved
     - path: executions/pdfdancer/review-loop.yaml
@@ -152,6 +155,7 @@ executions:
           - validate:github-pr repo=MenschMachine/pdfdancer-api pr_from=context:global/:upstream-api-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-sdk-from-api-pr.md
+        review_prompt: ./prompts/pdfdancer/review-client-sdk.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-sdk-from-api-pr.md
         aggregate_after_command: :mark-all-sdks-approved
     - path: executions/pdfdancer/review-loop.yaml
@@ -168,6 +172,7 @@ executions:
           - validate:github-pr repo=MenschMachine/pdfdancer-client-typescript pr_from=context:implement-client-typescript/:client-typescript-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-typescript-examples-from-sdk-pr.md
+        review_prompt: ./prompts/pdfdancer/review-examples.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
         aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
@@ -184,6 +189,7 @@ executions:
           - validate:github-pr repo=MenschMachine/pdfdancer-client-python pr_from=context:implement-client-python/:client-python-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-python-examples-from-sdk-pr.md
+        review_prompt: ./prompts/pdfdancer/review-examples.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
         aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
@@ -200,6 +206,7 @@ executions:
           - validate:github-pr repo=MenschMachine/pdfdancer-client-java pr_from=context:implement-client-java/:client-java-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-client-java-examples-from-sdk-pr.md
+        review_prompt: ./prompts/pdfdancer/review-examples.md
         summarize_prompt: ./prompts/pdfdancer/summarize-client-examples-from-sdk-pr.md
         aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
@@ -216,6 +223,7 @@ executions:
           - validate:context-key key=:pipeline-decision scope=global
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-api-docs-from-workflow-context.md
+        review_prompt: ./prompts/pdfdancer/review-api-docs.md
         summarize_prompt: ./prompts/pdfdancer/summarize-api-docs-from-workflow-context.md
         aggregate_after_command: "true"
     - path: executions/pdfdancer/review-loop.yaml
@@ -232,6 +240,7 @@ executions:
           - validate:github-pr repo=MenschMachine/pdfdancer-api-docs pr_from=context:implement-pdfdancer-api-docs/:api-docs-pr-number
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-website-from-workflow-context.md
+        review_prompt: ./prompts/pdfdancer/review-website.md
         summarize_prompt: ./prompts/pdfdancer/summarize-website-from-workflow-context.md
         aggregate_after_command: "true"
 

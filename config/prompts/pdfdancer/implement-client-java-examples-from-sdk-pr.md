@@ -22,6 +22,7 @@ Always inspect prior revision context before making changes:
 
 ```bash
 propagate context get :revision-reason || true
+propagate context get :review-findings || true
 propagate context get :review-check-results || true
 propagate context get :review-comments || true
 ```
