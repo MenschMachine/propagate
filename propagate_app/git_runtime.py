@@ -58,6 +58,9 @@ def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: R
     git_state = runtime_context.git_state
     if git_state is None:
         raise PropagateError(f"Execution '{execution_name}' git:branch requires git configuration.")
+    if git_state.selected_branch is not None:
+        LOGGER.info("Re-entering git:branch for execution '%s'; already on branch '%s'.", execution_name, git_state.selected_branch)
+        return
     branch_config = git_config.branch
     if branch_config.name_key is not None:
         context_dir = resolve_execution_context_dir(runtime_context)
