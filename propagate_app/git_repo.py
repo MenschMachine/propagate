@@ -79,6 +79,7 @@ def resolve_execution_branch_name(branch_config: GitBranchConfig, execution_name
 def prepare_execution_branch(
     target_branch: str,
     base_ref: str,
+    remote_name: str | None,
     reuse_branch: bool,
     starting_branch: str,
     working_dir: Path,
@@ -92,12 +93,13 @@ def prepare_execution_branch(
         LOGGER.info("Checking out existing branch '%s'.", target_branch)
         checkout_branch(target_branch, working_dir)
         return target_branch
-    ensure_git_ref_exists(base_ref, working_dir)
-    LOGGER.info("Creating and checking out branch '%s' from '%s'.", target_branch, base_ref)
+    resolved_base_ref = resolve_branch_base_ref(base_ref, remote_name, working_dir)
+    ensure_git_ref_exists(resolved_base_ref, working_dir)
+    LOGGER.info("Creating and checking out branch '%s' from '%s'.", target_branch, resolved_base_ref)
     run_git_command(
-        ["checkout", "-b", target_branch, base_ref],
+        ["checkout", "-b", target_branch, resolved_base_ref],
         working_dir,
-        failure_message=f"Failed to create branch '{target_branch}' from '{base_ref}'.",
+        failure_message=f"Failed to create branch '{target_branch}' from '{resolved_base_ref}'.",
         start_failure_message=f"Failed to start branch creation for '{target_branch}': {{error}}",
     )
     return target_branch
@@ -124,6 +126,22 @@ def ensure_git_ref_exists(ref_name: str, working_dir: Path) -> None:
     )
     if result.returncode != 0:
         raise PropagateError(f"Git base ref '{ref_name}' was not found.")
+
+
+def resolve_branch_base_ref(base_ref: str, remote_name: str | None, working_dir: Path) -> str:
+    if remote_name is None:
+        return base_ref
+    LOGGER.info("Fetching latest '%s' from remote '%s' before branch creation.", base_ref, remote_name)
+    fetch = run_git_command(
+        ["fetch", remote_name, base_ref],
+        working_dir,
+        failure_message=f"Failed to fetch base ref '{base_ref}' from remote '{remote_name}'.",
+        start_failure_message=f"Failed to start fetch of base ref '{base_ref}' from '{remote_name}': {{error}}",
+        check=False,
+    )
+    if fetch.returncode != 0:
+        raise PropagateError(f"Git base ref '{base_ref}' could not be fetched from remote '{remote_name}'.")
+    return f"{remote_name}/{base_ref}"
 
 
 def checkout_branch(branch_name: str, working_dir: Path) -> None:

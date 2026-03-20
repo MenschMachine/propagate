@@ -67,7 +67,12 @@ def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: R
             base=branch_config.base,
             reuse=branch_config.reuse,
         )
-    prepared = prepare_git_execution(execution_name, branch_config, runtime_context.working_dir)
+    prepared = prepare_git_execution(
+        execution_name,
+        branch_config,
+        git_config.push.remote if git_config.push is not None else None,
+        runtime_context.working_dir,
+    )
     git_state.starting_branch = prepared.starting_branch
     git_state.selected_branch = prepared.selected_branch
     _persist_git_state(runtime_context, "starting_branch", prepared.starting_branch)
@@ -119,10 +124,11 @@ def git_do_publish(execution_name: str, git_config: GitConfig, runtime_context: 
 def prepare_git_execution(
     execution_name: str,
     branch_config: GitBranchConfig,
+    remote_name: str | None,
     working_dir: Path,
 ) -> PreparedGitExecution:
     starting_branch = prepare_git_execution_start(execution_name, working_dir)
-    selected_branch = prepare_git_execution_branch(execution_name, branch_config, starting_branch, working_dir)
+    selected_branch = prepare_git_execution_branch(execution_name, branch_config, remote_name, starting_branch, working_dir)
     return PreparedGitExecution(starting_branch=starting_branch, selected_branch=selected_branch)
 
 
@@ -140,6 +146,7 @@ def prepare_git_execution_start(execution_name: str, working_dir: Path) -> str:
 def prepare_git_execution_branch(
     execution_name: str,
     branch_config: GitBranchConfig,
+    remote_name: str | None,
     starting_branch: str,
     working_dir: Path,
 ) -> str:
@@ -148,6 +155,7 @@ def prepare_git_execution_branch(
         return prepare_execution_branch(
             target_branch,
             branch_config.base or starting_branch,
+            remote_name,
             branch_config.reuse,
             starting_branch,
             working_dir,

@@ -94,10 +94,21 @@ def push_branch(push_config: GitPushConfig, branch_name: str, working_dir: Path)
     if result.returncode == 0:
         return
     LOGGER.debug("Push rejected; attempting fetch and rebase from '%s/%s'.", push_config.remote, branch_name)
-    _rebase_and_retry_push(push_config, branch_name, working_dir)
+    original_stderr = (result.stderr or "").strip()
+    original_message = (
+        f"Initial push of branch '{branch_name}' to remote '{push_config.remote}' failed"
+        + (f": {original_stderr}" if original_stderr else ".")
+    )
+    _rebase_and_retry_push(push_config, branch_name, working_dir, original_message=original_message)
 
 
-def _rebase_and_retry_push(push_config: GitPushConfig, branch_name: str, working_dir: Path) -> None:
+def _rebase_and_retry_push(
+    push_config: GitPushConfig,
+    branch_name: str,
+    working_dir: Path,
+    *,
+    original_message: str | None = None,
+) -> None:
     remote = push_config.remote
     fetch = run_git_command(
         ["fetch", remote, branch_name],
@@ -107,7 +118,10 @@ def _rebase_and_retry_push(push_config: GitPushConfig, branch_name: str, working
         check=False,
     )
     if fetch.returncode != 0:
-        raise PropagateError(f"Failed to fetch '{branch_name}' from '{remote}' before retrying push.")
+        detail = f"Failed to fetch '{branch_name}' from '{remote}' before retrying push."
+        if original_message:
+            detail = f"{original_message} Retry failed because {detail[0].lower()}{detail[1:]}"
+        raise PropagateError(detail)
     rebase = run_git_command(
         ["rebase", f"{remote}/{branch_name}"],
         working_dir,
@@ -126,10 +140,13 @@ def _rebase_and_retry_push(push_config: GitPushConfig, branch_name: str, working
         )
         if abort.returncode != 0:
             LOGGER.warning("Rebase abort failed (returncode %d); repository may be mid-rebase.", abort.returncode)
-        raise PropagateError(
+        detail = (
             f"Failed to push branch '{branch_name}' to remote '{remote}': "
             f"push was rejected and rebase onto '{remote}/{branch_name}' failed due to conflicts."
         )
+        if original_message:
+            detail = f"{original_message} Retry failed because rebase onto '{remote}/{branch_name}' hit conflicts."
+        raise PropagateError(detail)
     run_git_command(
         ["push", "--set-upstream", remote, branch_name],
         working_dir,
