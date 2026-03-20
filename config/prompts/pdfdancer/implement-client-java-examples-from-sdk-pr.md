@@ -33,7 +33,7 @@ Do not make changes to GitHub workflow files.
 
 ## Starting the API Server
 
-Use the upstream API PR for the matching server image:
+Use `${PROPAGATE_CONFIG_DIR}/scripts/start-api-server.sh` to get a running test server. It reuses an existing container if one is already running for this PR image.
 
 ```bash
 SOURCE_REPOSITORY="$(propagate context get :signal.repository | xargs)"
@@ -42,23 +42,9 @@ if [[ "$SOURCE_REPOSITORY" == "MenschMachine/pdfdancer-backend" ]]; then
 else
   API_PR_NUMBER="$(propagate context get :source-api-pr-number --task triage-api-pr | xargs)"
 fi
+API_BASE_URL="$("${PROPAGATE_CONFIG_DIR}/scripts/start-api-server.sh" "$API_PR_NUMBER")"
 ```
 
-```shell
-docker pull ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
-docker run \
-    -e PDFDANCER_API_KEY_ENCRYPTION_SECRET="$(openssl rand -hex 16)" \
-    -e FONTS_DIR=/tmp/fonts \
-    -e METRICS_ENABLED=false \
-    -e SWAGGER_ENABLED=true \
-    -v /tmp/fonts:/home/app/fonts \
-    --rm \
-    -p 8080:8080 \
-    ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
-```
-
-If port `8080` is occupied, use another port and point the examples at that URL.
-Prefer testing against this local docker instance instead of any cloud environment.
 Use `PDFDANCER_API_TOKEN=42` when authenticating against the API.
 
 ## Using the Upstream SDK Version

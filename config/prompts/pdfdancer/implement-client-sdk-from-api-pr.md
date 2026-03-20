@@ -37,30 +37,13 @@ Requirements:
 
 ## Starting the API Server
 
-Use the docker image from the upstream `pdfdancer-api` PR listed above. The image tag follows this pattern:
+Use `${PROPAGATE_CONFIG_DIR}/scripts/start-api-server.sh` to get a running test server. It reuses an existing container if one is already running for this PR image.
 
 ```shell
-ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
+API_BASE_URL="$("${PROPAGATE_CONFIG_DIR}/scripts/start-api-server.sh" "$API_PR_NUMBER")"
 ```
 
-Start it like this:
-
-```shell
-docker pull ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
-docker run \
-    -e PDFDANCER_API_KEY_ENCRYPTION_SECRET="$(openssl rand -hex 16)" \
-    -e FONTS_DIR=/tmp/fonts \
-    -e METRICS_ENABLED=false \
-    -e SWAGGER_ENABLED=true \
-    -v /tmp/fonts:/home/app/fonts \
-    --rm \
-    -p 8080:8080 \
-    ghcr.io/menschmachine/pdfdancer-api:pr-${API_PR_NUMBER}
-```
-
-If port `8080` is occupied, use another port and point the SDK tests at that URL.
-Prefer testing against this local docker instance instead of any cloud environment.
-Swagger UI is available at `http://localhost:8080/swagger-ui`.
+Swagger UI is available at `${API_BASE_URL}/swagger-ui`.
 Use `PDFDANCER_API_TOKEN=42` when authenticating against the API.
 
 ## API Versioning and Page Indexing
