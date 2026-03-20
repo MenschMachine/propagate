@@ -77,10 +77,18 @@ def _resolve_context_field(field_name: str, runtime_context: RuntimeContext) -> 
     if not key:
         raise PropagateError(f"Git template field '{field_name}' must include a non-empty context key.")
     key = validate_context_key(key)
-    context_dir = resolve_context_dir_for_read(
-        runtime_context.context_root,
-        runtime_context.execution_name,
-        runtime_context.task_id,
-        scope_task=scope,
-    )
+    if scope == "global":
+        context_dir = resolve_context_dir_for_read(
+            runtime_context.context_root,
+            runtime_context.execution_name,
+            runtime_context.task_id,
+            scope_global=True,
+        )
+    else:
+        context_dir = resolve_context_dir_for_read(
+            runtime_context.context_root,
+            runtime_context.execution_name,
+            runtime_context.task_id,
+            scope_task=scope,
+        )
     return read_context_value(context_dir, key)

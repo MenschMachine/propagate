@@ -140,6 +140,14 @@ def resolve_branch_base_ref(base_ref: str, remote_name: str | None, working_dir:
         check=False,
     )
     if fetch.returncode != 0:
+        if local_branch_exists(base_ref, working_dir):
+            LOGGER.warning(
+                "Git base ref '%s' could not be fetched from remote '%s'; falling back to local '%s'.",
+                base_ref,
+                remote_name,
+                base_ref,
+            )
+            return base_ref
         raise PropagateError(f"Git base ref '{base_ref}' could not be fetched from remote '{remote_name}'.")
     return f"{remote_name}/{base_ref}"
 

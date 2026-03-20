@@ -56,6 +56,20 @@ def test_render_git_template_reads_scoped_context_and_signal(tmp_path):
     assert rendered == "branch-42-cur-17"
 
 
+def test_render_git_template_reads_global_context(tmp_path):
+    current_context_dir = tmp_path / "my-exec"
+    ensure_context_dir(current_context_dir)
+    write_context_value(tmp_path, ":source-pr-number", "64")
+
+    rc = _make_runtime_context(tmp_path)
+
+    rendered = render_git_template(
+        "branch-{context[global][:source-pr-number]}",
+        rc,
+    )
+    assert rendered == "branch-64"
+
+
 def test_load_commit_message_from_template(tmp_path):
     context_dir = tmp_path / "my-exec"
     ensure_context_dir(context_dir)
