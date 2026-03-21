@@ -401,6 +401,7 @@ sub_tasks:
 | `max_goto` | integer | No | `3` | Maximum number of times this sub-task's `goto` can fire before raising an error. Requires `goto`. Prevents infinite retry loops. |
 | `wait_for_signal` | string | No | `null` | Signal name to wait for. Requires `routes`. Must not have `prompt` or `on_failure`. |
 | `routes` | list | No | `[]` | Route definitions for signal-gated sub-tasks. Requires `wait_for_signal`. |
+| `must_set` | list of strings | No | `[]` | Context keys the agent must set during this task. Validated after the agent phase; raises an error if any key is missing or empty. Keys are injected into the agent prompt as a notice. Must not be used with `wait_for_signal`. |
 
 Task IDs must be unique within an execution.
 
@@ -746,7 +747,8 @@ Signal payloads are written to context under the `:signal` namespace (e.g. `:sig
 - `git.branch.name_key`, `git.commit.message_key`, `git.pr.title_key`, `git.pr.body_key`, and `git.pr.number_key` must start with `:`.
 - `git.commit.message_source` must reference a defined context source.
 - `wait_for_signal` and `routes` must both be present together on a sub-task.
-- Sub-tasks with `wait_for_signal` must not have `prompt` or `on_failure`.
+- Sub-tasks with `wait_for_signal` must not have `prompt`, `on_failure`, or `must_set`.
+- `must_set` entries must be valid context keys.
 - Route `goto` targets must reference a sub-task ID defined earlier in the same execution.
 - `max_goto` requires `goto` to be set on the same sub-task and must be a positive integer.
 - Direct `goto` (without `wait_for_signal`) requires `when` to prevent unconditional loops.

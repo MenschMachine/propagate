@@ -111,6 +111,7 @@ class SubTaskConfig:
     max_goto: int = 3
     wait_for_signal: str | None = None
     routes: list[SubTaskRouteConfig] = field(default_factory=list)
+    must_set: list[str] = field(default_factory=list)
 
 
 @dataclass

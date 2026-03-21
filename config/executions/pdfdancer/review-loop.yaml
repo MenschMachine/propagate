@@ -40,6 +40,8 @@
       goto: implement
     - id: summarize
       prompt: "{{ summarize_prompt }}"
+      must_set:
+        - "{{ pr_body_key }}"
     - id: publish
       before:
         - git:publish

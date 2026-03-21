@@ -6,7 +6,12 @@ from .errors import PropagateError
 from .models import RuntimeContext
 
 
-def build_sub_task_prompt(prompt_path: Path, task_id: str, runtime_context: RuntimeContext) -> str:
+def build_sub_task_prompt(
+    prompt_path: Path,
+    task_id: str,
+    runtime_context: RuntimeContext,
+    must_set: list[str] | None = None,
+) -> str:
     prompt_text = read_prompt(prompt_path)
     LOGGER.info(
         "Loading merged context for sub-task '%s' (global + execution '%s' + task '%s').",
@@ -15,7 +20,28 @@ def build_sub_task_prompt(prompt_path: Path, task_id: str, runtime_context: Runt
         runtime_context.task_id or "(none)",
     )
     items = load_merged_context(runtime_context.context_root, runtime_context.execution_name, runtime_context.task_id)
-    return append_context_to_prompt(prompt_text, items)
+    result = append_context_to_prompt(prompt_text, items)
+    if must_set:
+        result = append_must_set_notice(result, must_set)
+    return result
+
+
+def append_must_set_notice(prompt_text: str, must_set: list[str]) -> str:
+    lines = [
+        "## Required Context Keys",
+        "",
+        "You MUST set the following context keys before completing this task:",
+    ]
+    for key in must_set:
+        lines.append(f"- `{key}`")
+    lines.append("")
+    lines.append('Use `propagate context set <key> "<value>"` to set each key.')
+    section = "\n".join(lines) + "\n"
+    if prompt_text.endswith("\n\n"):
+        return prompt_text + section
+    if prompt_text.endswith("\n"):
+        return prompt_text + "\n" + section
+    return prompt_text + "\n\n" + section
 
 
 def read_prompt(prompt_path: Path) -> str:

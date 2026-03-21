@@ -251,7 +251,7 @@ def run_sub_task(
         LOGGER.info("Skipping already completed 'agent' phase for sub-task '%s'.", sub_task.task_id)
     elif sub_task.prompt_path is not None:
         temp_prompt_path = write_temp_text(
-            build_sub_task_prompt(sub_task.prompt_path, sub_task.task_id, task_runtime_context),
+            build_sub_task_prompt(sub_task.prompt_path, sub_task.task_id, task_runtime_context, must_set=sub_task.must_set),
             prefix="propagate-",
             suffix=".md",
         )
@@ -265,6 +265,11 @@ def run_sub_task(
         LOGGER.debug("Sub-task '%s' has no prompt, skipping agent invocation.", sub_task.task_id)
         if on_phase_completed is not None:
             on_phase_completed(execution_name, sub_task.task_id, PHASE_AGENT)
+    if sub_task.must_set:
+        try:
+            validate_must_set_keys(sub_task, task_runtime_context)
+        except PropagateError as error:
+            handle_sub_task_failure(sub_task, task_runtime_context, error)
     run_sub_task_hook_phase(sub_task, "after", sub_task.after, task_runtime_context, git_config, context_id)
     if on_phase_completed is not None:
         on_phase_completed(execution_name, sub_task.task_id, PHASE_AFTER)
@@ -292,6 +297,19 @@ def run_sub_task_agent(sub_task: SubTaskConfig, temp_prompt_path: Path, runtime_
         run_agent_command(command, runtime_context.working_dir, sub_task.task_id, extra_env=extra_env)
     except PropagateError as error:
         handle_sub_task_failure(sub_task, runtime_context, error)
+
+
+def validate_must_set_keys(sub_task: SubTaskConfig, runtime_context: RuntimeContext) -> None:
+    context_dir = resolve_execution_context_dir(runtime_context)
+    missing = []
+    for key in sub_task.must_set:
+        key_path = context_dir / key
+        if not key_path.is_file() or key_path.read_text(encoding="utf-8") == "":
+            missing.append(key)
+    if missing:
+        raise PropagateError(
+            f"Sub-task '{sub_task.task_id}' requires context keys that were not set: {', '.join(missing)}"
+        )
 
 
 def handle_sub_task_failure(

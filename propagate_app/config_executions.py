@@ -171,7 +171,7 @@ def parse_sub_task(
     if not isinstance(sub_task_data, dict):
         raise PropagateError(f"Execution '{name}' sub-task #{index} must be a mapping.")
     location = f"Execution '{name}' sub-task #{index}"
-    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when", "goto", "max_goto", "wait_for_signal", "routes"}, location)
+    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when", "goto", "max_goto", "wait_for_signal", "routes", "must_set"}, location)
     task_id = sub_task_data.get("id")
     prompt_value = sub_task_data.get("prompt")
     if not isinstance(task_id, str) or not task_id.strip():
@@ -213,6 +213,9 @@ def parse_sub_task(
         if sub_task_data.get("on_failure"):
             raise PropagateError(f"{location} with 'wait_for_signal' must not have 'on_failure' hooks.")
         routes = parse_routes(routes_data, location, seen_task_ids, signal_configs[wait_for_signal] if signal_configs is not None else None)
+    must_set = parse_must_set(sub_task_data.get("must_set"), location)
+    if must_set and wait_for_signal is not None:
+        raise PropagateError(f"{location} with 'wait_for_signal' must not have 'must_set'.")
     return SubTaskConfig(
         task_id=task_id,
         prompt_path=prompt_path,
@@ -224,7 +227,22 @@ def parse_sub_task(
         max_goto=max_goto,
         wait_for_signal=wait_for_signal,
         routes=routes,
+        must_set=must_set,
     )
+
+
+def parse_must_set(must_set_data: Any, location: str) -> list[str]:
+    if must_set_data is None:
+        return []
+    if not isinstance(must_set_data, list) or not must_set_data:
+        raise PropagateError(f"{location} 'must_set' must be a non-empty list when provided.")
+    keys: list[str] = []
+    for i, entry in enumerate(must_set_data, start=1):
+        if not isinstance(entry, str) or not entry.strip():
+            raise PropagateError(f"{location} 'must_set' entry #{i} must be a non-empty string.")
+        validate_context_key(entry)
+        keys.append(entry)
+    return keys
 
 
 def parse_routes(
