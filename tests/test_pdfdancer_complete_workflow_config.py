@@ -87,14 +87,14 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
         self.assertEqual(api.git.pr.number_key, ":api-pr-number")
         self.assertEqual(
             [task.task_id for task in api.sub_tasks],
-            ["validate-context", "implement", "review", "reroute-on-review-findings", "summarize", "publish", "wait-for-checks", "reroute-on-check-failure", "wait-for-verdict"],
+            ["validate-context", "implement", "clear-findings-on-wontfix", "review", "reroute-on-review-findings", "summarize", "publish", "post-wontfix-comment", "wait-for-checks", "reroute-on-check-failure", "wait-for-verdict"],
         )
-        self.assertEqual(api.sub_tasks[3].goto, "implement")
-        self.assertEqual(api.sub_tasks[3].max_goto, 3)
-        self.assertEqual(api.sub_tasks[7].goto, "implement")
-        self.assertEqual(api.sub_tasks[7].max_goto, 3)
-        self.assertEqual(api.sub_tasks[8].routes[0].when["repository"], "MenschMachine/pdfdancer-api")
-        self.assertEqual(api.sub_tasks[8].routes[0].when["pr_number"], {"equals_context": ":api-pr-number"})
+        self.assertEqual(api.sub_tasks[4].goto, "implement")
+        self.assertEqual(api.sub_tasks[4].max_goto, 3)
+        self.assertEqual(api.sub_tasks[9].goto, "implement")
+        self.assertEqual(api.sub_tasks[9].max_goto, 3)
+        self.assertEqual(api.sub_tasks[10].routes[0].when["repository"], "MenschMachine/pdfdancer-api")
+        self.assertEqual(api.sub_tasks[10].routes[0].when["pr_number"], {"equals_context": ":api-pr-number"})
 
         ts_sdk = config.executions["implement-client-typescript"]
         self.assertEqual(ts_sdk.git.pr.number_key, ":client-typescript-pr-number")

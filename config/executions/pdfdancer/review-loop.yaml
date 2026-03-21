@@ -22,8 +22,14 @@
     - id: implement
       before:
         - git:branch
+        - 'propagate context delete :wontfix'
       prompt: "{{ implement_prompt }}"
+    - id: clear-findings-on-wontfix
+      when: ":wontfix"
+      after:
+        - 'propagate context delete :review-findings'
     - id: review
+      when: "!:wontfix"
       before:
         - 'propagate context delete :review-findings'
       prompt: "{{ review_prompt }}"
@@ -37,6 +43,10 @@
     - id: publish
       before:
         - git:publish
+    - id: post-wontfix-comment
+      when: ":wontfix"
+      before:
+        - git:pr-comment-add :wontfix
     - id: wait-for-checks
       before:
         - git:pr-checks-wait :review-check-results :checks-passed 10 1800

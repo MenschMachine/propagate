@@ -458,6 +458,46 @@ propagate fail unable-to-implement "Blocked by upstream bug or missing prerequis
 That raises a terminal execution error immediately, which is useful for review loops where another retry would be
 pointless.
 
+#### "Won't fix" escape hatch
+
+When the implement agent decides review findings are not worth fixing, it can set a `:wontfix` context key to break out
+of the review loop gracefully. The key's value should contain the reasoning — it doubles as the PR comment body:
+
+```yaml
+- id: implement
+  before:
+    - git:branch
+    - 'propagate context delete :wontfix'       # reset flag each iteration
+  prompt: ./prompts/implement.md
+  # Agent can run: propagate context set :wontfix "## Won't Fix\n\n- Finding: reason..."
+
+- id: clear-findings-on-wontfix
+  when: ":wontfix"
+  after:
+    - 'propagate context delete :review-findings'
+
+- id: review
+  when: "!:wontfix"
+  before:
+    - 'propagate context delete :review-findings'
+  prompt: ./prompts/review.md
+
+- id: reroute-on-review-findings
+  when: ":review-findings"
+  goto: implement
+
+# ... later, after git:publish creates the PR ...
+
+- id: post-wontfix-comment
+  when: ":wontfix"
+  before:
+    - git:pr-comment-add :wontfix
+```
+
+The `clear-findings-on-wontfix` step is necessary because when a `goto` resets tasks, context keys persist on disk. If
+review is skipped (due to `:wontfix`), its `before` hook never runs to delete the stale `:review-findings`, which would
+otherwise re-trigger the reroute. The `post-wontfix-comment` step posts the reasoning as a PR comment after publish.
+
 When `prompt` is set, the prompt file is read, merged context (global + execution + task) is appended as a
 `## Context` section, and the result is written to a temporary file passed to the agent command.
 
