@@ -23,7 +23,7 @@ from propagate_app.signal_transport import (
 from .message_parser import parse_signal_message
 
 logger = logging.getLogger("propagate.telegram")
-_TELEGRAM_NOTIFY_EVENTS = {"pr_created", "pr_updated"}
+_TELEGRAM_NOTIFY_EVENTS = {"pr_created", "pr_updated", "run_failed"}
 
 
 @dataclass

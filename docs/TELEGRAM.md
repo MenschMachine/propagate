@@ -42,7 +42,7 @@ The `--config` path must match the one used by `propagate serve`. Pass multiple 
 | `--token` | (none) | Telegram bot token |
 | `--token-env` | (none) | Environment variable name containing the bot token |
 | `--allowed-users` | (required) | Comma-separated Telegram user IDs allowed to send commands |
-| `--notify-chats` | (none) | Comma-separated Telegram chat IDs for outbound `pr_created` notifications |
+| `--notify-chats` | (none) | Comma-separated Telegram chat IDs for outbound notifications (`pr_created`, `pr_updated`, `run_failed`) |
 | `--debug` | off | Enable debug-level logging |
 
 ---
@@ -182,9 +182,13 @@ Config filenames must be unique — two configs with the same stem will be rejec
 
 ---
 
-## PR Notifications
+## Notifications
 
-When propagate opens a new pull request, it publishes `pr_created`. When it pushes more changes to a branch that already has an open PR, it publishes `pr_updated`. The Telegram bot forwards both event types to fixed chats configured via `--notify-chats` or `.env`.
+The Telegram bot forwards certain event types to fixed chats configured via `--notify-chats` or `.env`:
+
+- **`pr_created`** — when propagate opens a new pull request
+- **`pr_updated`** — when propagate pushes more changes to a branch that already has an open PR
+- **`run_failed`** — when a run fails with an error
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456:ABCDEF
@@ -199,7 +203,7 @@ propagate-telegram --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456
 Notes:
 
 - `TELEGRAM_NOTIFY_CHATS` is a comma-separated list of Telegram chat IDs.
-- These notifications are for propagate's internal `pr_created` and `pr_updated` events, not generic GitHub `pull_request.opened` webhooks.
+- These notifications are for propagate's internal events, not generic GitHub webhooks.
 - If a run was started from Telegram and the origin chat is also in `TELEGRAM_NOTIFY_CHATS`, the bot sends only one message to that chat.
 
 ---
