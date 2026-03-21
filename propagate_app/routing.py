@@ -1,6 +1,6 @@
 from .constants import LOGGER
 from .context_store import get_context_root
-from .errors import PropagateError
+from .errors import PropagateError, wrap_error_with_message
 from .models import Config, ExecutionConfig, ExecutionRouting, RuntimeContext
 from .signal_context import prepare_signal_context_for_working_dir
 
@@ -70,8 +70,9 @@ def execution_location_display(execution: ExecutionConfig) -> str:
 
 
 def wrap_execution_runtime_error(execution: ExecutionConfig, error: PropagateError) -> PropagateError:
-    return PropagateError(
-        f"Execution '{execution.name}' failed while running {execution_location_display(execution)}: {normalize_error_message(str(error))}."
+    return wrap_error_with_message(
+        error,
+        f"Execution '{execution.name}' failed while running {execution_location_display(execution)}: {normalize_error_message(str(error))}.",
     )
 
 

@@ -5,6 +5,7 @@ import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
+from typing import NoReturn
 
 from .config_load import load_config
 from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, configure_logging
@@ -18,7 +19,7 @@ from .context_store import (
     resolve_context_dir_for_read,
     resolve_context_dir_for_write,
 )
-from .errors import PropagateError
+from .errors import PropagateError, build_named_error
 from .models import Config, ExecutionScheduleState, RunState, RuntimeContext
 from .repo_clone import is_propagate_clone
 from .run_state import (
@@ -80,6 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("shell", help="Interactive REPL for a running propagate instance.")
     validate_parser = subparsers.add_parser("validate", help="Validate a config file without running.")
     validate_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+    fail_parser = subparsers.add_parser("fail", help="Abort the current run with a structured failure kind.")
+    fail_parser.add_argument("kind", help="Failure kind, for example 'unable-to-implement'.")
+    fail_parser.add_argument("message", help="Human-readable failure detail.")
     return parser
 
 
@@ -130,6 +134,8 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
         return shell_command()
     if args.command == "validate":
         return validate_command(args.config)
+    if args.command == "fail":
+        return fail_command(args.kind, args.message)
     if args.command == "context":
         context_root_env = os.environ.get(ENV_CONTEXT_ROOT, "")
         execution_env = os.environ.get(ENV_EXECUTION, "")
@@ -368,6 +374,10 @@ def validate_command(config_value: str) -> int:
     load_config(config_path)
     LOGGER.info("Config is valid: %s", config_path)
     return 0
+
+
+def fail_command(kind: str, message: str) -> NoReturn:
+    raise build_named_error(kind, message)
 
 
 def _validate_stop_after(stop_after: str, config: Config) -> None:

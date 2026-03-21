@@ -175,6 +175,14 @@ Each sub-task supports lifecycle hooks:
 
 Hooks can be shell commands, context source loads (`:source-name`), or git commands (`git:*`).
 
+Tasks can also abort intentionally from inside prompts or scripts with a structured failure:
+
+```bash
+propagate fail unable-to-implement "Blocked by upstream backend bug in PDF metadata parsing"
+```
+
+This exits the current run immediately instead of relying on another retry loop to fail later.
+
 ### Conditional Execution
 
 Sub-tasks support a `when` field that skips based on context key values:
@@ -205,6 +213,9 @@ propagate send-signal --config config.yaml --signal TYPE [--signal-payload YAML]
 propagate context get KEY [--global | --local | --task NAME]
 propagate context set KEY VALUE [--global | --local]
 propagate context dump
+
+# Abort the current task/run with a structured failure kind
+propagate fail unable-to-implement "reason"
 ```
 
 ### Resume

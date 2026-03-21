@@ -448,6 +448,16 @@ This is a control-flow node — no `prompt` is needed. The `when` condition and 
 
 Signal-gated sub-tasks require `propagate serve` (they need a ZMQ socket to receive signals).
 
+If a task determines the work is fundamentally blocked and should not loop again, abort explicitly from the prompt or
+any invoked script:
+
+```bash
+propagate fail unable-to-implement "Blocked by upstream bug or missing prerequisite"
+```
+
+That raises a terminal execution error immediately, which is useful for review loops where another retry would be
+pointless.
+
 When `prompt` is set, the prompt file is read, merged context (global + execution + task) is appended as a
 `## Context` section, and the result is written to a temporary file passed to the agent command.
 
