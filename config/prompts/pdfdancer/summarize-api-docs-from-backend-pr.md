@@ -21,9 +21,11 @@ git diff
 
 ## Task
 
-Write the final body to:
+Run this exact command to store the PR body:
 
-- `:api-docs-pr-body`
+```bash
+propagate context set :api-docs-pr-body "<your PR body here>"
+```
 
 Requirements:
 
@@ -35,9 +37,3 @@ Requirements:
 - In `## Source Backend PR`, include the backend PR URL.
 - In `## Testing`, state what you actually ran. If you did not run tests, say so plainly.
 - In `## Website Follow-Up`, state that the website workflow will run after this PR is approved.
-
-Important:
-
-- Store `:api-docs-pr-body` in the execution-level context so the later `git:publish` step can read it.
-- `propagate context set` already writes to execution scope by default in this workflow. Do not use `--local`.
-- If you use a command, it should be equivalent to `propagate context set :api-docs-pr-body "<final body>"`.

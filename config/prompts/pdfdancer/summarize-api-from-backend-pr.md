@@ -7,15 +7,11 @@ BACKEND_PR_NUMBER="$(propagate context get :source-backend-pr-number --task tria
 gh pr view "$BACKEND_PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json title,url
 ```
 
-Write the final body to:
+Write the final body by running this exact command:
 
-- `:api-pr-body`
-
-Important:
-
-- Store `:api-pr-body` in the execution-level context so the later `git:publish` step can read it.
-- `propagate context set` already writes to execution scope by default in this workflow. Do not use `--local`.
-- If you use a command, it should be equivalent to `propagate context set :api-pr-body "<final body>"`.
+```bash
+propagate context set :api-pr-body "<your PR body here>"
+```
 
 Structure:
 
