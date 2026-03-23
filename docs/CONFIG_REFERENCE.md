@@ -823,7 +823,7 @@ specific step without re-running the entire pipeline.
 
 ```bash
 # Run an execution
-propagate run --config config.yaml [--execution name] [--signal name] [--signal-payload '{...}'] [--signal-file path] [--resume [execution/task]] [--stop-after name]
+propagate run --config config.yaml [--execution name] [--signal name] [--signal-payload '{...}'] [--signal-file path] [--resume [execution/task]] [--stop-after name] [--skip execution_or_task ...]
 
 # Send a signal to a running server
 propagate send-signal --config config.yaml --signal name [--signal-payload '{...}']
@@ -835,7 +835,7 @@ propagate context [--config config.yaml] get <key> [--global | --local | --task]
 propagate context [--config config.yaml] dump
 
 # Run as a long-lived server
-propagate serve --config config.yaml [--resume [execution/task]]
+propagate serve --config config.yaml [--resume [execution/task]] [--skip execution_or_task ...]
 
 # Clear all context and run state
 propagate clear --config config.yaml
@@ -852,6 +852,7 @@ propagate clear --config config.yaml
 | `--signal-file` | Path to a YAML/JSON file with `type` and `payload` keys. Mutually exclusive with `--signal`. |
 | `--resume [target]` | Resume a previously interrupted run. Without a target, resumes from saved state. With `execution` or `execution/task`, forces resume from that point. |
 | `--stop-after` | Stop the run after the named execution completes. Upstream executions and propagation triggers fire normally, but the scheduler exits before running any execution beyond the named one. Run state is preserved, so the remaining executions can be completed with `--resume`. |
+| `--skip` | Skip an execution or task. Use `execution_name` to skip an entire execution, or `execution_name/task_id` to skip a single task. Repeatable. Skipped executions are never run, and downstream executions that depend on them stay pending. Not persisted — must be re-supplied on resume. |
 
 ### `send-signal` options
 
