@@ -9,28 +9,24 @@ Inputs:
 
 Tasks:
 
-1. Analyze the diff to judge complexity:
+1. Analyze the diff to judge what kind of change it is:
 
-   - Count total lines changed (additions + deletions)
-   - Count number of files modified
-   - Identify whether the change affects API contracts, data models, or core logic
-   - Assess risk level and potential for regressions
+   - Is this a **core** change (touches data models, API contracts, core business logic, or requires multi-file coordination)?
+   - Or is this an **on-top** addition (slots into an existing API, adds new endpoints/methods without changing existing contracts)?
 
-2. Decision criteria:
+2. Decision criteria — set **agent-hard** if ANY of:
 
-   - **agent-easy** if ALL of:
-     - Small diff (under 200 lines total)
-     - Few files changed (under 5)
-     - No changes to core API contracts or data models
-     - Pure documentation, configuration, or cosmetic changes
-     - Low risk of regressions
+   - The change modifies data models, API schemas, or wire formats consumed by clients
+   - The change touches core business logic or introduces architectural changes
+   - The change requires coordinated updates across 3+ files for correctness
+   - The change is a refactor with non-trivial migration implications
+   - Despite being small, the change is high-risk (e.g., security-sensitive, auth, data handling)
 
-   - **agent-hard** if ANY of:
-     - Large diff (200+ lines) or many files (5+)
-     - Changes to API contracts, data models, or core business logic
-     - New features or significant functionality changes
-     - Complex refactoring or multi-file coordinated changes
-     - High risk of regressions or backward compatibility concerns
+   Set **agent-easy** if ALL of:
+
+   - The change is a pure addition — new endpoints, new SDK methods, new features — that do NOT modify existing contracts
+   - No coordinated cross-file changes needed (a few independent file additions are fine)
+   - Low risk of regressions — the existing system is not modified, only extended
 
 3. Write the decision globally so all downstream executions use it:
 
