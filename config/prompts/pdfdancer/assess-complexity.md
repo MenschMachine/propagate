@@ -17,15 +17,15 @@ Tasks:
 
 3. Decision criteria — set **agent-hard** if ANY of:
 
-   - The downstream work modifies existing client-facing API contracts or data models (not just adds new ones)
-   - The downstream work modifies core business logic or introduces architectural changes in downstream repos
+   - The downstream work requires CHANGING how existing SDK methods or data models work (not just adding new ones)
+   - The downstream work requires non-trivial SDK design — new abstractions, mapping complex data models across language idioms, deciding how to surface novel concepts
    - The downstream work is a refactor with non-trivial migration implications across repos
-   - High risk of downstream regressions (security-sensitive, auth, behavioral changes clients depend on)
+   - High risk of downstream regressions from behavioral changes clients depend on
 
    Set **agent-easy** if ALL of:
 
-   - The downstream work is a pure addition — new endpoints, new SDK methods, new features — that does NOT modify existing client-facing contracts
-   - No coordinated cross-file changes needed in downstream (independent file additions are fine)
+   - The downstream work adds new capabilities (endpoints, SDK methods, features) without changing how existing ones work
+   - Existing SDK patterns and contracts are preserved — downstream just follows the same patterns for the new surface area
    - Low risk of regressions — the downstream is extended without altering existing behavior
 
 4. Write the decision globally so all downstream executions use it:
