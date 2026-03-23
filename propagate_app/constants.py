@@ -8,19 +8,7 @@ from propagate_app.log_buffer import install_buffered_handler
 _current_project_stem: contextvars.ContextVar[str] = contextvars.ContextVar("project_stem", default="")
 
 
-class _ProjectStemFilter(logging.Filter):
-    """Filter that ensures project_stem is set on all log records."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if not hasattr(record, "project_stem"):
-            record.project_stem = _current_project_stem.get()
-        return True
-
-
 def configure_logging(project_stem: str | None = None) -> None:
-    root = logging.getLogger()
-    root.filters = [f for f in root.filters if not isinstance(f, _ProjectStemFilter)]
-    root.addFilter(_ProjectStemFilter())
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-8s [%(project_stem)s] [%(threadName)s] %(name)s: %(message)s",
