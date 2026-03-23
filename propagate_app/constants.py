@@ -8,12 +8,26 @@ from propagate_app.log_buffer import install_buffered_handler
 _current_project_stem: contextvars.ContextVar[str] = contextvars.ContextVar("project_stem", default="")
 
 
+class _ProjectStemFormatter(logging.Formatter):
+    """Formatter that safely handles project_stem from context var."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        if not hasattr(record, "project_stem"):
+            record.project_stem = _current_project_stem.get()
+        return super().format(record)
+
+
 def configure_logging(project_stem: str | None = None) -> None:
-    logging.basicConfig(
+    handler = logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-8s [%(project_stem)s] [%(threadName)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    if handler:
+        handler.setFormatter(_ProjectStemFormatter(
+            fmt="%(asctime)s %(levelname)-8s [%(project_stem)s] [%(threadName)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
     logging.getLogger("httpx").setLevel(logging.WARNING)
     install_buffered_handler()
 
