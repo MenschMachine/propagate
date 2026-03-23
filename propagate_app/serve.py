@@ -9,7 +9,7 @@ from pathlib import Path
 import zmq
 
 from .config_load import load_config
-from .constants import LOGGER
+from .constants import LOGGER, set_project_stem
 from .errors import PropagateError
 from .log_buffer import ZmqLogHandler
 from .models import ActiveSignal, Config, RunState, RuntimeContext
@@ -50,7 +50,7 @@ def _run_with_event_publish(
 ) -> None:
     """Run *fn*, publish ``run_completed`` or ``run_failed`` on the PUB socket."""
     log_buffer = _RunLogBuffer()
-    LOGGER.addHandler(log_buffer)
+    LOGGER.logger.addHandler(log_buffer)
     try:
         fn()
     except Exception:
@@ -62,7 +62,7 @@ def _run_with_event_publish(
             })
         raise
     finally:
-        LOGGER.removeHandler(log_buffer)
+        LOGGER.logger.removeHandler(log_buffer)
 
     if pub_socket is not None:
         publish_event(pub_socket, "run_completed", {
@@ -139,6 +139,7 @@ def serve_worker_command(config_value: str, resume: bool | str = False, skip: li
 
     config_path = Path(config_value).expanduser()
     config = load_config(config_path)
+    set_project_stem(config.config_path.stem)
     shutdown = threading.Event()
 
     def handle_shutdown(signum: int, frame: object) -> None:

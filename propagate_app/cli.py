@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from .config_load import load_config
-from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, configure_logging
+from .constants import ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, configure_logging, set_project_stem
 from .context_store import (
     clear_all_context,
     context_delete_command,
@@ -106,9 +106,10 @@ def _add_read_scope_flags(parser: argparse.ArgumentParser) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     from dotenv import load_dotenv
     load_dotenv()
-    configure_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
+    project_stem = _get_project_stem(args)
+    configure_logging(project_stem)
     try:
         command_result = dispatch_command(args, Path.cwd())
         if command_result is not None:
@@ -118,6 +119,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     parser.error(f"Unsupported command: {args.command}")
     return 2
+
+
+def _get_project_stem(args: argparse.Namespace) -> str | None:
+    """Extract project stem from args.config if available."""
+    config_path = getattr(args, "config", None)
+    if config_path is None:
+        return None
+    if isinstance(config_path, list):
+        if not config_path:
+            return None
+        config_path = config_path[0]
+    return Path(config_path).stem if config_path else None
 
 
 def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
@@ -197,6 +210,7 @@ def run_command(
 ) -> int:
     config_path = Path(config_value).expanduser()
     config = load_config(config_path)
+    set_project_stem(config.config_path.stem)
     if stop_after is not None:
         _validate_stop_after(stop_after, config)
     skip_executions, skip_tasks = parse_and_validate_skip(skip or [], config)
