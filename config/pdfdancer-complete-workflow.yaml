@@ -56,7 +56,7 @@ agents:
   agent-easy:
     command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-minimax.json -p "Read the file {prompt_file} and follow its instructions."'
   agent-hard:
-    command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-anthropic.json -p "Read the file {prompt_file} and follow its instructions."'
+    command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} and follow its instructions."'
 
 agent: default
 
