@@ -385,7 +385,7 @@ def _process_received_signal(
 ) -> ActiveSignal | None:
     signal_type, payload = result
     if signal_type not in config.signals:
-        LOGGER.warning("Received unknown signal '%s'; ignoring.", signal_type)
+        LOGGER.info("Received unknown signal '%s'; ignoring.", signal_type)
         return None
     signal_config = config.signals[signal_type]
     try:

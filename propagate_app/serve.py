@@ -317,7 +317,7 @@ def _handle_incoming_signal(
     skip_tasks: dict[str, set[str]] | None = None,
 ) -> None:
     if signal_type not in config.signals:
-        LOGGER.warning("Received unknown signal '%s'; ignoring.", signal_type)
+        LOGGER.info("Received unknown signal '%s'; ignoring.", signal_type)
         return
     signal_config = config.signals[signal_type]
     try:
