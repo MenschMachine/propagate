@@ -24,13 +24,13 @@ propagate context set --global :source-kind backend
 3. Write exactly one of these context flags:
 
 ```bash
-propagate context set run-full-pipeline true
+propagate context set --global run-full-pipeline true
 ```
 
 or
 
 ```bash
-propagate context set run-docs-pipeline true
+propagate context set --global run-docs-pipeline true
 ```
 
 4. Also save a short rationale for traceability:

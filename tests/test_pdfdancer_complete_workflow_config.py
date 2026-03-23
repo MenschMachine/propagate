@@ -116,15 +116,15 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
         triage_to_assess_backend = next(t for t in config.propagation_triggers if t.after == "triage-backend-pr" and t.run == "assess-complexity-backend")
         self.assertIsNone(triage_to_assess_backend.when_context)
         assess_backend_to_api = next(t for t in config.propagation_triggers if t.after == "assess-complexity-backend" and t.run == "implement-pdfdancer-api")
-        self.assertEqual(assess_backend_to_api.when_context, ":run-full-pipeline")
+        self.assertIsNone(assess_backend_to_api.when_context)
         assess_backend_to_docs = next(t for t in config.propagation_triggers if t.after == "assess-complexity-backend" and t.run == "implement-pdfdancer-api-docs")
-        self.assertEqual(assess_backend_to_docs.when_context, ":run-docs-pipeline")
+        self.assertIsNone(assess_backend_to_docs.when_context)
         triage_to_assess_api = next(t for t in config.propagation_triggers if t.after == "triage-api-pr" and t.run == "assess-complexity-api")
         self.assertIsNone(triage_to_assess_api.when_context)
         assess_api_to_ts = next(t for t in config.propagation_triggers if t.after == "assess-complexity-api" and t.run == "implement-client-typescript")
-        self.assertEqual(assess_api_to_ts.when_context, ":run-full-pipeline")
+        self.assertIsNone(assess_api_to_ts.when_context)
         assess_api_to_docs = next(t for t in config.propagation_triggers if t.after == "assess-complexity-api" and t.run == "implement-pdfdancer-api-docs")
-        self.assertEqual(assess_api_to_docs.when_context, ":run-docs-pipeline")
+        self.assertIsNone(assess_api_to_docs.when_context)
 
         example_trigger = next(
             t for t in config.propagation_triggers

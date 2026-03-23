@@ -298,24 +298,18 @@ propagation:
       run: assess-complexity-backend
     - after: assess-complexity-backend
       run: implement-pdfdancer-api
-      when_context: :run-full-pipeline
     - after: assess-complexity-backend
       run: implement-pdfdancer-api-docs
-      when_context: :run-docs-pipeline
     - after: triage-api-pr
       run: assess-complexity-api
     - after: assess-complexity-api
       run: implement-client-typescript
-      when_context: :run-full-pipeline
     - after: assess-complexity-api
       run: implement-client-python
-      when_context: :run-full-pipeline
     - after: assess-complexity-api
       run: implement-client-java
-      when_context: :run-full-pipeline
     - after: assess-complexity-api
       run: implement-pdfdancer-api-docs
-      when_context: :run-docs-pipeline
     - after: implement-pdfdancer-api
       run: implement-client-typescript
     - after: implement-pdfdancer-api
