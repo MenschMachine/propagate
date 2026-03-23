@@ -24,7 +24,7 @@ from propagate_app.run_state import (
 def _make_config(executions: dict[str, ExecutionConfig]) -> Config:
     return Config(
         version="6",
-        agent=AgentConfig(command="echo"),
+        agent=AgentConfig(agents={"default": "echo"}, default_agent="default"),
         repositories={"repo": _repo()},
         context_sources={},
         signals={},

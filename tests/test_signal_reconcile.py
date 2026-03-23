@@ -34,7 +34,7 @@ def make_config(tmp_path, executions, triggers=None, signals=None):
             repos[exec_cfg.repository] = RepositoryConfig(name=exec_cfg.repository, path=repo_dir)
     return Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories=repos,
         context_sources={},
         signals=signals or {},

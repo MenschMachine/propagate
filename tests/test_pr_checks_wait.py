@@ -143,7 +143,8 @@ def _make_runtime_context(tmp_path: Path):
     context_root = tmp_path / ".propagate-context"
     context_root.mkdir()
     return RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),

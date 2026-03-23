@@ -12,7 +12,8 @@ from propagate_app.models import ActiveSignal, GitCommitConfig, GitRunState, Run
 
 def _make_runtime_context(context_root: Path, active_signal: ActiveSignal | None = None) -> RuntimeContext:
     return RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=active_signal,
         initialized_signal_context_dirs=set(),

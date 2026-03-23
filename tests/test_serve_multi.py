@@ -37,7 +37,7 @@ def _make_config(tmp_path, name, signals=None, subdir=None):
     )
     return Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories={f"repo-{name}": RepositoryConfig(name=f"repo-{name}", path=repo_dir)},
         context_sources={},
         signals=signals or {"go": SignalConfig(name="go", payload={})},

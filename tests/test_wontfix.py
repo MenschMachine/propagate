@@ -32,7 +32,8 @@ def _make_runtime_context(tmp_path: Path) -> RuntimeContext:
     context_root = tmp_path / "context"
     ensure_context_dir(context_root)
     return RuntimeContext(
-        agent_command="echo test",
+        agents={"default": "echo test"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),

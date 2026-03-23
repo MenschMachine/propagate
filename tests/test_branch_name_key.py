@@ -74,7 +74,8 @@ def test_resolve_branch_name_falls_back_to_default(tmp_path):
 
 def _make_runtime_context(context_root: Path) -> RuntimeContext:
     return RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),
@@ -136,7 +137,8 @@ def test_git_do_branch_resolves_name_template_from_signal(tmp_path):
         pr=None,
     )
     rc = RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=ActiveSignal(signal_type="pull_request.labeled", payload={"pr_number": 42}, source="test"),
         initialized_signal_context_dirs=set(),

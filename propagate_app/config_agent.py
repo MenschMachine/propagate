@@ -8,7 +8,35 @@ from .models import AgentConfig, ContextSourceConfig, RepositoryConfig
 from .validation import validate_allowed_keys, validate_context_source_name
 
 
-def parse_agent(agent_data: Any) -> AgentConfig:
+def parse_agent(agent_data: Any, agents_data: Any) -> AgentConfig:
+    # New format: top-level agents map + agent default name
+    if agents_data is not None:
+        if not isinstance(agents_data, dict) or not agents_data:
+            raise PropagateError("Config 'agents' must be a non-empty mapping.")
+        if not isinstance(agent_data, str) or not agent_data.strip():
+            raise PropagateError("Config 'agent' must be a non-empty string naming a default agent.")
+        agents: dict[str, str] = {}
+        for name, agent_def in agents_data.items():
+            if not isinstance(name, str) or not name.strip():
+                raise PropagateError("Agent name must be a non-empty string.")
+            if isinstance(agent_def, str):
+                # Simple form: agents: { name: "command string" }
+                command = agent_def
+            elif isinstance(agent_def, dict) and "command" in agent_def:
+                # Nested form: agents: { name: { command: "..." } }
+                command = agent_def.get("command")
+            else:
+                raise PropagateError(f"Agent '{name}' must be either a command string or a mapping with a 'command' key.")
+            if not isinstance(command, str) or not command.strip():
+                raise PropagateError(f"Agent '{name}' command must be a non-empty string.")
+            if "{prompt_file}" not in command:
+                raise PropagateError(f"Agent '{name}' command must contain '{{prompt_file}}' placeholder.")
+            agents[name] = command
+        if agent_data not in agents:
+            raise PropagateError(f"Default agent '{agent_data}' is not defined in 'agents' map.")
+        return AgentConfig(agents=agents, default_agent=agent_data)
+
+    # Old format (backwards compat): single command under agent: key
     if not isinstance(agent_data, dict):
         raise PropagateError("Config must include an 'agent' mapping.")
     validate_allowed_keys(agent_data, {"command"}, "Config 'agent'")
@@ -17,7 +45,7 @@ def parse_agent(agent_data: Any) -> AgentConfig:
         raise PropagateError("Config 'agent.command' must be a non-empty string.")
     if "{prompt_file}" not in command:
         raise PropagateError("Config 'agent.command' must contain the '{prompt_file}' placeholder.")
-    return AgentConfig(command=command)
+    return AgentConfig(agents={"default": command}, default_agent="default")
 
 
 def parse_repositories(repositories_data: Any, config_dir: Path) -> dict[str, RepositoryConfig]:

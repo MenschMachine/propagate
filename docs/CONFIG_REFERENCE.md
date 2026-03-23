@@ -7,8 +7,12 @@ option.
 
 ```yaml
 version: "6"              # Required
-agent:                     # Required
-  command: "..."
+agents:                    # Required (map of named agents)
+  default:
+    command: "claude -p {prompt_file}"
+  agent-easy:
+    command: "claude -p {prompt_file} --easy"
+agent: default            # Names the default agent from the agents map
 repositories:              # Required
   name: { ... }
 context_sources:           # Optional
@@ -61,21 +65,31 @@ version: "6"
 
 ---
 
-## `agent`
+## `agents` and `agent`
 
-Defines the shell command used to invoke the agent for each sub-task.
+Defines one or more named agent commands. The `agent` key names the default agent used for all sub-tasks unless a sub-task overrides it via the `:agent` context key.
 
 ```yaml
-agent:
-  command: "claude -p {prompt_file}"
+agents:
+  default:
+    command: "claude -p {prompt_file}"
+  agent-easy:
+    command: "claude -p {prompt_file} --easy"
+  agent-hard:
+    command: "claude -p {prompt_file} --hard"
+agent: default
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `command` | string | Yes | Shell command to run. Must contain the `{prompt_file}` placeholder. |
+| `agents` | map | Yes | Map of agent name to command. Each command must contain the `{prompt_file}` placeholder. |
+| `agent` | string | Yes | Name of the default agent in the `agents` map. |
 
-The placeholder `{prompt_file}` is replaced at runtime with a temporary `.md` file containing the rendered prompt and
-merged context.
+**Runtime agent selection:** Sub-tasks can set `:agent <name>` in global context (e.g. via an earlier assess-complexity task). The agent command is resolved at runtime by reading `:agent` from global context and looking it up in the `agents` map. If `:agent` is not set, the default agent is used.
+
+The placeholder `{prompt_file}` is replaced at runtime with a temporary `.md` file containing the rendered prompt and merged context.
+
+**Backwards compatibility:** The legacy format `agent: {command: "..."}` (a single command) is still supported. It is automatically converted to `agents: {default: {command: "..."}}, agent: default`.
 
 ---
 
@@ -856,8 +870,14 @@ The server binds a ZMQ PULL socket at `ipc:///tmp/propagate-{hash}.sock`, proces
 ```yaml
 version: "6"
 
-agent:
-  command: "claude -p {prompt_file}"
+agents:
+  default:
+    command: "claude -p {prompt_file}"
+  agent-easy:
+    command: "claude -p {prompt_file} --easy"
+  agent-hard:
+    command: "claude -p {prompt_file} --hard"
+agent: default
 
 repositories:
   workspace:

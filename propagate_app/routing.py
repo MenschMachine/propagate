@@ -15,7 +15,8 @@ def prepare_execution_runtime_context(
     ensure_execution_working_dir(execution, routing)
     context_root = get_context_root(config.config_path)
     execution_runtime_context = RuntimeContext(
-        agent_command=runtime_context.agent_command,
+        agents=runtime_context.agents,
+        default_agent=runtime_context.default_agent,
         context_sources=runtime_context.context_sources,
         working_dir=routing.working_dir,
         active_signal=runtime_context.active_signal,

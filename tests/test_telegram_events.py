@@ -78,7 +78,8 @@ def test_format_command_failed_still_works():
 
 def _make_runtime_context(context_root: Path, pub_socket=None, metadata=None) -> RuntimeContext:
     return RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),
@@ -195,7 +196,7 @@ def test_scheduler_wait_publishes_event(tmp_path):
     )
     config = Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories={"repo": RepositoryConfig(name="repo", path=repo_dir)},
         context_sources={},
         signals={"go": SignalConfig(name="go", payload={})},
@@ -292,7 +293,8 @@ def test_subtask_signal_received_event_published(tmp_path):
         metadata = {"chat_id": "42"}
         rc = _make_runtime_context(tmp_path, pub_socket="fake", metadata=metadata)
         rc = RuntimeContext(
-            agent_command="echo",
+            agents={"default": "echo"},
+        default_agent="default",
             context_sources={},
             active_signal=None,
             initialized_signal_context_dirs=set(),

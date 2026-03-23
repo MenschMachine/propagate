@@ -41,7 +41,7 @@ def make_config(tmp_path, executions, triggers=None, signals=None):
             repos[exec_cfg.repository] = RepositoryConfig(name=exec_cfg.repository, path=repo_dir)
     return Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories=repos,
         context_sources={},
         signals=signals or {},
@@ -64,7 +64,8 @@ def make_execution(name, repository="repo", depends_on=None, signals=None):
 
 def make_runtime_context(active_signal=None):
     return RuntimeContext(
-        agent_command="echo test",
+        agents={"default": "echo test"},
+        default_agent="default",
         context_sources={},
         active_signal=active_signal,
         initialized_signal_context_dirs=set(),

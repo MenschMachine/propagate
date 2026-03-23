@@ -29,7 +29,7 @@ def test_scheduler_preserves_unable_to_implement_as_terminal_error(tmp_path) -> 
     repo_path.mkdir()
     config = Config(
         version="6",
-        agent=AgentConfig(command="echo {prompt_file}"),
+        agent=AgentConfig(agents={"default": "echo {prompt_file}"}, default_agent="default"),
         repositories={"repo": RepositoryConfig(name="repo", path=repo_path)},
         context_sources={},
         signals={},
@@ -47,7 +47,8 @@ def test_scheduler_preserves_unable_to_implement_as_terminal_error(tmp_path) -> 
         config_path=config_path,
     )
     runtime_context = RuntimeContext(
-        agent_command=config.agent.command,
+        agents=config.agent.agents,
+        default_agent=config.agent.default_agent,
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),

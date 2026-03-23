@@ -10,7 +10,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AgentConfig:
-    command: str
+    agents: dict[str, str]  # name -> command string
+    default_agent: str  # name of default agent
 
 
 @dataclass(frozen=True)
@@ -167,7 +168,8 @@ class ActiveSignal:
 
 @dataclass(frozen=True)
 class RuntimeContext:
-    agent_command: str
+    agents: dict[str, str]
+    default_agent: str
     context_sources: dict[str, ContextSourceConfig]
     active_signal: ActiveSignal | None
     initialized_signal_context_dirs: set[Path]

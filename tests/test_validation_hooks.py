@@ -17,7 +17,8 @@ def _make_runtime_context(tmp_path: Path, active_signal: ActiveSignal | None = N
     context_root = tmp_path / "context"
     ensure_context_dir(context_root)
     return RuntimeContext(
-        agent_command="echo test",
+        agents={"default": "echo test"},
+        default_agent="default",
         context_sources={},
         active_signal=active_signal,
         initialized_signal_context_dirs=set(),

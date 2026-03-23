@@ -72,7 +72,8 @@ def test_parse_title_key_and_template_conflict():
 
 def _make_runtime_context(context_root: Path) -> RuntimeContext:
     return RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),
@@ -158,7 +159,8 @@ def test_load_pr_both_from_context_keys(tmp_path):
 
 def test_load_pr_both_from_templates(tmp_path):
     rc = RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=ActiveSignal(signal_type="pull_request.labeled", payload={"pr_number": 42}, source="test"),
         initialized_signal_context_dirs=set(),

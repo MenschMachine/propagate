@@ -225,7 +225,8 @@ def _resume_run(
             config,
             run_state.initial_execution,
             RuntimeContext(
-                agent_command=config.agent.command,
+                agents=config.agent.agents,
+                default_agent=config.agent.default_agent,
                 context_sources=config.context_sources,
                 active_signal=active_signal,
                 initialized_signal_context_dirs=initialized_dirs,
@@ -330,7 +331,8 @@ def _handle_incoming_signal(
             config,
             initial_execution.name,
             RuntimeContext(
-                agent_command=config.agent.command,
+                agents=config.agent.agents,
+                default_agent=config.agent.default_agent,
                 context_sources=config.context_sources,
                 active_signal=active_signal,
                 initialized_signal_context_dirs=set(),

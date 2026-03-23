@@ -14,7 +14,7 @@ def _make_config(tmp_path):
     config_path.touch()
     return Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories={},
         context_sources={},
         signals={},

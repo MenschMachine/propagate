@@ -92,7 +92,8 @@ def test_parse_sub_task_without_must_set(tmp_path):
 
 def _make_runtime_context(context_root: Path, execution_name: str = "my-exec") -> RuntimeContext:
     return RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),

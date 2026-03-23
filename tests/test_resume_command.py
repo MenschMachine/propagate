@@ -115,7 +115,7 @@ def _make_config(tmp_path, signals=None):
     )
     return Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories={"repo": RepositoryConfig(name="repo", path=repo_dir)},
         context_sources={},
         signals=signals or {},

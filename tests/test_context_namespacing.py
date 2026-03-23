@@ -188,7 +188,8 @@ class ContextStoreUnitTests(unittest.TestCase):
 
         context_root = self.root / ".propagate-context"
         rc = RuntimeContext(
-            agent_command="test",
+            agents={"default": "test"},
+            default_agent="default",
             context_sources={},
             active_signal=None,
             initialized_signal_context_dirs=set(),
@@ -205,7 +206,8 @@ class ContextStoreUnitTests(unittest.TestCase):
 
         context_root = self.root / ".propagate-context"
         rc = RuntimeContext(
-            agent_command="test",
+            agents={"default": "test"},
+            default_agent="default",
             context_sources={},
             active_signal=None,
             initialized_signal_context_dirs=set(),

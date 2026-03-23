@@ -316,7 +316,7 @@ def _make_config(tmp_path, executions, triggers, signals=None):
             repos[ex.repository] = RepositoryConfig(name=ex.repository, path=repo_dir)
     return Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories=repos,
         context_sources={},
         signals=signals or {"sig": _SIG_WITH_LABEL},
@@ -497,7 +497,7 @@ def _make_full_config(tmp_path, executions):
     repo_dir.mkdir(exist_ok=True)
     return Config(
         version="6",
-        agent=AgentConfig(command="echo test"),
+        agent=AgentConfig(agents={"default": "echo test"}, default_agent="default"),
         repositories={"repo": RepositoryConfig(name="repo", path=repo_dir)},
         context_sources={},
         signals={"pull_request.labeled": SignalConfig(name="pull_request.labeled", payload={

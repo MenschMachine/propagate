@@ -50,9 +50,15 @@
 
 version: "6"
 
-agent:
-  #command: 'codex exec --dangerously-bypass-approvals-and-sandbox "Read the file {prompt_file} and follow its instructions."'
-  command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-minimax.json -p "Read the file {prompt_file} and follow its instructions."'
+agents:
+  default:
+    command: 'fail'
+  agent-easy:
+    command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-minimax.json -p "Read the file {prompt_file} and follow its instructions."'
+  agent-hard:
+    command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-anthropic.json -p "Read the file {prompt_file} and follow its instructions."'
+
+agent: default
 
 repositories:
   pdfdancer-backend:
@@ -274,24 +280,40 @@ executions:
       - id: decide-pipeline
         prompt: ./prompts/pdfdancer/decide-api-pipeline.md
 
+  assess-complexity-backend:
+    repository: pdfdancer-backend
+    sub_tasks:
+      - id: assess
+        prompt: ./prompts/pdfdancer/assess-complexity.md
+
+  assess-complexity-api:
+    repository: pdfdancer-api
+    sub_tasks:
+      - id: assess
+        prompt: ./prompts/pdfdancer/assess-complexity.md
+
 propagation:
   triggers:
     - after: triage-backend-pr
+      run: assess-complexity-backend
+    - after: assess-complexity-backend
       run: implement-pdfdancer-api
       when_context: :run-full-pipeline
-    - after: triage-backend-pr
+    - after: assess-complexity-backend
       run: implement-pdfdancer-api-docs
       when_context: :run-docs-pipeline
     - after: triage-api-pr
+      run: assess-complexity-api
+    - after: assess-complexity-api
       run: implement-client-typescript
       when_context: :run-full-pipeline
-    - after: triage-api-pr
+    - after: assess-complexity-api
       run: implement-client-python
       when_context: :run-full-pipeline
-    - after: triage-api-pr
+    - after: assess-complexity-api
       run: implement-client-java
       when_context: :run-full-pipeline
-    - after: triage-api-pr
+    - after: assess-complexity-api
       run: implement-pdfdancer-api-docs
       when_context: :run-docs-pipeline
     - after: implement-pdfdancer-api

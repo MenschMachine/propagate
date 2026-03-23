@@ -28,13 +28,13 @@ def load_config(config_path: Path) -> Config:
         raise PropagateError("Config must be a YAML mapping.")
     validate_allowed_keys(
         raw_data,
-        {"version", "agent", "repositories", "context_sources", "signals", "executions", "propagation", "clone_dir", "repo_cache_dir"},
+        {"version", "agent", "agents", "repositories", "context_sources", "signals", "executions", "propagation", "clone_dir", "repo_cache_dir"},
         "Config",
     )
     version = raw_data.get("version")
     if version != "6":
         raise PropagateError("Config version must be '6' for stage 6.")
-    agent = parse_agent(raw_data.get("agent"))
+    agent = parse_agent(raw_data.get("agent"), raw_data.get("agents"))
     repositories = parse_repositories(raw_data.get("repositories"), resolved_config_path.parent)
     context_sources = parse_context_sources(raw_data.get("context_sources"))
     raw_signals = raw_data.get("signals")

@@ -7,7 +7,7 @@ from typing import NoReturn
 
 from .constants import ENV_CONFIG_DIR, ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
 from .context_sources import run_context_source
-from .context_store import ensure_context_dir, resolve_execution_context_dir
+from .context_store import ensure_context_dir, get_global_context_dir, read_optional_context_value, resolve_execution_context_dir
 from .errors import PropagateError
 from .git_runtime import (
     git_do_branch,
@@ -291,7 +291,18 @@ def run_sub_task_hook_phase(
 
 
 def run_sub_task_agent(sub_task: SubTaskConfig, temp_prompt_path: Path, runtime_context: RuntimeContext) -> None:
-    command = build_agent_command(runtime_context.agent_command, temp_prompt_path)
+    resolved_agent_name = read_optional_context_value(
+        get_global_context_dir(runtime_context.context_root),
+        ":agent",
+    )
+    if resolved_agent_name and resolved_agent_name.strip() in runtime_context.agents:
+        agent_name = resolved_agent_name.strip()
+        agent_command = runtime_context.agents[agent_name]
+        LOGGER.debug("Using agent '%s' for sub-task '%s'.", agent_name, sub_task.task_id)
+    else:
+        agent_command = runtime_context.agents[runtime_context.default_agent]
+        LOGGER.debug("Using default agent '%s' for sub-task '%s'.", runtime_context.default_agent, sub_task.task_id)
+    command = build_agent_command(agent_command, temp_prompt_path)
     extra_env = build_context_env(runtime_context)
     try:
         run_agent_command(command, runtime_context.working_dir, sub_task.task_id, extra_env=extra_env)

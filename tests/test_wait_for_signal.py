@@ -207,7 +207,8 @@ def test_parse_route_equals_context_invalid_key_raises(tmp_path):
 
 def _make_runtime_context(context_root: Path, signal_socket=None, signal_configs=None) -> RuntimeContext:
     return RuntimeContext(
-        agent_command="echo",
+        agents={"default": "echo"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),
@@ -404,7 +405,8 @@ def test_wait_for_signal_updates_active_signal_for_following_tasks(tmp_path):
             sub_tasks=sub_tasks, git=None,
         )
         rc = RuntimeContext(
-            agent_command="echo",
+            agents={"default": "echo"},
+        default_agent="default",
             context_sources={},
             active_signal=ActiveSignal(
                 signal_type="pull_request.labeled",
@@ -462,7 +464,8 @@ def test_wait_for_signal_updates_active_signal_for_execution_after_hooks(tmp_pat
             after=["echo done"],
         )
         rc = RuntimeContext(
-            agent_command="echo",
+            agents={"default": "echo"},
+        default_agent="default",
             context_sources={},
             active_signal=ActiveSignal(
                 signal_type="pull_request.labeled",

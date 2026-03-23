@@ -31,7 +31,8 @@ def ctx(tmp_path: Path):
     working_dir = tmp_path / "repo"
     working_dir.mkdir()
     rc = RuntimeContext(
-        agent_command="true",
+        agents={"default": "true"},
+        default_agent="default",
         context_sources={},
         active_signal=None,
         initialized_signal_context_dirs=set(),
