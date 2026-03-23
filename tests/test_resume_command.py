@@ -151,7 +151,7 @@ def test_serve_handles_resume_command_with_state_file(tmp_path):
 
     resume_called = []
 
-    def mock_resume_run(cfg, signal_socket, pub_socket=None, metadata=None):
+    def mock_resume_run(cfg, signal_socket, pub_socket=None, metadata=None, **kwargs):
         resume_called.append(True)
 
     def send_resume_then_shutdown():
@@ -187,7 +187,7 @@ def test_serve_handles_resume_command_without_state_file(tmp_path, caplog):
 
     resume_called = []
 
-    def mock_resume_run(cfg, signal_socket, pub_socket=None, metadata=None):
+    def mock_resume_run(cfg, signal_socket, pub_socket=None, metadata=None, **kwargs):
         resume_called.append(True)
 
     def send_resume_then_shutdown():

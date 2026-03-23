@@ -260,7 +260,7 @@ def test_serve_publishes_event_on_completion(tmp_path):
 
     shutdown = threading.Event()
 
-    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None, **kwargs):
         return runtime_context
 
     def send_signal_then_shutdown():
@@ -308,7 +308,7 @@ def test_serve_publishes_event_on_failure(tmp_path):
 
     shutdown = threading.Event()
 
-    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None, **kwargs):
         raise PropagateError("simulated failure")
 
     def send_signal_then_shutdown():
