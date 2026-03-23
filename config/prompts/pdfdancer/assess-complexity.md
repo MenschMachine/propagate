@@ -15,9 +15,8 @@ Tasks:
 
 3. Decision criteria — set **agent-hard** if ANY of:
 
-   - The downstream work touches or modifies data models, API schemas, or wire formats that clients depend on
    - The downstream work modifies core business logic or introduces architectural changes in downstream repos
-   - The downstream work requires coordinated updates across 3+ downstream files for correctness
+   - The downstream work requires coordinated updates across 5+ downstream files for correctness
    - The downstream work is a refactor with non-trivial migration implications
    - High risk of downstream regressions (security-sensitive, auth, behavioral changes clients depend on)
 
