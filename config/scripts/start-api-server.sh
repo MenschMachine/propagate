@@ -13,7 +13,7 @@ IMAGE="ghcr.io/menschmachine/pdfdancer-api:pr-${PR_NUMBER}"
 # Check if a container with this image is already running.
 EXISTING=$(docker ps --filter "ancestor=${IMAGE}" --format '{{.ID}}' | head -1)
 if [[ -n "$EXISTING" ]]; then
-  PORT=$(docker port "$EXISTING" 8080 | head -1 | cut -d: -f2)
+  PORT=$(docker port "$EXISTING" 9090 | head -1 | cut -d: -f2)
   echo "http://localhost:${PORT}"
   exit 0
 fi
@@ -29,7 +29,7 @@ CONTAINER_ID=$(docker run -d \
     -p 0:8080 \
     "$IMAGE")
 
-PORT=$(docker port "$CONTAINER_ID" 8080 | head -1 | cut -d: -f2)
+PORT=$(docker port "$CONTAINER_ID" 9090 | head -1 | cut -d: -f2)
 BASE_URL="http://localhost:${PORT}"
 
 # Wait for the server to become ready.
