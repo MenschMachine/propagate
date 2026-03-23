@@ -13,3 +13,4 @@ __pycache__
 .env-marketing-data
 .pdfdancer-seo-service-account.json
 .webhooks.json
+.env-seo-automation
