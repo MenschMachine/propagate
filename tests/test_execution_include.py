@@ -161,6 +161,7 @@ def test_included_executions_pass_through_normal_validation(config_dir):
         repository_names={"my-repo"},
         context_source_names=set(),
         signal_configs={},
+        agent_names=set(),
     )
     assert "deploy" in parsed
     assert "build" in parsed
@@ -282,6 +283,7 @@ def test_parameterized_include_prompt_path_still_resolves_from_root_config_dir(c
         repository_names={"my-repo"},
         context_source_names=set(),
         signal_configs={},
+        agent_names=set(),
     )
     assert parsed["review-loop"].sub_tasks[0].prompt_path == prompt_path.resolve()
 

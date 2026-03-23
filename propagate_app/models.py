@@ -130,6 +130,7 @@ class ExecutionConfig:
     signals: list[ExecutionSignalConfig]
     sub_tasks: list[SubTaskConfig]
     git: GitConfig | None
+    agent: str | None = None
     before: list[str] = field(default_factory=list)
     after: list[str] = field(default_factory=list)
     on_failure: list[str] = field(default_factory=list)
@@ -183,6 +184,7 @@ class RuntimeContext:
     signal_socket: zmq.Socket | None = None
     pub_socket: zmq.Socket | None = None
     metadata: dict = field(default_factory=dict)
+    execution_agent: str | None = None
 
 
 @dataclass

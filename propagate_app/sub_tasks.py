@@ -291,17 +291,21 @@ def run_sub_task_hook_phase(
 
 
 def run_sub_task_agent(sub_task: SubTaskConfig, temp_prompt_path: Path, runtime_context: RuntimeContext) -> None:
-    resolved_agent_name = read_optional_context_value(
-        get_global_context_dir(runtime_context.context_root),
-        ":agent",
-    )
-    if resolved_agent_name and resolved_agent_name.strip() in runtime_context.agents:
-        agent_name = resolved_agent_name.strip()
-        agent_command = runtime_context.agents[agent_name]
-        LOGGER.debug("Using agent '%s' for sub-task '%s'.", agent_name, sub_task.task_id)
+    if runtime_context.execution_agent:
+        agent_command = runtime_context.agents[runtime_context.execution_agent]
+        LOGGER.debug("Using execution agent '%s' for sub-task '%s'.", runtime_context.execution_agent, sub_task.task_id)
     else:
-        agent_command = runtime_context.agents[runtime_context.default_agent]
-        LOGGER.debug("Using default agent '%s' for sub-task '%s'.", runtime_context.default_agent, sub_task.task_id)
+        resolved_agent_name = read_optional_context_value(
+            get_global_context_dir(runtime_context.context_root),
+            ":agent",
+        )
+        if resolved_agent_name and resolved_agent_name.strip() in runtime_context.agents:
+            agent_name = resolved_agent_name.strip()
+            agent_command = runtime_context.agents[agent_name]
+            LOGGER.debug("Using agent '%s' for sub-task '%s'.", agent_name, sub_task.task_id)
+        else:
+            agent_command = runtime_context.agents[runtime_context.default_agent]
+            LOGGER.debug("Using default agent '%s' for sub-task '%s'.", runtime_context.default_agent, sub_task.task_id)
     command = build_agent_command(agent_command, temp_prompt_path)
     extra_env = build_context_env(runtime_context)
     try:

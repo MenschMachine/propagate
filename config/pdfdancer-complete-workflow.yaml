@@ -167,6 +167,7 @@ executions:
         aggregate_after_command: :mark-all-sdks-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
+        agent: agent-easy
         execution_name: implement-client-typescript-examples
         repository: pdfdancer-client-typescript-examples
         branch_name_template: "client-typescript-examples/source-pr-{context[global][:source-pr-number]}"
@@ -184,6 +185,7 @@ executions:
         aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
+        agent: agent-easy
         execution_name: implement-client-python-examples
         repository: pdfdancer-client-python-examples
         branch_name_template: "client-python-examples/source-pr-{context[global][:source-pr-number]}"
@@ -201,6 +203,7 @@ executions:
         aggregate_after_command: :mark-all-examples-approved
     - path: executions/pdfdancer/review-loop.yaml
       with:
+        agent: agent-easy
         execution_name: implement-client-java-examples
         repository: pdfdancer-client-java-examples
         branch_name_template: "client-java-examples/source-pr-{context[global][:source-pr-number]}"

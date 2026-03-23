@@ -265,6 +265,7 @@ executions:
       - repo-change
     depends_on:
       - some-other-execution
+    agent: agent-easy        # Optional: override default agent for all sub-tasks in this execution
     before:
       - :change-summary
     after:
@@ -287,6 +288,22 @@ executions:
       push: { ... }
       pr: { ... }
 ```
+
+### `agent`
+
+Optional. Specifies which agent to use for all sub-tasks in this execution, overriding the global default and the `:agent` context key.
+
+```yaml
+executions:
+  implementation:
+    repository: examples
+    agent: agent-easy  # Use agent-easy for all sub-tasks in this execution
+    sub_tasks:
+      - id: implement
+        prompt: ./prompts/implement.md
+```
+
+Agent resolution order: `execution.agent` → `:agent` context key → `agent` (global default).
 
 ### Execution includes
 

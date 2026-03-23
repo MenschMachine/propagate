@@ -29,6 +29,7 @@ def parse_executions(
     repository_names: set[str],
     context_source_names: set[str],
     signal_configs: dict[str, SignalConfig],
+    agent_names: set[str],
 ) -> dict[str, ExecutionConfig]:
     if not isinstance(executions_data, dict) or not executions_data:
         raise PropagateError("Config must include at least one execution in 'executions'.")
@@ -42,6 +43,7 @@ def parse_executions(
             execution_names,
             context_source_names,
             signal_configs,
+            agent_names,
         )
         for execution_name, execution_data in executions_data.items()
     }
@@ -55,10 +57,11 @@ def parse_execution(
     execution_names: set[str],
     context_source_names: set[str],
     signal_configs: dict[str, SignalConfig],
+    agent_names: set[str],
 ) -> ExecutionConfig:
     if not isinstance(execution_data, dict):
         raise PropagateError(f"Execution '{name}' must be a mapping.")
-    validate_allowed_keys(execution_data, {"repository", "depends_on", "sub_tasks", "git", "signals", "before", "after", "on_failure"}, f"Execution '{name}'")
+    validate_allowed_keys(execution_data, {"repository", "depends_on", "sub_tasks", "git", "signals", "agent", "before", "after", "on_failure"}, f"Execution '{name}'")
     sub_tasks_data = execution_data.get("sub_tasks")
     if not isinstance(sub_tasks_data, list) or not sub_tasks_data:
         raise PropagateError(f"Execution '{name}' must define a non-empty 'sub_tasks' list.")
@@ -71,6 +74,7 @@ def parse_execution(
         seen_task_ids.add(sub_task.task_id)
         sub_tasks.append(sub_task)
     location = f"Execution '{name}'"
+    agent_value = parse_execution_agent(name, execution_data.get("agent"), agent_names)
     return ExecutionConfig(
         name=name,
         repository=parse_execution_repository(name, execution_data.get("repository"), repository_names),
@@ -78,10 +82,21 @@ def parse_execution(
         signals=parse_execution_signals(name, execution_data.get("signals"), signal_configs),
         sub_tasks=sub_tasks,
         git=parse_git_config(name, execution_data.get("git"), context_source_names),
+        agent=agent_value,
         before=parse_hook_actions(execution_data.get("before"), location, "before", context_source_names),
         after=parse_hook_actions(execution_data.get("after"), location, "after", context_source_names),
         on_failure=parse_hook_actions(execution_data.get("on_failure"), location, "on_failure", context_source_names),
     )
+
+
+def parse_execution_agent(execution_name: str, agent_value: Any, agent_names: set[str]) -> str | None:
+    if agent_value is None:
+        return None
+    if not isinstance(agent_value, str) or not agent_value.strip():
+        raise PropagateError(f"Execution '{execution_name}' 'agent' must be a non-empty string when provided.")
+    if agent_value not in agent_names:
+        raise PropagateError(f"Execution '{execution_name}' references unknown agent '{agent_value}'. Available agents: {', '.join(sorted(agent_names))}.")
+    return agent_value
 
 
 def parse_execution_repository(execution_name: str, repository_value: Any, repository_names: set[str]) -> str:

@@ -22,7 +22,7 @@ def run_configured_execution(
         git_state = restore_git_run_state(runtime_context)
     else:
         git_state = GitRunState() if execution.git else None
-    ctx = replace(runtime_context, git_state=git_state)
+    ctx = replace(runtime_context, git_state=git_state, execution_agent=execution.agent)
     context_id = f"execution '{execution.name}'"
     try:
         if completed_execution_phase in (PHASE_BEFORE, PHASE_AFTER):
