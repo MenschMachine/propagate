@@ -52,7 +52,7 @@ version: "6"
 
 agents:
   default:
-    command: 'fail'
+    command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-minimax.json -p "Read the file {prompt_file} and follow its instructions."'
   agent-easy:
     command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-minimax.json -p "Read the file {prompt_file} and follow its instructions."'
   agent-hard:
