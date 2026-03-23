@@ -170,7 +170,7 @@ def test_scheduler_wait_publishes_event(tmp_path):
         AgentConfig,
         Config,
         ExecutionConfig,
-        ExecutionScheduleState,
+        ExecutionStatus,
         PropagationTriggerConfig,
         RepositoryConfig,
         SignalConfig,
@@ -205,10 +205,9 @@ def test_scheduler_wait_publishes_event(tmp_path):
         config_path=config_path,
     )
     execution_graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a"},
-        completed_names={"a"},
-    )
+    executions = {
+        "a": ExecutionStatus(state="completed"),
+    }
     received = set()
     metadata = {"chat_id": "99"}
     rc = _make_runtime_context(tmp_path, pub_socket="fake", metadata=metadata)
@@ -229,7 +228,7 @@ def test_scheduler_wait_publishes_event(tmp_path):
         t.start()
 
         with patch("propagate_app.scheduler.publish_event_if_available") as mock_publish:
-            _wait_for_signal(pull_socket, config, execution_graph, schedule_state, received, rc)
+            _wait_for_signal(pull_socket, config, execution_graph, executions, received, rc)
 
         assert mock_publish.call_count == 2
         # First call: waiting_for_signal

@@ -20,7 +20,7 @@ from .context_store import (
     resolve_context_dir_for_write,
 )
 from .errors import PropagateError, build_named_error
-from .models import Config, ExecutionScheduleState, RunState, RuntimeContext
+from .models import Config, RunState, RuntimeContext
 from .repo_clone import is_propagate_clone
 from .run_state import (
     apply_forced_resume_if_targeted,
@@ -260,7 +260,7 @@ def _run_fresh(
     run_state = RunState(
         config_path=config.config_path,
         initial_execution=initial_execution.name,
-        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        executions={},
         active_signal=active_signal,
         cloned_repos={},
         initialized_signal_context_dirs=set(),

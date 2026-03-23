@@ -9,7 +9,7 @@ from propagate_app.models import (
     AgentConfig,
     Config,
     ExecutionConfig,
-    ExecutionScheduleState,
+    ExecutionStatus,
     RunState,
     SubTaskConfig,
 )
@@ -65,7 +65,7 @@ def _run_state(config: Config) -> RunState:
     return RunState(
         config_path=config.config_path,
         initial_execution=first_exec,
-        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        executions={},
         active_signal=None,
         cloned_repos={},
         initialized_signal_context_dirs=set(),
@@ -97,15 +97,15 @@ def test_rewrite_marks_predecessors_completed(tmp_path):
 
     rewrite_state_for_forced_resume(state, config, "B", None)
 
-    assert "A" in state.schedule.active_names
-    assert "B" in state.schedule.active_names
-    assert "C" not in state.schedule.active_names
-    assert "A" in state.schedule.completed_names
-    assert "B" not in state.schedule.completed_names
+    assert "A" in state.executions
+    assert "B" in state.executions
+    assert "C" not in state.executions
+    assert state.executions["A"].state == "completed"
+    assert state.executions["B"].state == "in_progress"
 
 
 def test_rewrite_marks_tasks_before_target(tmp_path):
-    """Target suggest/publish. Tasks before publish marked PHASE_AFTER, publish absent."""
+    """Target suggest/publish. Tasks before publish marked completed, publish absent."""
     config = _make_config({
         "suggest": _execution("suggest", tasks=["analyze", "draft", "publish"]),
     })
@@ -115,10 +115,12 @@ def test_rewrite_marks_tasks_before_target(tmp_path):
 
     rewrite_state_for_forced_resume(state, config, "suggest", "publish")
 
-    completed_tasks = state.schedule.completed_tasks.get("suggest", {})
-    assert completed_tasks.get("analyze") == "after"
-    assert completed_tasks.get("draft") == "after"
-    assert "publish" not in completed_tasks
+    es = state.executions["suggest"]
+    assert "analyze" in es.tasks
+    assert es.tasks["analyze"].is_completed
+    assert "draft" in es.tasks
+    assert es.tasks["draft"].is_completed
+    assert "publish" not in es.tasks
 
 
 def test_rewrite_execution_only_starts_fresh(tmp_path):
@@ -132,12 +134,13 @@ def test_rewrite_execution_only_starts_fresh(tmp_path):
 
     rewrite_state_for_forced_resume(state, config, "suggest", None)
 
-    assert state.schedule.completed_tasks.get("suggest", {}) == {}
-    assert "suggest" not in state.schedule.completed_execution_phases
+    es = state.executions["suggest"]
+    assert es.tasks == {}
+    assert not es.before_completed
 
 
 def test_rewrite_sets_execution_before_phase(tmp_path):
-    """Target suggest/wait-for-verdict. Execution phase should be 'before'."""
+    """Target suggest/wait-for-verdict. Execution before_completed should be True."""
     config = _make_config({
         "suggest": _execution("suggest", tasks=["analyze", "wait-for-verdict", "publish"]),
     })
@@ -147,7 +150,7 @@ def test_rewrite_sets_execution_before_phase(tmp_path):
 
     rewrite_state_for_forced_resume(state, config, "suggest", "wait-for-verdict")
 
-    assert state.schedule.completed_execution_phases["suggest"] == "before"
+    assert state.executions["suggest"].before_completed is True
 
 
 def test_rewrite_invalid_execution_raises(tmp_path):
@@ -218,9 +221,11 @@ def test_apply_forced_resume_loads_and_rewrites(tmp_path):
 
     result = apply_forced_resume_if_targeted(tmp_path / "cfg.yaml", config, "B/t2")
 
-    assert "A" in result.schedule.completed_names
-    assert "B" not in result.schedule.completed_names
-    assert result.schedule.completed_tasks["B"] == {"t1": "after"}
+    assert result.executions["A"].state == "completed"
+    assert result.executions["B"].state == "in_progress"
+    assert "t1" in result.executions["B"].tasks
+    assert result.executions["B"].tasks["t1"].is_completed
+    assert "t2" not in result.executions["B"].tasks
 
 
 def test_apply_forced_resume_no_target_loads_unchanged(tmp_path):
@@ -231,10 +236,9 @@ def test_apply_forced_resume_no_target_loads_unchanged(tmp_path):
     config = config.__class__(**{**config.__dict__, "config_path": tmp_path / "cfg.yaml"})
     (tmp_path / "cfg.yaml").touch()
     state = _run_state(config)
-    state.schedule.active_names.add("A")
-    state.schedule.completed_names.add("A")
+    state.executions["A"] = ExecutionStatus(state="completed")
     save_run_state(state)
 
     result = apply_forced_resume_if_targeted(tmp_path / "cfg.yaml", config, None)
 
-    assert result.schedule.completed_names == {"A"}
+    assert result.executions["A"].state == "completed"

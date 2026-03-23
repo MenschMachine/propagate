@@ -4,28 +4,28 @@ from dataclasses import replace
 from .constants import LOGGER, PHASE_AFTER, PHASE_BEFORE
 from .errors import PropagateError
 from .git_runtime import restore_git_run_state
-from .models import ExecutionConfig, GitRunState, RuntimeContext
+from .models import ExecutionConfig, ExecutionStatus, GitRunState, RuntimeContext
 from .sub_tasks import run_execution_sub_tasks, run_hook_phase
 
 
 def run_configured_execution(
     execution: ExecutionConfig,
     runtime_context: RuntimeContext,
-    completed_task_phases: dict[str, str] | None = None,
+    execution_status: ExecutionStatus | None = None,
     on_phase_completed: Callable[[str, str, str], None] | None = None,
-    completed_execution_phase: str | None = None,
     on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
     on_tasks_reset: Callable[[str, list[str]], None] | None = None,
 ) -> RuntimeContext:
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
-    if execution.git and (completed_task_phases or completed_execution_phase):
+    is_resuming = execution_status is not None and execution_status.state == "in_progress"
+    if execution.git and is_resuming:
         git_state = restore_git_run_state(runtime_context)
     else:
         git_state = GitRunState() if execution.git else None
     ctx = replace(runtime_context, git_state=git_state, execution_agent=execution.agent)
     context_id = f"execution '{execution.name}'"
     try:
-        if completed_execution_phase in (PHASE_BEFORE, PHASE_AFTER):
+        if execution_status is not None and execution_status.before_completed:
             LOGGER.info("Skipping already completed execution 'before' hooks for '%s'.", execution.name)
         else:
             run_hook_phase(context_id, "before", execution.before, ctx, execution.git)
@@ -34,12 +34,12 @@ def run_configured_execution(
         ctx = run_execution_sub_tasks(
             execution,
             ctx,
-            completed_task_phases,
+            execution_status,
             on_phase_completed,
             on_runtime_context_updated,
             on_tasks_reset,
         )
-        if completed_execution_phase == PHASE_AFTER:
+        if execution_status is not None and execution_status.after_completed:
             LOGGER.info("Skipping already completed execution 'after' hooks for '%s'.", execution.name)
         else:
             run_hook_phase(context_id, "after", execution.after, ctx, execution.git)

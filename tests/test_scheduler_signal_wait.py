@@ -11,8 +11,8 @@ from propagate_app.models import (
     AgentConfig,
     Config,
     ExecutionConfig,
-    ExecutionScheduleState,
     ExecutionSignalConfig,
+    ExecutionStatus,
     PropagationTriggerConfig,
     RepositoryConfig,
     RunState,
@@ -82,11 +82,8 @@ def test_has_pending_signal_triggers_true_when_unmatched_trigger(tmp_path):
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr-labeled": signal_cfg})
     from propagate_app.graph import build_execution_graph
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a"},
-        completed_names={"a"},
-    )
-    assert has_pending_signal_triggers(config, graph, schedule_state, set()) is True
+    executions = {"a": ExecutionStatus(state="completed")}
+    assert has_pending_signal_triggers(config, graph, executions, set()) is True
 
 
 def test_has_pending_signal_triggers_false_when_signal_already_received(tmp_path):
@@ -97,11 +94,8 @@ def test_has_pending_signal_triggers_false_when_signal_already_received(tmp_path
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr-labeled": signal_cfg})
     from propagate_app.graph import build_execution_graph
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a"},
-        completed_names={"a"},
-    )
-    assert has_pending_signal_triggers(config, graph, schedule_state, {"pr-labeled"}) is False
+    executions = {"a": ExecutionStatus(state="completed")}
+    assert has_pending_signal_triggers(config, graph, executions, {"pr-labeled"}) is False
 
 
 def test_has_pending_signal_triggers_false_when_target_already_active(tmp_path):
@@ -112,11 +106,8 @@ def test_has_pending_signal_triggers_false_when_target_already_active(tmp_path):
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr-labeled": signal_cfg})
     from propagate_app.graph import build_execution_graph
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a", "b"},
-        completed_names={"a"},
-    )
-    assert has_pending_signal_triggers(config, graph, schedule_state, set()) is False
+    executions = {"a": ExecutionStatus(state="completed"), "b": ExecutionStatus(state="pending")}
+    assert has_pending_signal_triggers(config, graph, executions, set()) is False
 
 
 def test_has_pending_signal_triggers_false_for_unconditional_trigger(tmp_path):
@@ -126,11 +117,8 @@ def test_has_pending_signal_triggers_false_for_unconditional_trigger(tmp_path):
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger])
     from propagate_app.graph import build_execution_graph
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a"},
-        completed_names={"a"},
-    )
-    assert has_pending_signal_triggers(config, graph, schedule_state, set()) is False
+    executions = {"a": ExecutionStatus(state="completed")}
+    assert has_pending_signal_triggers(config, graph, executions, set()) is False
 
 
 def test_drain_incoming_signals_activates_triggers(tmp_path):
@@ -141,10 +129,7 @@ def test_drain_incoming_signals_activates_triggers(tmp_path):
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr-labeled": signal_cfg})
     from propagate_app.graph import build_execution_graph
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a"},
-        completed_names={"a"},
-    )
+    executions = {"a": ExecutionStatus(state="completed")}
     received = set()
 
     address = "ipc:///tmp/propagate-test-drain.sock"
@@ -153,9 +138,9 @@ def test_drain_incoming_signals_activates_triggers(tmp_path):
     try:
         send_signal(push, "pr-labeled", {})
         time.sleep(0.05)
-        _drain_incoming_signals(pull, config, graph, schedule_state, received, make_runtime_context())
+        _drain_incoming_signals(pull, config, graph, executions, received, make_runtime_context())
         assert "pr-labeled" in received
-        assert "b" in schedule_state.active_names
+        assert "b" in executions and executions["b"].state != "inactive"
     finally:
         close_push_socket(push)
         close_pull_socket(pull, address)
@@ -166,10 +151,7 @@ def test_drain_ignores_unknown_signals(tmp_path):
     config = make_config(tmp_path, [exec_a])
     from propagate_app.graph import build_execution_graph
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a"},
-        completed_names={"a"},
-    )
+    executions = {"a": ExecutionStatus(state="completed")}
     received = set()
 
     address = "ipc:///tmp/propagate-test-drain-unknown.sock"
@@ -178,7 +160,7 @@ def test_drain_ignores_unknown_signals(tmp_path):
     try:
         send_signal(push, "unknown-signal", {})
         time.sleep(0.05)
-        _drain_incoming_signals(pull, config, graph, schedule_state, received, make_runtime_context())
+        _drain_incoming_signals(pull, config, graph, executions, received, make_runtime_context())
         assert "unknown-signal" not in received
     finally:
         close_push_socket(push)
@@ -201,22 +183,19 @@ def test_process_received_signal_rejects_new_entry_signal_while_run_is_active(tm
     config = make_config(tmp_path, [triage, active], signals={"pull_request.closed": signal_cfg})
     from propagate_app.graph import build_execution_graph
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"active"},
-        completed_names={"active"},
-    )
+    executions = {"active": ExecutionStatus(state="completed")}
     received = set()
     with patch("propagate_app.scheduler.LOGGER.warning") as mock_warning:
         result = _process_received_signal(
             ("pull_request.closed", {"repository": "MenschMachine/pdfdancer-api", "merged": True}),
             config,
             graph,
-            schedule_state,
+            executions,
             received,
         )
     assert result is None
     assert "pull_request.closed" not in received
-    assert "triage" not in schedule_state.active_names
+    assert "triage" not in executions
     mock_warning.assert_any_call("Rejecting entry signal '%s' while a run is already active.", "pull_request.closed")
 
 
@@ -232,7 +211,7 @@ def test_scheduler_waits_for_signal_then_runs_execution(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -267,7 +246,7 @@ def test_scheduler_exits_cleanly_without_signal_socket_when_signal_triggers_exis
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -287,9 +266,8 @@ def test_scheduler_passes_signal_socket_into_execution_runtime_context(tmp_path)
     def mock_run_execution(
         execution,
         runtime_context,
-        completed_task_phases,
-        on_phase_completed,
-        completed_execution_phase,
+        execution_status=None,
+        on_phase_completed=None,
         on_runtime_context_updated=None,
         on_tasks_reset=None,
     ):
@@ -297,7 +275,7 @@ def test_scheduler_passes_signal_socket_into_execution_runtime_context(tmp_path)
         return runtime_context
 
     with (
-        patch("propagate_app.scheduler._drain_incoming_signals", side_effect=lambda *args: args[-1]),
+        patch("propagate_app.scheduler._drain_incoming_signals", side_effect=lambda _sock, _cfg, _graph, _execs, _recv, ctx, _rs=None: ctx),
         patch("propagate_app.scheduler.run_configured_execution", side_effect=mock_run_execution),
     ):
         runtime_context = make_runtime_context()
@@ -314,7 +292,7 @@ def test_scheduler_deadlocks_when_dependency_never_completes(tmp_path):
     trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None)
     config = make_config(tmp_path, [exec_a, exec_b, exec_c], triggers=[trigger])
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         if execution.name == "c":
             raise PropagateError("c failed")
         return runtime_context
@@ -332,7 +310,7 @@ def test_scheduler_completes_without_waiting_when_no_signal_triggers(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -360,7 +338,7 @@ def test_multiple_signals_activate_different_triggers(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -407,10 +385,10 @@ def test_resume_restores_received_signal_types(tmp_path):
     run_state = RunState(
         config_path=config.config_path,
         initial_execution="a",
-        schedule=ExecutionScheduleState(
-            active_names={"a", "b"},
-            completed_names={"a", "b"},
-        ),
+        executions={
+            "a": ExecutionStatus(state="completed"),
+            "b": ExecutionStatus(state="completed"),
+        },
         active_signal=None,
         cloned_repos={},
         initialized_signal_context_dirs=set(),
@@ -422,7 +400,7 @@ def test_resume_restores_received_signal_types(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -469,7 +447,7 @@ def test_scheduler_uses_updated_signal_for_execution_after_hooks_and_triggers(tm
         )
     )
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         if execution.name == "a":
             return final_ctx
@@ -494,7 +472,7 @@ def test_scheduler_persists_updated_signal_to_run_state(tmp_path):
     run_state = RunState(
         config_path=config.config_path,
         initial_execution="a",
-        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        executions={},
         active_signal=ActiveSignal(signal_type="pull_request.labeled", payload={"label": "initial"}, source="initial"),
         cloned_repos={},
         initialized_signal_context_dirs=set(),
@@ -508,7 +486,7 @@ def test_scheduler_persists_updated_signal_to_run_state(tmp_path):
         )
     )
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         if on_runtime_context_updated is not None:
             on_runtime_context_updated(updated_ctx)
         return updated_ctx

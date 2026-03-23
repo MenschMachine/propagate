@@ -6,16 +6,17 @@ from string import Formatter
 
 from .constants import LOGGER
 from .context_store import get_context_root, get_execution_context_dir
-from .models import ActiveSignal, Config, ExecutionGraph, ExecutionScheduleState
+from .models import ActiveSignal, Config, ExecutionGraph, ExecutionStatus, RunState
 from .signals import resolve_signal_when_payload
 
 
 def reconcile_pending_signals(
     config: Config,
     execution_graph: ExecutionGraph,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
     received_signal_types: set[str],
     reconciled_triggers: set[tuple[str, str, str]] | None = None,
+    run_state: RunState | None = None,
 ) -> bool:
     """Check pending signal triggers whose condition may already be met.
 
@@ -33,12 +34,14 @@ def reconcile_pending_signals(
 
     if reconciled_triggers is None:
         reconciled_triggers = set()
+    completed = {n for n, e in executions.items() if e.state == "completed"}
+    active = {n for n, e in executions.items() if e.state != "inactive"}
     reconciled = False
-    for completed_name in list(schedule_state.completed_names):
+    for completed_name in list(completed):
         for trigger in execution_graph.triggers_by_after[completed_name]:
             if trigger.on_signal is None or trigger.when is None:
                 continue
-            if trigger.run in schedule_state.completed_names or trigger.run in schedule_state.active_names:
+            if trigger.run in completed or trigger.run in active:
                 continue
             trigger_key = (trigger.after, trigger.run, trigger.on_signal)
             if trigger_key in reconciled_triggers:
@@ -69,8 +72,8 @@ def reconcile_pending_signals(
                     execution_graph,
                     completed_name,
                     active_signal,
-                    schedule_state.active_names,
-                    schedule_state.completed_names,
+                    executions,
+                    run_state.activated_triggers if run_state is not None else None,
                 )
                 reconciled = True
     return reconciled

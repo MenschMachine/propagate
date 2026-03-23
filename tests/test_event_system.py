@@ -13,7 +13,6 @@ from propagate_app.models import (
     AgentConfig,
     Config,
     ExecutionConfig,
-    ExecutionScheduleState,
     ExecutionSignalConfig,
     RepositoryConfig,
     RunState,
@@ -261,7 +260,7 @@ def test_serve_publishes_event_on_completion(tmp_path):
 
     shutdown = threading.Event()
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         return runtime_context
 
     def send_signal_then_shutdown():
@@ -309,7 +308,7 @@ def test_serve_publishes_event_on_failure(tmp_path):
 
     shutdown = threading.Event()
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         raise PropagateError("simulated failure")
 
     def send_signal_then_shutdown():
@@ -467,7 +466,7 @@ def test_run_state_metadata_persistence(tmp_path):
     state = RunState(
         config_path=config_path,
         initial_execution="a",
-        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        executions={},
         active_signal=None,
         cloned_repos={},
         initialized_signal_context_dirs=set(),
@@ -487,7 +486,7 @@ def test_run_state_metadata_default_empty(tmp_path):
     state = RunState(
         config_path=config_path,
         initial_execution="a",
-        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        executions={},
         active_signal=None,
         cloned_repos={},
         initialized_signal_context_dirs=set(),

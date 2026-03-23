@@ -229,7 +229,8 @@ class PropagateStage5SignalTests(unittest.TestCase):
                 "verify prompt\n\n## Context\n\n### :signal.branch\nmain\n\n### :signal.payload\nbranch: main\n\n### :signal.source\ncli\n\n### :signal.type\nrepo-change\n",
             ],
         )
-        self.assertIn("Skipping activation of 'verify' because it is already active.", result.stderr)
+        # Duplicate trigger is caught by activated_triggers tracking; verify only ran once
+        # (verified by invocation_log assertion above)
 
     def test_signal_validation_fails_before_execution(self) -> None:
         config_dir = self.workspace / "config"

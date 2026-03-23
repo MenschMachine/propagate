@@ -1109,8 +1109,15 @@ class PropagateResumeTests(unittest.TestCase):
         state_data = {
             "config_path": str(config_path.resolve()),
             "initial_execution": "task",
-            "active_names": ["task"],
-            "completed_names": [],
+            "executions": {
+                "task": {
+                    "state": "pending",
+                    "before_completed": False,
+                    "after_completed": False,
+                    "tasks": {},
+                },
+            },
+            "activated_triggers": [],
             "cloned_repos": {"remote": "/tmp/nonexistent-propagate-clone-xyz"},
             "initialized_signal_context_dirs": [],
         }

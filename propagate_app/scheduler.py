@@ -11,13 +11,21 @@ from .context_store import clear_all_context, get_context_root, get_execution_co
 from .errors import PropagateError
 from .execution_flow import run_configured_execution
 from .graph import build_execution_graph, build_execution_graph_adjacency
-from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionScheduleState, RunState, RuntimeContext
+from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionStatus, RunState, RuntimeContext, TaskStatus
 from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
 from .run_state import clear_run_state, save_run_state
 from .signal_reconcile import reconcile_pending_signals
 from .signal_transport import publish_event_if_available, receive_signal
 from .signals import select_initial_execution, signal_payload_matches_when, validate_signal_payload
+
+
+def _completed_names(executions: dict[str, ExecutionStatus]) -> set[str]:
+    return {n for n, e in executions.items() if e.state == "completed"}
+
+
+def _active_names(executions: dict[str, ExecutionStatus]) -> set[str]:
+    return {n for n, e in executions.items() if e.state != "inactive"}
 
 
 def run_execution_schedule(
@@ -34,25 +42,23 @@ def run_execution_schedule(
         received_signal_types.update(run_state.received_signal_types)
     if runtime_context.active_signal is not None:
         received_signal_types.add(runtime_context.active_signal.signal_type)
-    has_prior_progress = run_state is not None and (run_state.schedule.completed_names or run_state.schedule.completed_tasks or run_state.schedule.completed_execution_phases)
+    has_prior_progress = run_state is not None and any(e.state != "inactive" for e in run_state.executions.values())
     if has_prior_progress:
-        LOGGER.info("Resuming execution schedule; %d executions already completed.", len(run_state.schedule.completed_names))
-        schedule_state = ExecutionScheduleState(
-            active_names=set(run_state.schedule.active_names),
-            completed_names=set(run_state.schedule.completed_names),
-            completed_tasks={name: dict(phases) for name, phases in run_state.schedule.completed_tasks.items()},
-            completed_execution_phases=dict(run_state.schedule.completed_execution_phases),
-        )
+        completed_count = sum(1 for e in run_state.executions.values() if e.state == "completed")
+        LOGGER.info("Resuming execution schedule; %d executions already completed.", completed_count)
+        executions = run_state.executions
     else:
-        schedule_state = ExecutionScheduleState(active_names=set(), completed_names=set())
+        executions = {}
+        if run_state is not None:
+            run_state.executions = executions
         clear_all_context(get_context_root(config.config_path))
         LOGGER.info("Starting execution schedule with initial execution '%s'.", initial_execution_name)
-        activate_execution_with_dependencies(config, initial_execution_name, schedule_state.active_names)
+        activate_execution_with_dependencies(config, initial_execution_name, executions)
     if stop_after is not None:
-        _warn_if_stop_after_unreachable(config, initial_execution_name, stop_after, schedule_state)
+        _warn_if_stop_after_unreachable(config, initial_execution_name, stop_after, executions)
     current_runtime_context = replace(runtime_context, signal_socket=signal_socket)
     if run_state is not None:
-        _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
+        _sync_and_save(run_state, current_runtime_context, received_signal_types)
     reconciled_triggers: set[tuple[str, str, str]] = set()
     while True:
         if signal_socket is not None:
@@ -60,75 +66,89 @@ def run_execution_schedule(
                 signal_socket,
                 config,
                 execution_graph,
-                schedule_state,
+                executions,
                 received_signal_types,
                 current_runtime_context,
+                run_state,
             )
-        execution_name = select_next_runnable_execution(config, execution_graph, schedule_state)
+        execution_name = select_next_runnable_execution(config, execution_graph, executions)
         if execution_name is None:
-            if reconcile_pending_signals(config, execution_graph, schedule_state, received_signal_types, reconciled_triggers):
+            if reconcile_pending_signals(config, execution_graph, executions, received_signal_types, reconciled_triggers):
                 continue
-            if signal_socket is not None and has_pending_signal_triggers(config, execution_graph, schedule_state, received_signal_types):
+            if signal_socket is not None and has_pending_signal_triggers(config, execution_graph, executions, received_signal_types):
                 current_runtime_context = _wait_for_signal(
                     signal_socket,
                     config,
                     execution_graph,
-                    schedule_state,
+                    executions,
                     received_signal_types,
                     current_runtime_context,
+                    run_state,
                 )
                 continue
-            if schedule_state.completed_names == schedule_state.active_names:
+            completed = _completed_names(executions)
+            active = _active_names(executions)
+            if completed == active:
                 if run_state is not None:
                     clear_run_state(run_state.config_path)
                 return
-            remaining_names = remaining_active_execution_names(execution_graph.execution_order, schedule_state)
+            remaining_names = remaining_active_execution_names(execution_graph.execution_order, executions)
             raise PropagateError("No runnable executions remain for active run plan: " + ", ".join(remaining_names))
         execution = config.executions[execution_name]
         config = _ensure_repo_cloned(config, execution.repository, run_state)
-        completed_task_phases = schedule_state.completed_tasks.get(execution_name, {})
-        completed_execution_phase = schedule_state.completed_execution_phases.get(execution_name)
+        execution_status = executions.setdefault(execution_name, ExecutionStatus())
+        execution_status.state = "in_progress"
         execution_runtime_context = prepare_execution_runtime_context(config, execution, current_runtime_context)
 
         def on_phase_completed(exec_name: str, task_id: str, phase: str) -> None:
+            es = executions.setdefault(exec_name, ExecutionStatus())
             if task_id:
-                schedule_state.completed_tasks.setdefault(exec_name, {})[task_id] = phase
+                ts = es.tasks.setdefault(task_id, TaskStatus())
+                if phase == "before":
+                    ts.phases.before_completed = True
+                elif phase == "agent":
+                    ts.phases.agent_completed = True
+                elif phase == "after":
+                    ts.phases.after_completed = True
             else:
-                schedule_state.completed_execution_phases[exec_name] = phase
+                if phase == "before":
+                    es.before_completed = True
+                elif phase == "after":
+                    es.after_completed = True
             if run_state is not None:
-                _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
+                _sync_and_save(run_state, current_runtime_context, received_signal_types)
 
         def on_tasks_reset(exec_name: str, task_ids: list[str]) -> None:
-            exec_tasks = schedule_state.completed_tasks.get(exec_name, {})
-            for task_id in task_ids:
-                exec_tasks.pop(task_id, None)
+            es = executions.get(exec_name)
+            if es is not None:
+                for task_id in task_ids:
+                    es.tasks.pop(task_id, None)
             if run_state is not None:
-                _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
+                _sync_and_save(run_state, current_runtime_context, received_signal_types)
 
         try:
             current_runtime_context = run_configured_execution(
                 execution,
                 execution_runtime_context,
-                completed_task_phases,
+                execution_status,
                 on_phase_completed,
-                completed_execution_phase,
-                lambda updated_context: _sync_and_save(run_state, schedule_state, updated_context, received_signal_types)
+                lambda updated_context: _sync_and_save(run_state, updated_context, received_signal_types)
                 if run_state is not None else None,
                 on_tasks_reset,
             )
         except PropagateError as error:
             raise wrap_execution_runtime_error(execution, error) from error
-        schedule_state.completed_names.add(execution.name)
+        executions[execution.name].state = "completed"
         activate_matching_triggers(
             config,
             execution_graph,
             execution.name,
             current_runtime_context.active_signal,
-            schedule_state.active_names,
-            schedule_state.completed_names,
+            executions,
+            run_state.activated_triggers if run_state is not None else None,
         )
         if run_state is not None:
-            _sync_and_save(run_state, schedule_state, current_runtime_context, received_signal_types)
+            _sync_and_save(run_state, current_runtime_context, received_signal_types)
         if stop_after is not None and execution.name == stop_after:
             LOGGER.info("Stopping after execution '%s' as requested by --stop-after.", execution.name)
             return
@@ -156,16 +176,9 @@ def _ensure_repo_cloned(config: Config, repo_name: str, run_state: RunState | No
 
 def _sync_and_save(
     run_state: RunState,
-    schedule_state: ExecutionScheduleState,
     runtime_context: RuntimeContext,
     received_signal_types: set[str] | None = None,
 ) -> None:
-    run_state.schedule = ExecutionScheduleState(
-        active_names=set(schedule_state.active_names),
-        completed_names=set(schedule_state.completed_names),
-        completed_tasks={name: dict(phases) for name, phases in schedule_state.completed_tasks.items()},
-        completed_execution_phases=dict(schedule_state.completed_execution_phases),
-    )
     run_state.active_signal = runtime_context.active_signal
     run_state.initialized_signal_context_dirs = set(runtime_context.initialized_signal_context_dirs)
     if received_signal_types is not None:
@@ -178,12 +191,25 @@ def activate_matching_triggers(
     execution_graph: ExecutionGraph,
     completed_execution_name: str,
     active_signal: ActiveSignal | None,
-    active_execution_names: set[str],
-    completed_execution_names: set[str],
+    executions: dict[str, ExecutionStatus],
+    activated_triggers: set[tuple[str, str | None, str]] | None = None,
 ) -> None:
+    """Evaluate propagation triggers after an execution completes.
+
+    Mutates ``executions`` (activates new executions) and ``activated_triggers``
+    (records which trigger edges have fired).
+    """
     LOGGER.info("Evaluating propagation triggers after execution '%s'.", completed_execution_name)
     context_dir = get_execution_context_dir(get_context_root(config.config_path), completed_execution_name)
+    completed = _completed_names(executions)
+    active = _active_names(executions)
+    if activated_triggers is None:
+        activated_triggers = set()
     for trigger in execution_graph.triggers_by_after[completed_execution_name]:
+        trigger_key = (trigger.after, trigger.on_signal, trigger.run)
+        if trigger_key in activated_triggers:
+            LOGGER.debug("Skipping already activated trigger (%s, %s, %s).", trigger.after, trigger.on_signal, trigger.run)
+            continue
         if trigger.when_context is not None and not _evaluate_trigger_context_gate(trigger.when_context, context_dir):
             continue
         if trigger.on_signal is not None:
@@ -196,14 +222,15 @@ def activate_matching_triggers(
                 config.signals[active_signal.signal_type],
             ):
                 continue
-        if trigger.run in completed_execution_names:
+        if trigger.run in completed:
             LOGGER.info("Skipping activation of '%s' because it already completed in this run.", trigger.run)
             continue
-        if trigger.run in active_execution_names:
+        if trigger.run in active:
             LOGGER.info("Skipping activation of '%s' because it is already active.", trigger.run)
             continue
         LOGGER.info("Matched propagation trigger after '%s': activate '%s'.", trigger.after, trigger.run)
-        activate_execution_with_dependencies(config, trigger.run, active_execution_names)
+        activate_execution_with_dependencies(config, trigger.run, executions)
+        activated_triggers.add(trigger_key)
 
 
 def _evaluate_trigger_context_gate(gate: str, context_dir: Path) -> bool:
@@ -224,28 +251,30 @@ def _evaluate_trigger_context_gate(gate: str, context_dir: Path) -> bool:
 def activate_execution_with_dependencies(
     config: Config,
     execution_name: str,
-    active_execution_names: set[str],
+    executions: dict[str, ExecutionStatus],
 ) -> None:
     execution = config.executions[execution_name]
     for dependency_name in execution.depends_on:
-        if dependency_name not in active_execution_names:
+        existing = executions.get(dependency_name)
+        if existing is None or existing.state == "inactive":
             LOGGER.info("Activating dependency '%s' for execution '%s'.", dependency_name, execution_name)
-        activate_execution_with_dependencies(config, dependency_name, active_execution_names)
-    if execution_name in active_execution_names:
+        activate_execution_with_dependencies(config, dependency_name, executions)
+    existing = executions.get(execution_name)
+    if existing is not None and existing.state != "inactive":
         return
     LOGGER.info("Activating execution '%s'.", execution_name)
-    active_execution_names.add(execution_name)
+    executions[execution_name] = ExecutionStatus(state="pending")
 
 
 def select_next_runnable_execution(
     config: Config,
     execution_graph: ExecutionGraph,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
 ) -> str | None:
     runnable_names = [
         execution_name
         for execution_name in execution_graph.execution_order
-        if execution_is_runnable(config.executions[execution_name], schedule_state)
+        if execution_is_runnable(config.executions[execution_name], executions)
     ]
     if not runnable_names:
         return None
@@ -256,44 +285,49 @@ def select_next_runnable_execution(
 
 def remaining_active_execution_names(
     execution_order: tuple[str, ...],
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
 ) -> list[str]:
     return [
         execution_name
         for execution_name in execution_order
-        if execution_name in schedule_state.active_names and execution_name not in schedule_state.completed_names
+        if execution_name in executions and executions[execution_name].state in ("pending", "in_progress")
     ]
 
 
-def execution_is_runnable(execution: ExecutionConfig, schedule_state: ExecutionScheduleState) -> bool:
-    if execution.name not in schedule_state.active_names or execution.name in schedule_state.completed_names:
+def execution_is_runnable(execution: ExecutionConfig, executions: dict[str, ExecutionStatus]) -> bool:
+    es = executions.get(execution.name)
+    if es is None or es.state not in ("pending", "in_progress"):
         return False
-    return all(dependency_name in schedule_state.completed_names for dependency_name in execution.depends_on)
+    return all(
+        executions.get(dep_name) is not None and executions[dep_name].state == "completed"
+        for dep_name in execution.depends_on
+    )
 
 
 def has_pending_signal_triggers(
     config: Config,
     execution_graph: ExecutionGraph,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
     received_signal_types: set[str],
 ) -> bool:
-    return bool(_pending_signal_types(execution_graph, schedule_state, received_signal_types))
+    return bool(_pending_signal_types(execution_graph, executions, received_signal_types))
 
 
 def _drain_incoming_signals(
     signal_socket: zmq.Socket,
     config: Config,
     execution_graph: ExecutionGraph,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
     received_signal_types: set[str],
     runtime_context: RuntimeContext,
+    run_state: RunState | None = None,
 ) -> RuntimeContext:
     current_runtime_context = runtime_context
     while True:
         result = receive_signal(signal_socket, block=False)
         if result is None:
             return current_runtime_context
-        active_signal = _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
+        active_signal = _process_received_signal(result, config, execution_graph, executions, received_signal_types, run_state)
         if active_signal is not None:
             current_runtime_context = replace(current_runtime_context, active_signal=active_signal)
 
@@ -302,11 +336,12 @@ def _wait_for_signal(
     signal_socket: zmq.Socket,
     config: Config,
     execution_graph: ExecutionGraph,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
     received_signal_types: set[str],
     runtime_context: RuntimeContext,
+    run_state: RunState | None = None,
 ) -> RuntimeContext:
-    pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
+    pending = _pending_signal_types(execution_graph, executions, received_signal_types)
     LOGGER.info("Waiting for external signal (%s)...", ", ".join(sorted(pending)))
     publish_event_if_available(runtime_context.pub_socket, "waiting_for_signal", {
         "execution": "",
@@ -318,8 +353,8 @@ def _wait_for_signal(
         result = receive_signal(signal_socket, block=True, timeout_ms=1000)
         if result is None:
             continue
-        active_signal = _process_received_signal(result, config, execution_graph, schedule_state, received_signal_types)
-        new_pending = _pending_signal_types(execution_graph, schedule_state, received_signal_types)
+        active_signal = _process_received_signal(result, config, execution_graph, executions, received_signal_types, run_state)
+        new_pending = _pending_signal_types(execution_graph, executions, received_signal_types)
         if new_pending != pending:
             signal_type, _ = result
             LOGGER.info("Signal '%s' satisfied; resuming execution.", signal_type)
@@ -338,8 +373,9 @@ def _process_received_signal(
     result: tuple[str, dict[str, Any]],
     config: Config,
     execution_graph: ExecutionGraph,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
     received_signal_types: set[str],
+    run_state: RunState | None = None,
 ) -> ActiveSignal | None:
     signal_type, payload = result
     if signal_type not in config.signals:
@@ -357,14 +393,16 @@ def _process_received_signal(
         return None
     LOGGER.info("Received external signal '%s'.", signal_type)
     received_signal_types.add(signal_type)
-    for completed_name in list(schedule_state.completed_names):
+    completed = _completed_names(executions)
+    activated_triggers = run_state.activated_triggers if run_state is not None else None
+    for completed_name in list(completed):
         activate_matching_triggers(
             config,
             execution_graph,
             completed_name,
             active_signal,
-            schedule_state.active_names,
-            schedule_state.completed_names,
+            executions,
+            activated_triggers,
         )
     return active_signal
 
@@ -379,15 +417,17 @@ def _is_new_entry_signal(config: Config, active_signal: ActiveSignal) -> bool:
 
 def _pending_signal_types(
     execution_graph: ExecutionGraph,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
     received_signal_types: set[str],
 ) -> set[str]:
-    pending = set()
-    for completed_name in schedule_state.completed_names:
+    completed = _completed_names(executions)
+    active = _active_names(executions)
+    pending: set[str] = set()
+    for completed_name in completed:
         for trigger in execution_graph.triggers_by_after[completed_name]:
             if trigger.on_signal is None:
                 continue
-            if trigger.run in schedule_state.completed_names or trigger.run in schedule_state.active_names:
+            if trigger.run in completed or trigger.run in active:
                 continue
             # Triggers with 'when' stay pending even after receiving the signal type,
             # because the payload may not have matched. Only triggers without 'when'
@@ -402,9 +442,9 @@ def _warn_if_stop_after_unreachable(
     config: Config,
     initial_execution_name: str,
     stop_after: str,
-    schedule_state: ExecutionScheduleState,
+    executions: dict[str, ExecutionStatus],
 ) -> None:
-    if stop_after in schedule_state.active_names:
+    if stop_after in executions and executions[stop_after].state != "inactive":
         return
     adjacency = build_execution_graph_adjacency(config.executions, config.propagation_triggers)
     reachable: set[str] = set()

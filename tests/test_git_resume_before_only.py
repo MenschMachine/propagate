@@ -135,7 +135,9 @@ def test_resume_after_before_hooks_only(ctx: SimpleNamespace) -> None:
     state_file = list(ctx.config_dir.glob(".propagate-state-*.yaml"))
     assert state_file, "State file must exist"
     state = yaml.safe_load(state_file[0].read_text(encoding="utf-8"))
-    assert state.get("completed_execution_phases", {}).get("default") == "before"
+    default_exec = state.get("executions", {}).get("default", {})
+    assert default_exec.get("before_completed") is True
+    assert default_exec.get("after_completed") is False
 
     # Verify git state was persisted to context
     context_dir = ctx.config_dir / ".propagate-context-propagate" / "default"

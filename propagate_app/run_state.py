@@ -6,9 +6,9 @@ from pathlib import Path
 
 import yaml
 
-from .constants import LOGGER, PHASE_AFTER, PHASE_BEFORE
+from .constants import LOGGER
 from .errors import PropagateError
-from .models import ActiveSignal, Config, ExecutionScheduleState, RunState
+from .models import ActiveSignal, Config, ExecutionStatus, PhaseStatus, RunState, TaskStatus
 
 
 def state_file_path(config_path: Path) -> Path:
@@ -17,13 +17,26 @@ def state_file_path(config_path: Path) -> Path:
 
 
 def save_run_state(state: RunState) -> None:
+    executions_data: dict[str, object] = {}
+    for name, es in state.executions.items():
+        tasks_data: dict[str, object] = {}
+        for task_id, ts in es.tasks.items():
+            tasks_data[task_id] = {
+                "before_completed": ts.phases.before_completed,
+                "agent_completed": ts.phases.agent_completed,
+                "after_completed": ts.phases.after_completed,
+            }
+        executions_data[name] = {
+            "state": es.state,
+            "before_completed": es.before_completed,
+            "after_completed": es.after_completed,
+            "tasks": tasks_data,
+        }
     data: dict[str, object] = {
         "config_path": str(state.config_path),
         "initial_execution": state.initial_execution,
-        "active_names": sorted(state.schedule.active_names),
-        "completed_names": sorted(state.schedule.completed_names),
-        "completed_tasks": {name: dict(phases) for name, phases in state.schedule.completed_tasks.items()},
-        "completed_execution_phases": dict(state.schedule.completed_execution_phases),
+        "executions": executions_data,
+        "activated_triggers": [list(t) for t in sorted(state.activated_triggers, key=lambda t: (t[0], t[1] or "", t[2]))],
         "cloned_repos": {name: str(path) for name, path in state.cloned_repos.items()},
         "initialized_signal_context_dirs": sorted(str(p) for p in state.initialized_signal_context_dirs),
         "received_signal_types": sorted(state.received_signal_types),
@@ -70,6 +83,8 @@ def load_run_state(config_path: Path) -> RunState:
             data = yaml.safe_load(handle)
     except (OSError, yaml.YAMLError) as error:
         raise PropagateError(f"Failed to read run state file '{file_path}': {error}") from error
+    if "active_names" in data or "completed_names" in data:
+        raise PropagateError("State file is in old format; run 'propagate clear' first.")
     cloned_repos: dict[str, Path] = {}
     for name, path_str in (data.get("cloned_repos") or {}).items():
         clone_path = Path(path_str)
@@ -86,23 +101,36 @@ def load_run_state(config_path: Path) -> RunState:
             payload=sig.get("payload", {}),
             source=sig["source"],
         )
-    completed_tasks: dict[str, dict[str, str]] = {
-        name: dict(phases) for name, phases in (data.get("completed_tasks") or {}).items()
-    }
+    executions: dict[str, ExecutionStatus] = {}
+    for name, es_data in (data.get("executions") or {}).items():
+        tasks: dict[str, TaskStatus] = {}
+        for task_id, ts_data in (es_data.get("tasks") or {}).items():
+            tasks[task_id] = TaskStatus(
+                phases=PhaseStatus(
+                    before_completed=ts_data.get("before_completed", False),
+                    agent_completed=ts_data.get("agent_completed", False),
+                    after_completed=ts_data.get("after_completed", False),
+                )
+            )
+        executions[name] = ExecutionStatus(
+            state=es_data.get("state", "inactive"),
+            tasks=tasks,
+            before_completed=es_data.get("before_completed", False),
+            after_completed=es_data.get("after_completed", False),
+        )
+    activated_triggers: set[tuple[str, str | None, str]] = set()
+    for trigger_list in data.get("activated_triggers") or []:
+        activated_triggers.add((trigger_list[0], trigger_list[1], trigger_list[2]))
     return RunState(
         config_path=Path(data["config_path"]),
         initial_execution=data["initial_execution"],
-        schedule=ExecutionScheduleState(
-            active_names=set(data.get("active_names") or []),
-            completed_names=set(data.get("completed_names") or []),
-            completed_tasks=completed_tasks,
-            completed_execution_phases=dict(data.get("completed_execution_phases") or {}),
-        ),
+        executions=executions,
         active_signal=active_signal,
         cloned_repos=cloned_repos,
         initialized_signal_context_dirs=set(
             Path(p) for p in (data.get("initialized_signal_context_dirs") or [])
         ),
+        activated_triggers=activated_triggers,
         received_signal_types=set(data.get("received_signal_types") or []),
         metadata=data.get("metadata") or {},
     )
@@ -132,28 +160,35 @@ def rewrite_state_for_forced_resume(
                 f"Available tasks: {', '.join(task_ids)}"
             )
 
-    active_names: set[str] = set()
-    activate_execution_with_dependencies(config, target_execution, active_names)
-    completed_names = active_names - {target_execution}
+    executions: dict[str, ExecutionStatus] = {}
+    activate_execution_with_dependencies(config, target_execution, executions)
 
-    completed_tasks: dict[str, dict[str, str]] = {}
-    completed_execution_phases: dict[str, str] = {}
+    # Mark all deps as completed
+    for name, es in executions.items():
+        if name != target_execution:
+            es.state = "completed"
+            es.before_completed = True
+            es.after_completed = True
+
+    # Target execution is in_progress
+    target_es = executions[target_execution]
+    target_es.state = "in_progress"
 
     if target_task is not None:
-        task_phases: dict[str, str] = {}
+        target_es.before_completed = True
         for sub_task in execution.sub_tasks:
             if sub_task.task_id == target_task:
                 break
-            task_phases[sub_task.task_id] = PHASE_AFTER
-        completed_tasks[target_execution] = task_phases
-        completed_execution_phases[target_execution] = PHASE_BEFORE
+            target_es.tasks[sub_task.task_id] = TaskStatus(
+                phases=PhaseStatus(
+                    before_completed=True,
+                    agent_completed=True,
+                    after_completed=True,
+                )
+            )
 
-    run_state.schedule = ExecutionScheduleState(
-        active_names=active_names,
-        completed_names=completed_names,
-        completed_tasks=completed_tasks,
-        completed_execution_phases=completed_execution_phases,
-    )
+    run_state.executions = executions
+    run_state.activated_triggers = set()
     save_run_state(run_state)
     LOGGER.debug("Rewrote run state for forced resume at '%s'.", target_execution + (f"/{target_task}" if target_task else ""))
 

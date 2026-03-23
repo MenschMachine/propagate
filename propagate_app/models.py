@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import zmq
@@ -188,21 +188,39 @@ class RuntimeContext:
 
 
 @dataclass
-class ExecutionScheduleState:
-    active_names: set[str]
-    completed_names: set[str]
-    completed_tasks: dict[str, dict[str, str]] = field(default_factory=dict)
-    completed_execution_phases: dict[str, str] = field(default_factory=dict)
+class PhaseStatus:
+    before_completed: bool = False
+    agent_completed: bool = False
+    after_completed: bool = False
+
+
+@dataclass
+class TaskStatus:
+    phases: PhaseStatus = field(default_factory=PhaseStatus)
+
+    @property
+    def is_completed(self) -> bool:
+        return self.phases.after_completed
+
+
+@dataclass
+class ExecutionStatus:
+    state: Literal["inactive", "pending", "in_progress", "completed"] = "inactive"
+    tasks: dict[str, TaskStatus] = field(default_factory=dict)
+    before_completed: bool = False
+    after_completed: bool = False
 
 
 @dataclass
 class RunState:
     config_path: Path
     initial_execution: str
-    schedule: ExecutionScheduleState
+    executions: dict[str, ExecutionStatus]
     active_signal: ActiveSignal | None
     cloned_repos: dict[str, Path]
     initialized_signal_context_dirs: set[Path]
+    # (after_exec, on_signal_or_None, run_exec)
+    activated_triggers: set[tuple[str, str | None, str]] = field(default_factory=set)
     received_signal_types: set[str] = field(default_factory=set)
     # Opaque dict forwarded from the incoming ZMQ message to published events.
     # Telegram uses keys: chat_id, message_id (both str).

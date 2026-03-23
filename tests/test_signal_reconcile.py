@@ -11,7 +11,7 @@ from propagate_app.models import (
     AgentConfig,
     Config,
     ExecutionConfig,
-    ExecutionScheduleState,
+    ExecutionStatus,
     PropagationTriggerConfig,
     RepositoryConfig,
     SignalConfig,
@@ -70,38 +70,37 @@ def _setup(tmp_path, check=None, when=None):
     )
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr.labeled": signal_cfg})
     graph = build_execution_graph(config)
-    schedule_state = ExecutionScheduleState(
-        active_names={"a"},
-        completed_names={"a"},
-    )
+    executions = {
+        "a": ExecutionStatus(state="completed"),
+    }
     received = set()
-    return config, graph, schedule_state, received
+    return config, graph, executions, received
 
 
 def test_reconcile_fires_when_check_exits_zero(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check="echo {label}")
+    config, graph, executions, received = _setup(tmp_path, check="echo {label}")
     mock_result = MagicMock(returncode=0)
     with patch("propagate_app.signal_reconcile.subprocess.run", return_value=mock_result):
-        result = reconcile_pending_signals(config, graph, state, received)
+        result = reconcile_pending_signals(config, graph, executions, received)
     assert result is True
-    assert "b" in state.active_names
+    assert "b" in executions and executions["b"].state != "inactive"
     assert "pr.labeled" in received
 
 
 def test_reconcile_skips_when_check_exits_nonzero(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check="echo {label}")
+    config, graph, executions, received = _setup(tmp_path, check="echo {label}")
     mock_result = MagicMock(returncode=1)
     with patch("propagate_app.signal_reconcile.subprocess.run", return_value=mock_result):
-        result = reconcile_pending_signals(config, graph, state, received)
+        result = reconcile_pending_signals(config, graph, executions, received)
     assert result is False
-    assert "b" not in state.active_names
+    assert "b" not in executions or executions["b"].state == "inactive"
 
 
 def test_reconcile_skips_signal_without_check(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check=None)
-    result = reconcile_pending_signals(config, graph, state, received)
+    config, graph, executions, received = _setup(tmp_path, check=None)
+    result = reconcile_pending_signals(config, graph, executions, received)
     assert result is False
-    assert "b" not in state.active_names
+    assert "b" not in executions or executions["b"].state == "inactive"
 
 
 def test_reconcile_skips_trigger_without_when(tmp_path):
@@ -115,23 +114,23 @@ def test_reconcile_skips_trigger_without_when(tmp_path):
     )
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr.labeled": signal_cfg})
     graph = build_execution_graph(config)
-    state = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    executions = {"a": ExecutionStatus(state="completed")}
     received = set()
-    result = reconcile_pending_signals(config, graph, state, received)
+    result = reconcile_pending_signals(config, graph, executions, received)
     assert result is False
 
 
 def test_reconcile_skips_when_placeholder_missing(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check="echo {foo}")
-    result = reconcile_pending_signals(config, graph, state, received)
+    config, graph, executions, received = _setup(tmp_path, check="echo {foo}")
+    result = reconcile_pending_signals(config, graph, executions, received)
     assert result is False
-    assert "b" not in state.active_names
+    assert "b" not in executions or executions["b"].state == "inactive"
 
 
 def test_reconcile_handles_os_error(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check="echo {label}")
+    config, graph, executions, received = _setup(tmp_path, check="echo {label}")
     with patch("propagate_app.signal_reconcile.subprocess.run", side_effect=OSError("fail")):
-        result = reconcile_pending_signals(config, graph, state, received)
+        result = reconcile_pending_signals(config, graph, executions, received)
     assert result is False
 
 
@@ -139,21 +138,21 @@ def test_reconcile_returns_false_no_pending(tmp_path):
     exec_a = make_execution("a")
     config = make_config(tmp_path, [exec_a])
     graph = build_execution_graph(config)
-    state = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    executions = {"a": ExecutionStatus(state="completed")}
     received = set()
-    result = reconcile_pending_signals(config, graph, state, received)
+    result = reconcile_pending_signals(config, graph, executions, received)
     assert result is False
 
 
 def test_reconcile_quotes_when_values(tmp_path):
-    config, graph, state, received = _setup(
+    config, graph, executions, received = _setup(
         tmp_path,
         check="echo {label}",
         when={"label": "; rm -rf /"},
     )
     mock_result = MagicMock(returncode=0)
     with patch("propagate_app.signal_reconcile.subprocess.run", return_value=mock_result) as mock_run:
-        reconcile_pending_signals(config, graph, state, received)
+        reconcile_pending_signals(config, graph, executions, received)
     call_args = mock_run.call_args
     command = call_args[0][0]
     # shlex.quote wraps the dangerous value in single quotes
@@ -161,40 +160,40 @@ def test_reconcile_quotes_when_values(tmp_path):
 
 
 def test_reconcile_does_not_recheck_successful_trigger(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check="echo {label}")
+    config, graph, executions, received = _setup(tmp_path, check="echo {label}")
     reconciled_triggers = set()
     mock_result = MagicMock(returncode=0)
     with patch("propagate_app.signal_reconcile.subprocess.run", return_value=mock_result) as mock_run:
-        reconcile_pending_signals(config, graph, state, received, reconciled_triggers)
+        reconcile_pending_signals(config, graph, executions, received, reconciled_triggers)
         assert mock_run.call_count == 1
         # Second call should skip — trigger already reconciled.
-        reconcile_pending_signals(config, graph, state, received, reconciled_triggers)
+        reconcile_pending_signals(config, graph, executions, received, reconciled_triggers)
         assert mock_run.call_count == 1
 
 
 def test_reconcile_retries_failed_check(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check="echo {label}")
+    config, graph, executions, received = _setup(tmp_path, check="echo {label}")
     reconciled_triggers = set()
     fail_result = MagicMock(returncode=1)
     success_result = MagicMock(returncode=0)
     with patch("propagate_app.signal_reconcile.subprocess.run", return_value=fail_result) as mock_run:
-        result = reconcile_pending_signals(config, graph, state, received, reconciled_triggers)
+        result = reconcile_pending_signals(config, graph, executions, received, reconciled_triggers)
         assert result is False
         assert mock_run.call_count == 1
     # Failed checks are not added to reconciled_triggers, so retry works.
     with patch("propagate_app.signal_reconcile.subprocess.run", return_value=success_result):
-        result = reconcile_pending_signals(config, graph, state, received, reconciled_triggers)
+        result = reconcile_pending_signals(config, graph, executions, received, reconciled_triggers)
         assert result is True
-        assert "b" in state.active_names
+        assert "b" in executions and executions["b"].state != "inactive"
 
 
 def test_reconcile_handles_timeout(tmp_path):
-    config, graph, state, received = _setup(tmp_path, check="echo {label}")
+    config, graph, executions, received = _setup(tmp_path, check="echo {label}")
     with patch(
         "propagate_app.signal_reconcile.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="echo", timeout=30),
     ):
-        result = reconcile_pending_signals(config, graph, state, received)
+        result = reconcile_pending_signals(config, graph, executions, received)
     assert result is False
 
 
@@ -214,16 +213,16 @@ def test_reconcile_resolves_equals_context_values(tmp_path):
     )
     config = make_config(tmp_path, [exec_a, exec_b], triggers=[trigger], signals={"pr.labeled": signal_cfg})
     graph = build_execution_graph(config)
-    state = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    executions = {"a": ExecutionStatus(state="completed")}
     received = set()
     context_dir = get_execution_context_dir(tmp_path / ".propagate-context-propagate", "a")
     ensure_context_dir(context_dir)
     write_context_value(context_dir, ":expected-pr-number", "42")
     mock_result = MagicMock(returncode=0)
     with patch("propagate_app.signal_reconcile.subprocess.run", return_value=mock_result):
-        result = reconcile_pending_signals(config, graph, state, received)
+        result = reconcile_pending_signals(config, graph, executions, received)
     assert result is True
-    assert "b" in state.active_names
+    assert "b" in executions and executions["b"].state != "inactive"
 
 
 def test_check_command_parsed():

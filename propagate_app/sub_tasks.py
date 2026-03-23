@@ -22,7 +22,7 @@ from .git_runtime import (
     git_do_publish,
     git_do_push,
 )
-from .models import ActiveSignal, ExecutionConfig, GitConfig, RuntimeContext, SubTaskConfig
+from .models import ActiveSignal, ExecutionConfig, ExecutionStatus, GitConfig, RuntimeContext, SubTaskConfig, TaskStatus
 from .processes import build_agent_command, run_agent_command, run_shell_command
 from .prompts import build_sub_task_prompt
 from .signal_context import store_active_signal_context
@@ -46,20 +46,19 @@ def build_context_env(runtime_context: RuntimeContext) -> dict[str, str]:
 def run_execution_sub_tasks(
     execution: ExecutionConfig,
     runtime_context: RuntimeContext,
-    completed_task_phases: dict[str, str] | None = None,
+    execution_status: ExecutionStatus | None = None,
     on_phase_completed: Callable[[str, str, str], None] | None = None,
     on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
     on_tasks_reset: Callable[[str, list[str]], None] | None = None,
 ) -> RuntimeContext:
     current_runtime_context = runtime_context
-    task_phases = dict(completed_task_phases or {})
     task_id_to_index = {t.task_id: i for i, t in enumerate(execution.sub_tasks)}
     goto_counts: dict[str, int] = {}
     task_index = 0
     while task_index < len(execution.sub_tasks):
         sub_task = execution.sub_tasks[task_index]
-        task_phase = task_phases.get(sub_task.task_id)
-        if task_phase == PHASE_AFTER:
+        task_status = execution_status.tasks.get(sub_task.task_id) if execution_status is not None else None
+        if task_status is not None and task_status.phases.after_completed:
             LOGGER.info("Skipping already completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution.name)
             task_index += 1
             continue
@@ -76,7 +75,7 @@ def run_execution_sub_tasks(
                 sub_task,
                 task_id_to_index,
                 current_runtime_context,
-                task_phases,
+                execution_status,
                 on_phase_completed,
                 on_tasks_reset,
             )
@@ -96,7 +95,7 @@ def run_execution_sub_tasks(
                     f"Sub-task '{sub_task.task_id}' in execution '{execution.name}' exceeded maximum goto count"
                     f" ({sub_task.max_goto}). Target: '{sub_task.goto}'."
                 )
-        run_sub_task(execution.name, sub_task, current_runtime_context, execution.git, task_phase, on_phase_completed)
+        run_sub_task(execution.name, sub_task, current_runtime_context, execution.git, task_status, on_phase_completed)
         if sub_task.goto is not None:
             goto_counts[sub_task.task_id] = goto_counts.get(sub_task.task_id, 0) + 1
             goto_index = _reset_tasks_from_goto(
@@ -104,7 +103,7 @@ def run_execution_sub_tasks(
                 sub_task.task_id,
                 sub_task.goto,
                 task_id_to_index,
-                task_phases,
+                execution_status,
                 on_tasks_reset,
             )
             task_index = goto_index
@@ -127,7 +126,7 @@ def _handle_wait_for_signal(
     sub_task: SubTaskConfig,
     task_id_to_index: dict[str, int],
     runtime_context: RuntimeContext,
-    task_phases: dict[str, str],
+    execution_status: ExecutionStatus | None,
     on_phase_completed: Callable[[str, str, str], None] | None,
     on_tasks_reset: Callable[[str, list[str]], None] | None = None,
 ) -> tuple[int | None, RuntimeContext]:
@@ -167,7 +166,7 @@ def _handle_wait_for_signal(
         sub_task.task_id,
         matched_route.goto,
         task_id_to_index,
-        task_phases,
+        execution_status,
         on_tasks_reset,
     )
     return goto_index, updated_runtime_context
@@ -178,7 +177,7 @@ def _reset_tasks_from_goto(
     current_task_id: str,
     goto_id: str,
     task_id_to_index: dict[str, int],
-    task_phases: dict[str, str],
+    execution_status: ExecutionStatus | None,
     on_tasks_reset: Callable[[str, list[str]], None] | None = None,
 ) -> int:
     goto_index = task_id_to_index[goto_id]
@@ -186,7 +185,8 @@ def _reset_tasks_from_goto(
     reset_task_ids = []
     for i in range(goto_index, len(execution.sub_tasks)):
         tid = execution.sub_tasks[i].task_id
-        task_phases.pop(tid, None)
+        if execution_status is not None:
+            execution_status.tasks.pop(tid, None)
         reset_task_ids.append(tid)
     if on_tasks_reset is not None:
         on_tasks_reset(execution.name, reset_task_ids)
@@ -233,14 +233,14 @@ def run_sub_task(
     sub_task: SubTaskConfig,
     runtime_context: RuntimeContext,
     git_config: GitConfig | None = None,
-    completed_phase: str | None = None,
+    task_status: TaskStatus | None = None,
     on_phase_completed: Callable[[str, str, str], None] | None = None,
 ) -> None:
     LOGGER.info("Running sub-task '%s' for execution '%s'.", sub_task.task_id, execution_name)
     task_runtime_context = replace(runtime_context, task_id=sub_task.task_id)
     context_id = f"sub-task '{sub_task.task_id}'"
-    skip_before = completed_phase in (PHASE_BEFORE, PHASE_AGENT)
-    skip_agent = completed_phase == PHASE_AGENT
+    skip_before = task_status is not None and task_status.phases.before_completed
+    skip_agent = task_status is not None and task_status.phases.agent_completed
     if skip_before:
         LOGGER.info("Skipping already completed 'before' phase for sub-task '%s'.", sub_task.task_id)
     else:

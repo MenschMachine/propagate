@@ -72,7 +72,7 @@ def test_serve_receives_signal_and_runs_execution(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -112,7 +112,7 @@ def test_serve_continues_after_failed_run(tmp_path):
 
     call_count = 0
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -157,7 +157,7 @@ def test_serve_rejects_unknown_signal(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -200,7 +200,7 @@ def test_serve_rejects_invalid_payload(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -337,7 +337,7 @@ def test_serve_malformed_message_ignored(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -388,7 +388,7 @@ def test_serve_ambiguous_signal_logs_error_and_continues(tmp_path):
 
     executions_run = []
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         executions_run.append(execution.name)
         return runtime_context
 
@@ -426,7 +426,7 @@ def test_serve_keyboard_interrupt_during_run_exits_cleanly(tmp_path):
     pull = bind_pull_socket(address)
     shutdown = threading.Event()
 
-    def mock_run_execution(execution, runtime_context, completed_task_phases, on_phase_completed, completed_execution_phase, on_runtime_context_updated=None, on_tasks_reset=None):
+    def mock_run_execution(execution, runtime_context, execution_status=None, on_phase_completed=None, on_runtime_context_updated=None, on_tasks_reset=None):
         raise KeyboardInterrupt
 
     def send_signal_then_shutdown():

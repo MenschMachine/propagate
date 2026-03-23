@@ -12,7 +12,6 @@ from propagate_app.models import (
     AgentConfig,
     Config,
     ExecutionConfig,
-    ExecutionScheduleState,
     ExecutionSignalConfig,
     RepositoryConfig,
     RunState,
@@ -129,7 +128,7 @@ def _make_run_state(config: Config) -> RunState:
     return RunState(
         config_path=config.config_path,
         initial_execution="a",
-        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        executions={},
         active_signal=None,
         cloned_repos={},
         initialized_signal_context_dirs=set(),

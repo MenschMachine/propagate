@@ -12,8 +12,8 @@ from propagate_app.models import (
     Config,
     ExecutionConfig,
     ExecutionGraph,
-    ExecutionScheduleState,
     ExecutionSignalConfig,
+    ExecutionStatus,
     PropagationTriggerConfig,
     RepositoryConfig,
     SignalConfig,
@@ -345,10 +345,9 @@ def test_activate_triggers_when_matches(tmp_path):
         triggers_by_after={"a": (trigger,), "b": ()},
     )
     active = ActiveSignal(signal_type="sig", payload={"label": "deploy"}, source="cli")
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
-    assert "b" in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", active, executions)
+    assert "b" in executions and executions["b"].state != "inactive"
 
 
 def test_activate_triggers_when_no_match(tmp_path):
@@ -359,10 +358,9 @@ def test_activate_triggers_when_no_match(tmp_path):
         triggers_by_after={"a": (trigger,), "b": ()},
     )
     active = ActiveSignal(signal_type="sig", payload={"label": "staging"}, source="cli")
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
-    assert "b" not in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", active, executions)
+    assert "b" not in executions
 
 
 def test_activate_triggers_when_equals_context_matches(tmp_path):
@@ -381,10 +379,9 @@ def test_activate_triggers_when_equals_context_matches(tmp_path):
     ensure_context_dir(context_dir)
     write_context_value(context_dir, ":expected-label", "deploy")
     active = ActiveSignal(signal_type="sig", payload={"label": "deploy"}, source="cli")
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
-    assert "b" in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", active, executions)
+    assert "b" in executions and executions["b"].state != "inactive"
 
 
 def test_activate_triggers_when_none_still_fires(tmp_path):
@@ -395,10 +392,9 @@ def test_activate_triggers_when_none_still_fires(tmp_path):
         triggers_by_after={"a": (trigger,), "b": ()},
     )
     active = ActiveSignal(signal_type="sig", payload={"label": "anything"}, source="cli")
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", active, active_names, completed_names)
-    assert "b" in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", active, executions)
+    assert "b" in executions and executions["b"].state != "inactive"
 
 
 def test_activate_triggers_when_context_matches(tmp_path):
@@ -411,10 +407,9 @@ def test_activate_triggers_when_context_matches(tmp_path):
     context_dir = get_execution_context_dir(get_context_root(config.config_path), "a")
     ensure_context_dir(context_dir)
     write_context_value(context_dir, "run-full", "true")
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
-    assert "b" in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", None, executions)
+    assert "b" in executions and executions["b"].state != "inactive"
 
 
 def test_activate_triggers_when_context_mismatch(tmp_path):
@@ -424,10 +419,9 @@ def test_activate_triggers_when_context_mismatch(tmp_path):
         execution_order=("a", "b"),
         triggers_by_after={"a": (trigger,), "b": ()},
     )
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
-    assert "b" not in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", None, executions)
+    assert "b" not in executions
 
 
 def test_activate_triggers_when_context_negated_missing_matches(tmp_path):
@@ -437,10 +431,9 @@ def test_activate_triggers_when_context_negated_missing_matches(tmp_path):
         execution_order=("a", "b"),
         triggers_by_after={"a": (trigger,), "b": ()},
     )
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
-    assert "b" in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", None, executions)
+    assert "b" in executions and executions["b"].state != "inactive"
 
 
 def test_activate_triggers_when_context_missing_is_falsy(tmp_path):
@@ -450,10 +443,9 @@ def test_activate_triggers_when_context_missing_is_falsy(tmp_path):
         execution_order=("a", "b"),
         triggers_by_after={"a": (trigger,), "b": ()},
     )
-    active_names: set[str] = {"a"}
-    completed_names: set[str] = {"a"}
-    activate_matching_triggers(config, graph, "a", None, active_names, completed_names)
-    assert "b" not in active_names
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
+    activate_matching_triggers(config, graph, "a", None, executions)
+    assert "b" not in executions
 
 
 # --- has_pending_signal_triggers with when ---
@@ -468,10 +460,10 @@ def test_pending_trigger_with_when_stays_pending_after_signal_received(tmp_path)
         execution_order=("a", "b"),
         triggers_by_after={"a": (trigger,), "b": ()},
     )
-    schedule = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
     # Signal type was received but payload didn't match — trigger should still be pending
     received = {"sig"}
-    assert has_pending_signal_triggers(config, graph, schedule, received) is True
+    assert has_pending_signal_triggers(config, graph, executions, received) is True
 
 
 def test_pending_trigger_without_when_resolved_after_signal_received(tmp_path):
@@ -482,9 +474,9 @@ def test_pending_trigger_without_when_resolved_after_signal_received(tmp_path):
         execution_order=("a", "b"),
         triggers_by_after={"a": (trigger,), "b": ()},
     )
-    schedule = ExecutionScheduleState(active_names={"a"}, completed_names={"a"})
+    executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
     received = {"sig"}
-    assert has_pending_signal_triggers(config, graph, schedule, received) is False
+    assert has_pending_signal_triggers(config, graph, executions, received) is False
 
 
 # --- select_initial_execution with when ---

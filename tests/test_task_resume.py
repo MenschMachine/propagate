@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from propagate_app.run_state import load_run_state, state_file_path
+from propagate_app.run_state import state_file_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "propagate.py"
@@ -205,8 +205,10 @@ class TaskResumeTests(unittest.TestCase):
         state_file = state_file_path(config_path)
         self.assertTrue(state_file.exists())
         state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
-        self.assertIn("completed_tasks", state_data)
-        self.assertEqual(state_data["completed_tasks"], {"work": {"task-a": "after"}})
+        self.assertIn("executions", state_data)
+        work_exec = state_data["executions"]["work"]
+        self.assertIn("task-a", work_exec["tasks"])
+        self.assertTrue(work_exec["tasks"]["task-a"]["after_completed"])
 
     def test_multi_execution_partial_resume(self) -> None:
         """Execution A completes fully, Execution B fails on task 2. Resume skips A entirely, skips B's task 1."""
@@ -272,8 +274,8 @@ class TaskResumeTests(unittest.TestCase):
         # exec-a skipped entirely (completed_names), exec-b skips b1 (completed_tasks), runs b2 and b3
         self.assertEqual(prompts, ["b-task-2", "b-task-3"])
 
-    def test_backward_compat_old_state_file(self) -> None:
-        """Old state file without completed_tasks key loads without error."""
+    def test_old_state_file_format_rejected(self) -> None:
+        """Old state file with active_names/completed_names is rejected with clear error."""
         repo_dir = self.workspace / "repo"
         repo_dir.mkdir()
         (self.prompt_dir / "x.md").write_text("x-task\n", encoding="utf-8")
@@ -302,7 +304,7 @@ class TaskResumeTests(unittest.TestCase):
             }
         )
 
-        # Manually write an old-format state file (no completed_tasks key)
+        # Manually write an old-format state file
         state_file = state_file_path(config_path)
         state_data = {
             "config_path": str(config_path),
@@ -314,15 +316,10 @@ class TaskResumeTests(unittest.TestCase):
         }
         state_file.write_text(yaml.dump(state_data, default_flow_style=False), encoding="utf-8")
 
-        # load_run_state should not raise
-        run_state = load_run_state(config_path)
-        self.assertEqual(run_state.schedule.completed_tasks, {})
-
-        # Resume should work
+        # Resume with old-format state should fail
         result = self.run_cli("run", "--config", str(config_path), "--resume")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        invocations = json.loads(self.invocation_log.read_text(encoding="utf-8"))
-        self.assertEqual(len(invocations), 1)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("old format", result.stderr)
 
     def test_resume_skips_subtask_before_hooks(self) -> None:
         """Before hooks pass, agent fails → resume skips before, re-runs agent."""
@@ -371,7 +368,10 @@ class TaskResumeTests(unittest.TestCase):
         # Check state records before phase
         state_file = state_file_path(config_path)
         state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
-        self.assertEqual(state_data["completed_tasks"], {"work": {"t1": "before"}})
+        work_exec = state_data["executions"]["work"]
+        self.assertIn("t1", work_exec["tasks"])
+        self.assertTrue(work_exec["tasks"]["t1"]["before_completed"])
+        self.assertFalse(work_exec["tasks"]["t1"]["agent_completed"])
 
         # Fix and resume
         fail_on_file.write_text("never", encoding="utf-8")
@@ -433,7 +433,10 @@ class TaskResumeTests(unittest.TestCase):
         # Check state records agent phase
         state_file = state_file_path(config_path)
         state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
-        self.assertEqual(state_data["completed_tasks"], {"work": {"t1": "agent"}})
+        work_exec = state_data["executions"]["work"]
+        self.assertIn("t1", work_exec["tasks"])
+        self.assertTrue(work_exec["tasks"]["t1"]["agent_completed"])
+        self.assertFalse(work_exec["tasks"]["t1"]["after_completed"])
 
         # Fix and resume
         after_fail_flag.unlink()
@@ -490,7 +493,9 @@ class TaskResumeTests(unittest.TestCase):
         # Check state records execution before phase
         state_file = state_file_path(config_path)
         state_data = yaml.safe_load(state_file.read_text(encoding="utf-8"))
-        self.assertEqual(state_data["completed_execution_phases"], {"work": "before"})
+        work_exec = state_data["executions"]["work"]
+        self.assertTrue(work_exec["before_completed"])
+        self.assertFalse(work_exec["after_completed"])
 
         # Fix and resume
         fail_on_file.write_text("never", encoding="utf-8")

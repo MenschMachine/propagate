@@ -12,7 +12,7 @@ from .config_load import load_config
 from .constants import LOGGER
 from .errors import PropagateError
 from .log_buffer import ZmqLogHandler
-from .models import ActiveSignal, Config, ExecutionScheduleState, RunState, RuntimeContext
+from .models import ActiveSignal, Config, RunState, RuntimeContext
 from .run_state import apply_forced_resume_if_targeted, load_run_state, state_file_path
 from .scheduler import run_execution_schedule
 from .signal_transport import (
@@ -319,7 +319,7 @@ def _handle_incoming_signal(
     run_state = RunState(
         config_path=config.config_path,
         initial_execution=initial_execution.name,
-        schedule=ExecutionScheduleState(active_names=set(), completed_names=set()),
+        executions={},
         active_signal=active_signal,
         cloned_repos={},
         initialized_signal_context_dirs=set(),
