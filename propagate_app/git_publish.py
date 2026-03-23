@@ -299,9 +299,13 @@ def list_pr_comments(working_dir: Path) -> str:
         capture_output=True,
     )
     # Combine both into a single object
+    try:
+        review_comments = json.loads(review_comments_result.stdout) if review_comments_result.stdout.strip() else []
+    except json.JSONDecodeError:
+        review_comments = []
     combined = {
         "comments": json.loads(comments_result.stdout).get("comments", []),
-        "review_comments": json.loads(review_comments_result.stdout),
+        "review_comments": review_comments,
     }
     return json.dumps(combined)
 
