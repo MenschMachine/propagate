@@ -42,6 +42,7 @@ def resolve_context_dir_for_write(
     *,
     scope_global: bool = False,
     scope_local: bool = False,
+    scope_task: str | None = None,
 ) -> Path:
     if scope_global:
         return get_global_context_dir(context_root)
@@ -49,6 +50,12 @@ def resolve_context_dir_for_write(
         if not task_id:
             raise PropagateError("--local requires a task context (PROPAGATE_TASK must be set).")
         return get_task_context_dir(context_root, execution_name, task_id)
+    if scope_task is not None:
+        _validate_task_path(scope_task)
+        parts = scope_task.split("/", 1)
+        if len(parts) == 2:
+            return get_task_context_dir(context_root, parts[0], parts[1])
+        return get_execution_context_dir(context_root, parts[0])
     return get_execution_context_dir(context_root, execution_name)
 
 

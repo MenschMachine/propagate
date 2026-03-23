@@ -240,10 +240,22 @@ class ContextCLIScopeTests(unittest.TestCase):
             env=env,
         )
 
-    def test_set_with_task_flag_is_rejected_by_argparse(self) -> None:
-        result = self.run_cli("context", "set", "key", "value", "--task", "some/task", cwd=self.workspace)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("unrecognized arguments", result.stderr)
+    def test_set_with_task_flag_writes_to_specific_execution_task(self) -> None:
+        context_root = self.workspace / ".propagate-context"
+        env = {
+            **os.environ,
+            "PROPAGATE_CONTEXT_ROOT": str(context_root),
+            "PROPAGATE_EXECUTION": "build",
+            "PROPAGATE_TASK": "review",
+        }
+        result = self.run_cli(
+            "context", "set", "wontfix", "true", "--task", "implement-api-docs/review", env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            (context_root / "implement-api-docs" / "review" / "wontfix").read_text(encoding="utf-8"),
+            "true",
+        )
 
     def test_global_local_task_flags_are_mutually_exclusive(self) -> None:
         result = self.run_cli("context", "set", "key", "value", "--global", "--local", cwd=self.workspace)

@@ -99,6 +99,7 @@ def _add_write_scope_flags(parser: argparse.ArgumentParser) -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--global", dest="scope_global", action="store_true", default=False, help="Use global context scope.")
     group.add_argument("--local", dest="scope_local", action="store_true", default=False, help="Use task-local context scope.")
+    group.add_argument("--task", dest="scope_task", type=str, default=None, help="Write to a specific execution/task context.")
 
 
 def _add_read_scope_flags(parser: argparse.ArgumentParser) -> None:
@@ -180,6 +181,7 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
                 task_env,
                 scope_global=scope_global,
                 scope_local=scope_local,
+                scope_task=scope_task,
             )
             value = sys.stdin.read() if args.value_stdin else args.value
             return context_set_command(args.key, value, context_dir)
@@ -190,6 +192,7 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
                 task_env,
                 scope_global=scope_global,
                 scope_local=scope_local,
+                scope_task=scope_task,
             )
             return context_delete_command(args.key, context_dir)
         if args.context_command == "get":
