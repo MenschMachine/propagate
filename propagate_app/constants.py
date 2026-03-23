@@ -18,18 +18,20 @@ class _ProjectStemFormatter(logging.Formatter):
 
 
 def configure_logging(project_stem: str | None = None) -> None:
-    handler = logging.basicConfig(
+    logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-8s [%(project_stem)s] [%(threadName)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    if handler:
-        handler.setFormatter(_ProjectStemFormatter(
-            fmt="%(asctime)s %(levelname)-8s [%(project_stem)s] [%(threadName)s] %(name)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        ))
     logging.getLogger("httpx").setLevel(logging.WARNING)
     install_buffered_handler()
+    # Apply custom formatter to all existing handlers (basicConfig and install_buffered_handler)
+    custom_formatter = _ProjectStemFormatter(
+        fmt="%(asctime)s %(levelname)-8s [%(project_stem)s] [%(threadName)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(custom_formatter)
 
 
 class _ProjectStemLoggerAdapter(logging.LoggerAdapter):
