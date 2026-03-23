@@ -20,8 +20,12 @@ suggest:
       before:
         - git:branch
     - id: code
+      before:
+        - 'propagate context delete :review-findings'
       prompt: ./prompts/seo/suggest.md
     - id: summarize
+      must_set:
+        - ":summary"
       prompt: ./prompts/seo/summarize-suggest.md
     - id: publish
       before:
@@ -36,7 +40,25 @@ suggest:
         - git:pr-comments-list :pr-comments
       wait_for_signal: pull_request.labeled
       routes:
-        - when: { label: "changes_required" }
+        - when:
+            label: "changes_required"
+            pr_number:
+              equals_context: ":pr-number"
           goto: code
-        - when: { label: "approved" }
+        - when:
+            label: "approved"
+            pr_number:
+              equals_context: ":pr-number"
           continue: true
+    - id: wait-for-closed
+      after:
+        - 'propagate context set :wontfix true'
+      wait_for_signal: pull_request.closed
+    - id: clear-findings-on-wontfix
+      when: ":wontfix"
+      after:
+        - 'propagate context delete :review-findings'
+    - id: post-wontfix-comment
+      when: ":wontfix"
+      before:
+        - git:pr-comment-add :wontfix

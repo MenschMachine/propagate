@@ -20,6 +20,8 @@ implement:
       before:
         - git:branch
     - id: code
+      before:
+        - 'propagate context delete :review-findings'
       prompt: ./prompts/seo/implement.md
     - id: summarize
       prompt: ./prompts/seo/summarize-implement.md
@@ -30,12 +32,26 @@ implement:
         - git:commit
         - git:push
         - git:pr
+    - id: wait-for-checks
+      before:
+        - git:pr-checks-wait :implement-check-results :checks-passed 10 1800
+    - id: reroute-on-check-failure
+      when: "!:checks-passed"
+      after:
+        - 'propagate context set :revision-reason check-failure'
+      goto: code
     - id: wait-for-verdict
       after:
         - git:pr-comments-list :pr-comments
       wait_for_signal: pull_request.labeled
       routes:
-        - when: { label: "changes_required" }
+        - when:
+            label: "changes_required"
+            pr_number:
+              equals_context: ":implement-pr-number"
           goto: code
-        - when: { label: "approved" }
+        - when:
+            label: "approved"
+            pr_number:
+              equals_context: ":implement-pr-number"
           continue: true
