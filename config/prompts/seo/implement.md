@@ -29,5 +29,7 @@ After making changes, collect the list of production URLs (https://pdfdancer.com
 
 To save the changed URLs, run exactly:
 ```bash
-propagate context set :changed-urls '["https://pdfdancer.com/page1/", "https://pdfdancer.com/page2/"]'
+propagate context set --stdin :changed-urls <<'URLS'
+["https://pdfdancer.com/page1/", "https://pdfdancer.com/page2/"]
+URLS
 ```

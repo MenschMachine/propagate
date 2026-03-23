@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import NoReturn
@@ -57,7 +58,9 @@ def build_parser() -> argparse.ArgumentParser:
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
     set_parser = context_subparsers.add_parser("set", help="Store a local context value.")
     set_parser.add_argument("key")
-    set_parser.add_argument("value")
+    set_value_source = set_parser.add_mutually_exclusive_group(required=True)
+    set_value_source.add_argument("value", nargs="?", default=None, help="Value to store (positional).")
+    set_value_source.add_argument("--stdin", dest="value_stdin", action="store_true", help="Read value from stdin.")
     _add_write_scope_flags(set_parser)
     delete_parser = context_subparsers.add_parser("delete", help="Delete a local context value.")
     delete_parser.add_argument("key")
@@ -178,7 +181,8 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
                 scope_global=scope_global,
                 scope_local=scope_local,
             )
-            return context_set_command(args.key, args.value, context_dir)
+            value = sys.stdin.read() if args.value_stdin else args.value
+            return context_set_command(args.key, value, context_dir)
         if args.context_command == "delete":
             context_dir = resolve_context_dir_for_write(
                 context_root,

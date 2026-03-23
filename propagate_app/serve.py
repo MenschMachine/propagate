@@ -114,6 +114,7 @@ def _run_worker_loop(
 
     resume_target = resume if isinstance(resume, str) else None
     config_path = config.config_path
+    LOGGER.info("Worker starting (resume=%s, state_exists=%s).", resume, state_file_path(config_path).exists())
     try:
         if resume and not state_file_path(config_path).exists():
             LOGGER.warning("--resume requested but no state file found; starting fresh.")
@@ -126,6 +127,7 @@ def _run_worker_loop(
                 _resume_run(config, signal_socket, pub_socket, skip_executions=skip_executions, skip_tasks=skip_tasks)
             except PropagateError as error:
                 LOGGER.error("Resume failed: %s", error)
+        LOGGER.info("Worker entering serve loop.")
         _serve_loop(config, signal_socket, shutdown, pub_socket, skip_executions=skip_executions, skip_tasks=skip_tasks)
     finally:
         logging.getLogger().removeHandler(zmq_log_handler)

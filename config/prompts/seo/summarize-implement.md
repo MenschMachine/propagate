@@ -7,6 +7,8 @@ Run `git diff main` to see what changed. Write a clear PR description summarizin
 
 Save the summary to context:
 
-```
-propagate context set :implement-summary "<PR description>"
+```bash
+propagate context set --stdin :implement-summary <<'BODY'
+<PR description>
+BODY
 ```

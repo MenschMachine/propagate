@@ -18,7 +18,9 @@ gh pr view "$API_DOCS_PR_NUMBER" --repo MenschMachine/pdfdancer-api-docs --json 
 Store the final body using `propagate context set`:
 
 ```bash
-propagate context set :website-pr-body "<final body>"
+propagate context set --stdin :website-pr-body <<'BODY'
+<final body>
+BODY
 ```
 
 Structure:

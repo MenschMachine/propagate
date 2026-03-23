@@ -28,5 +28,7 @@ If `:posthog-data-path` is empty or the file doesn't exist, skip the PostHog-rel
 
 To save the summary, run exactly:
 ```bash
-propagate context set :data-summary "<your summary>"
+propagate context set --stdin :data-summary <<'BODY'
+<your summary>
+BODY
 ```

@@ -202,6 +202,7 @@ class Coordinator:
             if worker is None:
                 self._send_response(request_id, error=f"No such project '{project}'.")
                 return
+        LOGGER.info("Coordinator unloading worker '%s'.", project)
         self._stop_worker(project)
         self._send_response(request_id, data={"unloaded": project})
 
@@ -213,12 +214,14 @@ class Coordinator:
                 self._send_response(request_id, error=f"No such project '{project}'.")
                 return
             config_path = worker.config_path
+        LOGGER.info("Coordinator initiating reload of worker '%s'.", project)
         self._stop_worker(project)
         try:
             self._load_worker(config_path)
         except (PropagateError, OSError, TimeoutError) as exc:
             self._send_response(request_id, error=f"Reload failed: {exc}")
             return
+        LOGGER.info("Coordinator reload of worker '%s' completed.", project)
         self._send_response(request_id, data={"reloaded": project})
 
     def _forward_signal(self, project: str, signal_type: str, payload: dict, metadata: dict) -> None:
@@ -343,7 +346,7 @@ class Coordinator:
         with self._lock:
             self._workers[name] = worker
         self._proxy_rebuild.set()
-        LOGGER.info("Loaded worker '%s' (pid=%d).", name, process.pid)
+        LOGGER.info("Loaded worker '%s' (pid=%d, resume=%s).", name, process.pid, resume)
 
     def _stop_worker(self, name: str) -> None:
         with self._lock:
@@ -421,7 +424,8 @@ class Coordinator:
                     if w.process.poll() is not None and name not in notified
                 ]
             for name in dead:
-                LOGGER.error("Worker '%s' died unexpectedly. Use /reload to restart.", name)
+                LOGGER.error("Worker '%s' died unexpectedly (exit code: %s). Use /reload to restart.",
+                    name, self._workers[name].process.poll())
                 self._publish({"event": "worker_died", "project": name})
                 notified.add(name)
 

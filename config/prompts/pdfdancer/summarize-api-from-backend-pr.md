@@ -10,7 +10,9 @@ gh pr view "$BACKEND_PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json ti
 Write the final body by running this exact command:
 
 ```bash
-propagate context set :api-pr-body "<your PR body here>"
+propagate context set --stdin :api-pr-body <<'BODY'
+<your PR body here>
+BODY
 ```
 
 Structure:

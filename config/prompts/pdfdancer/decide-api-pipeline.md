@@ -37,8 +37,9 @@ propagate context set --global run-docs-pipeline true
 4. Also save a short rationale for traceability:
 
 ```bash
-propagate context set :pipeline-decision "<FULL or DOCS>: <one-sentence reason>"
-propagate context set --global :pipeline-decision "<FULL or DOCS>: <one-sentence reason>"
+DECISION="<FULL or DOCS>: <one-sentence reason>"
+echo "$DECISION" | propagate context set --stdin :pipeline-decision
+echo "$DECISION" | propagate context set --stdin --global :pipeline-decision
 ```
 
 Be decisive. Do not set both flags.

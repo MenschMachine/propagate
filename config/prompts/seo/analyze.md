@@ -98,7 +98,9 @@ If `:posthog-data-path` is empty or the file doesn't exist, skip all engagement 
 
 To save findings, run exactly:
 ```bash
-propagate context set :findings "<your structured findings>"
+propagate context set --stdin :findings <<'FINDINGS'
+<your structured findings>
+FINDINGS
 ```
 
 ## Intent match (optional)

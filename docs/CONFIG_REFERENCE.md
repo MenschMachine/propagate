@@ -501,7 +501,7 @@ of the review loop gracefully. The key's value should contain the reasoning — 
     - git:branch
     - 'propagate context delete :wontfix'       # reset flag each iteration
   prompt: ./prompts/implement.md
-  # Agent can run: propagate context set :wontfix "## Won't Fix\n\n- Finding: reason..."
+  # Agent can run: propagate context set --stdin :wontfix <<'EOF' ...
 
 - id: clear-findings-on-wontfix
   when: ":wontfix"

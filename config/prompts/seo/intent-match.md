@@ -84,5 +84,7 @@ Below the table, add a **Mismatch Summary** section with a one-line explanation 
 
 To save the output, run exactly:
 ```bash
-propagate context set :intent-match "<table and mismatch summary>"
+propagate context set --stdin :intent-match <<'BODY'
+<table and mismatch summary>
+BODY
 ```

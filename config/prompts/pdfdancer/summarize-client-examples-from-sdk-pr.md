@@ -19,7 +19,9 @@ esac
 Write the final body with a command equivalent to:
 
 ```bash
-propagate context set "${PR_BODY_KEY}" "<final body>"
+propagate context set --stdin "${PR_BODY_KEY}" <<'BODY'
+<final body>
+BODY
 ```
 
 Structure:

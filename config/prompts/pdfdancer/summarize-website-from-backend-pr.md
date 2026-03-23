@@ -26,7 +26,9 @@ git diff
 Run this exact command to store the PR body:
 
 ```bash
-propagate context set :website-pr-body "<your PR body here>"
+propagate context set --stdin :website-pr-body <<'BODY'
+<your PR body here>
+BODY
 ```
 
 Requirements:

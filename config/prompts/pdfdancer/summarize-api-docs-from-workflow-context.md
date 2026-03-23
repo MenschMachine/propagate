@@ -5,7 +5,9 @@ Read the source PR, and if present also the upstream API/examples PR URLs.
 Run this exact command to store the PR body:
 
 ```bash
-propagate context set :api-docs-pr-body "<your PR body here>"
+propagate context set --stdin :api-docs-pr-body <<'BODY'
+<your PR body here>
+BODY
 ```
 
 Structure:

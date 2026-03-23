@@ -43,7 +43,7 @@ propagate context set --global :agent agent-hard
 Also save a short rationale for traceability:
 
 ```bash
-propagate context set --global :complexity-reason "<easy or hard>: <one-sentence reason>"
+echo "<easy or hard>: <one-sentence reason>" | propagate context set --stdin --global :complexity-reason
 ```
 
 Be decisive. Set only one agent.

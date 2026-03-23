@@ -27,7 +27,9 @@ Your job is to review the production and test code. Infrastructure, like GitHub 
 If there are issues, list each one clearly so the implementing agent can fix them. Be specific about file names and what needs to change. Store your findings:
 
 ```bash
-propagate context set :review-findings "<your detailed findings>"
+propagate context set --stdin :review-findings <<'FINDINGS'
+<your detailed findings>
+FINDINGS
 ```
 
 If everything looks good, do not write to `:review-findings`.
