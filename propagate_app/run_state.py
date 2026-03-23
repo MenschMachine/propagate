@@ -147,7 +147,8 @@ def rewrite_state_for_forced_resume(
     target_execution: str,
     target_task: str | None,
 ) -> None:
-    from .scheduler import activate_execution_with_dependencies
+    from .graph import build_execution_graph
+    from .scheduler import activate_execution_with_dependencies, activate_matching_triggers
 
     if target_execution not in config.executions:
         raise PropagateError(f"Execution '{target_execution}' not found in config.")
@@ -161,9 +162,15 @@ def rewrite_state_for_forced_resume(
             )
 
     executions: dict[str, ExecutionStatus] = {}
+
+    # Activate target and its depends_on deps
     activate_execution_with_dependencies(config, target_execution, executions)
 
-    # Mark all deps as completed
+    # Also activate transitive predecessors via propagation triggers
+    for pred in _find_trigger_predecessors(config, target_execution):
+        activate_execution_with_dependencies(config, pred, executions)
+
+    # Mark all except target as completed
     for name, es in executions.items():
         if name != target_execution:
             es.state = "completed"
@@ -187,10 +194,36 @@ def rewrite_state_for_forced_resume(
                 )
             )
 
+    # Replay propagation triggers for completed predecessors to activate siblings
+    execution_graph = build_execution_graph(config)
+    activated_triggers: set[tuple[str, str | None, str]] = set()
+    for name in list(executions):
+        if executions[name].state == "completed":
+            activate_matching_triggers(
+                config, execution_graph, name, None, executions, activated_triggers,
+            )
+
     run_state.executions = executions
-    run_state.activated_triggers = set()
+    run_state.activated_triggers = activated_triggers
     save_run_state(run_state)
     LOGGER.debug("Rewrote run state for forced resume at '%s'.", target_execution + (f"/{target_task}" if target_task else ""))
+
+
+def _find_trigger_predecessors(config: Config, target_execution: str) -> set[str]:
+    """Walk backward through non-signal propagation triggers to find all transitive predecessors."""
+    predecessors: set[str] = set()
+    visited: set[str] = set()
+    queue = [target_execution]
+    while queue:
+        current = queue.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        for trigger in config.propagation_triggers:
+            if trigger.run == current and trigger.on_signal is None and trigger.after not in visited:
+                predecessors.add(trigger.after)
+                queue.append(trigger.after)
+    return predecessors
 
 
 def apply_forced_resume_if_targeted(

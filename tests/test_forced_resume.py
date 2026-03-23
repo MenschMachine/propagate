@@ -10,6 +10,7 @@ from propagate_app.models import (
     Config,
     ExecutionConfig,
     ExecutionStatus,
+    PropagationTriggerConfig,
     RunState,
     SubTaskConfig,
 )
@@ -226,6 +227,111 @@ def test_apply_forced_resume_loads_and_rewrites(tmp_path):
     assert "t1" in result.executions["B"].tasks
     assert result.executions["B"].tasks["t1"].is_completed
     assert "t2" not in result.executions["B"].tasks
+
+
+def test_rewrite_activates_siblings_via_propagation_triggers(tmp_path):
+    """Fan-out DAG: parent -> {A, B, C} via propagation triggers.
+
+    Resuming at B should mark parent as completed and activate siblings A and C
+    via trigger replay.
+    """
+    config = Config(
+        version="6",
+        agent=AgentConfig(agents={"default": "echo"}, default_agent="default"),
+        repositories={"repo": _repo()},
+        context_sources={},
+        signals={},
+        propagation_triggers=[
+            PropagationTriggerConfig(after="parent", run="A", on_signal=None),
+            PropagationTriggerConfig(after="parent", run="B", on_signal=None),
+            PropagationTriggerConfig(after="parent", run="C", on_signal=None),
+        ],
+        executions={
+            "parent": _execution("parent"),
+            "A": _execution("A"),
+            "B": _execution("B", tasks=["t1", "t2"]),
+            "C": _execution("C"),
+        },
+        config_path=tmp_path / "cfg.yaml",
+    )
+    (tmp_path / "cfg.yaml").touch()
+    state = _run_state(config)
+
+    rewrite_state_for_forced_resume(state, config, "B", "t2")
+
+    assert state.executions["parent"].state == "completed"
+    assert state.executions["B"].state == "in_progress"
+    # Siblings activated via trigger replay
+    assert "A" in state.executions
+    assert state.executions["A"].state == "pending"
+    assert "C" in state.executions
+    assert state.executions["C"].state == "pending"
+
+
+def test_rewrite_activates_transitive_trigger_predecessors(tmp_path):
+    """Chain: entry -> mid -> {target, sibling} via propagation triggers.
+
+    Resuming at target should mark entry and mid as completed, and activate
+    sibling via trigger replay from mid.
+    """
+    config = Config(
+        version="6",
+        agent=AgentConfig(agents={"default": "echo"}, default_agent="default"),
+        repositories={"repo": _repo()},
+        context_sources={},
+        signals={},
+        propagation_triggers=[
+            PropagationTriggerConfig(after="entry", run="mid", on_signal=None),
+            PropagationTriggerConfig(after="mid", run="target", on_signal=None),
+            PropagationTriggerConfig(after="mid", run="sibling", on_signal=None),
+        ],
+        executions={
+            "entry": _execution("entry"),
+            "mid": _execution("mid"),
+            "target": _execution("target"),
+            "sibling": _execution("sibling"),
+        },
+        config_path=tmp_path / "cfg.yaml",
+    )
+    (tmp_path / "cfg.yaml").touch()
+    state = _run_state(config)
+
+    rewrite_state_for_forced_resume(state, config, "target", None)
+
+    assert state.executions["entry"].state == "completed"
+    assert state.executions["mid"].state == "completed"
+    assert state.executions["target"].state == "in_progress"
+    assert state.executions["sibling"].state == "pending"
+
+
+def test_rewrite_does_not_activate_signal_gated_siblings(tmp_path):
+    """Siblings behind on_signal gates should NOT be activated by trigger replay."""
+    config = Config(
+        version="6",
+        agent=AgentConfig(agents={"default": "echo"}, default_agent="default"),
+        repositories={"repo": _repo()},
+        context_sources={},
+        signals={},
+        propagation_triggers=[
+            PropagationTriggerConfig(after="parent", run="A", on_signal=None),
+            PropagationTriggerConfig(after="parent", run="B", on_signal="some.signal"),
+        ],
+        executions={
+            "parent": _execution("parent"),
+            "A": _execution("A"),
+            "B": _execution("B"),
+        },
+        config_path=tmp_path / "cfg.yaml",
+    )
+    (tmp_path / "cfg.yaml").touch()
+    state = _run_state(config)
+
+    rewrite_state_for_forced_resume(state, config, "A", None)
+
+    assert state.executions["parent"].state == "completed"
+    assert state.executions["A"].state == "in_progress"
+    # B is behind a signal gate — should NOT be activated
+    assert "B" not in state.executions
 
 
 def test_apply_forced_resume_no_target_loads_unchanged(tmp_path):
