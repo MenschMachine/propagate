@@ -92,8 +92,11 @@ def parse_execution(
 def parse_execution_agent(execution_name: str, agent_value: Any, agent_names: set[str]) -> str | None:
     if agent_value is None:
         return None
-    if not isinstance(agent_value, str) or not agent_value.strip():
+    if not isinstance(agent_value, str):
         raise PropagateError(f"Execution '{execution_name}' 'agent' must be a non-empty string when provided.")
+    if not agent_value.strip():
+        # Empty string means no agent override — fall through to use :agent context or global default.
+        return None
     if agent_value not in agent_names:
         raise PropagateError(f"Execution '{execution_name}' references unknown agent '{agent_value}'. Available agents: {', '.join(sorted(agent_names))}.")
     return agent_value

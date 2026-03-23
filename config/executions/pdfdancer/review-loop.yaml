@@ -1,6 +1,6 @@
 "{{ execution_name }}":
   repository: "{{ repository }}"
-  agent: "{{ agent|'default' }}"
+  agent: "{{ agent| }}"
   git:
     branch:
       name_template: "{{ branch_name_template }}"

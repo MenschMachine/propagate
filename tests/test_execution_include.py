@@ -329,7 +329,7 @@ def test_parameterized_include_with_default_value_used_when_param_absent(config_
     write_include(config_dir, "review.yaml", {
         "review-loop": {
             "repository": "{{ repository }}",
-            "agent": "{{ agent|'default-agent' }}",
+            "agent": "{{ agent| }}",
             "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
         },
     })
@@ -344,7 +344,8 @@ def test_parameterized_include_with_default_value_used_when_param_absent(config_
         }],
     }
     resolved = resolve_execution_includes(executions, config_dir)
-    assert resolved["review-loop"]["agent"] == "default-agent"
+    # Empty default renders as empty string — parse_execution_agent treats this as None
+    assert resolved["review-loop"]["agent"] == ""
     assert resolved["review-loop"]["repository"] == "my-repo"
 
 
@@ -352,7 +353,7 @@ def test_parameterized_include_with_default_value_overridden_when_param_provided
     write_include(config_dir, "review.yaml", {
         "review-loop": {
             "repository": "{{ repository }}",
-            "agent": "{{ agent|'default-agent' }}",
+            "agent": "{{ agent| }}",
             "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
         },
     })
@@ -375,7 +376,7 @@ def test_parameterized_include_default_value_not_flagged_as_unused(config_dir):
     write_include(config_dir, "review.yaml", {
         "review-loop": {
             "repository": "{{ repository }}",
-            "agent": "{{ agent|'default-agent' }}",
+            "agent": "{{ agent| }}",
             "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
         },
     })
@@ -388,6 +389,6 @@ def test_parameterized_include_default_value_not_flagged_as_unused(config_dir):
             },
         }],
     }
-    # Should not raise — agent is referenced in template but uses its default
+    # Should not raise — agent is referenced in template but uses its default (empty string)
     resolved = resolve_execution_includes(executions, config_dir)
-    assert resolved["review-loop"]["agent"] == "default-agent"
+    assert resolved["review-loop"]["agent"] == ""
