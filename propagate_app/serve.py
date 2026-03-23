@@ -92,6 +92,8 @@ def _run_worker_loop(
     pub_address: str,
     shutdown: threading.Event,
     resume: bool | str = False,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
 ) -> None:
     """Attach log handler, resume if needed, enter serve loop. Cleans up on exit."""
     zmq_log_handler = ZmqLogHandler(pub_socket)
@@ -121,17 +123,17 @@ def _run_worker_loop(
             else:
                 LOGGER.info("Found existing state file, resuming previous run.")
             try:
-                _resume_run(config, signal_socket, pub_socket)
+                _resume_run(config, signal_socket, pub_socket, skip_executions=skip_executions, skip_tasks=skip_tasks)
             except PropagateError as error:
                 LOGGER.error("Resume failed: %s", error)
-        _serve_loop(config, signal_socket, shutdown, pub_socket)
+        _serve_loop(config, signal_socket, shutdown, pub_socket, skip_executions=skip_executions, skip_tasks=skip_tasks)
     finally:
         logging.getLogger().removeHandler(zmq_log_handler)
         close_pull_socket(signal_socket, address)
         close_pub_socket(pub_socket, pub_address)
 
 
-def serve_worker_command(config_value: str, resume: bool | str = False) -> int:
+def serve_worker_command(config_value: str, resume: bool | str = False, skip: list[str] | None = None) -> int:
     """Entry point for the ``serve-worker`` subcommand (spawned by coordinator)."""
     import sys
 
@@ -148,12 +150,15 @@ def serve_worker_command(config_value: str, resume: bool | str = False) -> int:
     signal_module.signal(signal_module.SIGTERM, handle_shutdown)
     signal_module.signal(signal_module.SIGINT, handle_shutdown)
 
+    from .cli import parse_and_validate_skip
+
+    skip_executions, skip_tasks = parse_and_validate_skip(skip or [], config)
     signal_socket, address, pub_socket, pub_address = _bind_worker_sockets(config)
     # Tell the coordinator we are ready.
     sys.stdout.write("READY\n")
     sys.stdout.flush()
     try:
-        _run_worker_loop(config, signal_socket, address, pub_socket, pub_address, shutdown, resume)
+        _run_worker_loop(config, signal_socket, address, pub_socket, pub_address, shutdown, resume, skip_executions=skip_executions, skip_tasks=skip_tasks)
     except KeyboardInterrupt:
         pass
     return 0
@@ -163,6 +168,7 @@ def serve_command(
     config_values: list[str],
     resume: bool | str = False,
     worker_stdout_log: str | None = None,
+    skip: list[str] | None = None,
 ) -> int:
     from .coordinator import Coordinator
 
@@ -197,7 +203,7 @@ def serve_command(
         if worker_stdout_log:
             worker_stdout_log_path = Path(worker_stdout_log).expanduser().resolve()
         coordinator = Coordinator(shutdown, worker_stdout_log_path=worker_stdout_log_path)
-        coordinator.start(config_values, resume)
+        coordinator.start(config_values, resume, skip=skip)
         coordinator.run()
         return 0
     finally:
@@ -210,6 +216,8 @@ def _resume_run(
     signal_socket: zmq.Socket | None,
     pub_socket: zmq.Socket | None = None,
     metadata: dict | None = None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
 ) -> None:
     run_state = load_run_state(config.config_path)
     active_signal = run_state.active_signal
@@ -238,6 +246,8 @@ def _resume_run(
             ),
             run_state=run_state,
             signal_socket=signal_socket,
+            skip_executions=skip_executions,
+            skip_tasks=skip_tasks,
         )
 
     _run_with_event_publish(pub_socket, signal_type, run_metadata, do_run)
@@ -248,6 +258,8 @@ def _serve_loop(
     signal_socket: zmq.Socket,
     shutdown: threading.Event,
     pub_socket: zmq.Socket | None = None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
 ) -> None:
     LOGGER.info("Serve loop started, waiting for signals.")
     while not shutdown.is_set():
@@ -257,9 +269,9 @@ def _serve_loop(
         kind, name, payload, metadata = result
         try:
             if kind == "command":
-                _handle_command(config, name, signal_socket, pub_socket, metadata)
+                _handle_command(config, name, signal_socket, pub_socket, metadata, skip_executions=skip_executions, skip_tasks=skip_tasks)
             else:
-                _handle_incoming_signal(config, name, payload, signal_socket, pub_socket, metadata)
+                _handle_incoming_signal(config, name, payload, signal_socket, pub_socket, metadata, skip_executions=skip_executions, skip_tasks=skip_tasks)
         except KeyboardInterrupt:
             LOGGER.info("Interrupted during run, exiting serve loop.")
             return
@@ -274,11 +286,13 @@ def _handle_command(
     signal_socket: zmq.Socket,
     pub_socket: zmq.Socket | None = None,
     metadata: dict | None = None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
 ) -> None:
     if command == "resume":
         if state_file_path(config.config_path).exists():
             LOGGER.info("Received resume command, resuming previous run.")
-            _resume_run(config, signal_socket, pub_socket, metadata=metadata)
+            _resume_run(config, signal_socket, pub_socket, metadata=metadata, skip_executions=skip_executions, skip_tasks=skip_tasks)
         else:
             LOGGER.warning("Received resume command but no state file found; nothing to resume.")
             if pub_socket is not None:
@@ -298,6 +312,8 @@ def _handle_incoming_signal(
     signal_socket: zmq.Socket,
     pub_socket: zmq.Socket | None = None,
     metadata: dict | None = None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
 ) -> None:
     if signal_type not in config.signals:
         LOGGER.warning("Received unknown signal '%s'; ignoring.", signal_type)
@@ -344,6 +360,8 @@ def _handle_incoming_signal(
             ),
             run_state=run_state,
             signal_socket=signal_socket,
+            skip_executions=skip_executions,
+            skip_tasks=skip_tasks,
         )
 
     _run_with_event_publish(pub_socket, signal_type, run_metadata, do_run)

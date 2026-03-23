@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--signal-payload", help="Signal payload as a YAML or JSON mapping. Requires --signal.")
     run_parser.add_argument("--signal-file", help="Path to a YAML or JSON signal document containing 'type' and optional 'payload'.")
     run_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
+    run_parser.add_argument("--skip", action="append", default=[], help="Skip an execution or task (execution_name or execution_name/task_id). Repeatable.")
     run_parser.add_argument("--stop-after", default=None, help="Stop the run after the named execution completes.")
     send_signal_parser = subparsers.add_parser("send-signal", help="Send a signal to a running propagate instance.")
     send_signal_parser.add_argument("--project", required=True, help="Project name to send the signal to.")
@@ -68,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="Run as a long-lived server, listening for signals.")
     serve_parser.add_argument("--config", action="append", default=[], help="Path to a Propagate YAML config (repeatable).")
     serve_parser.add_argument("--resume", nargs="?", const=True, default=False, help="Resume a previously interrupted run, optionally from a specific execution/task.")
+    serve_parser.add_argument("--skip", action="append", default=[], help="Skip an execution or task (execution_name or execution_name/task_id). Repeatable.")
     serve_parser.add_argument(
         "--worker-stdout-log",
         help="Write worker stdout transcripts to this file instead of mirroring them to stdout.",
@@ -75,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     worker_parser = subparsers.add_parser("serve-worker", help=argparse.SUPPRESS)
     worker_parser.add_argument("--config", required=True)
     worker_parser.add_argument("--resume", nargs="?", const=True, default=False)
+    worker_parser.add_argument("--skip", action="append", default=[])
     clear_parser = subparsers.add_parser("clear", help="Clear all context and run state.")
     clear_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     clear_parser.add_argument("-f", "--force", action="store_true", default=False, help="Also delete cloned repositories.")
@@ -119,14 +122,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
     if args.command == "run":
-        return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume, args.stop_after)
+        return run_command(args.config, args.execution, args.signal, args.signal_payload, args.signal_file, args.resume, args.stop_after, args.skip)
     if args.command == "send-signal":
         return send_signal_command(args.project, args.signal, args.signal_payload, args.signal_file)
     if args.command == "serve":
-        return serve_command(args.config, resume=args.resume, worker_stdout_log=args.worker_stdout_log)
+        return serve_command(args.config, resume=args.resume, worker_stdout_log=args.worker_stdout_log, skip=args.skip)
     if args.command == "serve-worker":
         from .serve import serve_worker_command
-        return serve_worker_command(args.config, resume=args.resume)
+        return serve_worker_command(args.config, resume=args.resume, skip=args.skip)
     if args.command == "clear":
         return clear_command(args.config, force=args.force)
     if args.command == "shell":
@@ -190,21 +193,23 @@ def run_command(
     signal_file: str | None,
     resume: bool | str = False,
     stop_after: str | None = None,
+    skip: list[str] | None = None,
 ) -> int:
     config_path = Path(config_value).expanduser()
     config = load_config(config_path)
     if stop_after is not None:
         _validate_stop_after(stop_after, config)
+    skip_executions, skip_tasks = parse_and_validate_skip(skip or [], config)
     if resume:
         if any(v is not None for v in (execution_name, signal_name, signal_payload, signal_file)):
             raise PropagateError("--resume cannot be combined with --execution, --signal, --signal-payload, or --signal-file.")
         if isinstance(resume, str):
-            return _run_resume(config, resume_target=resume, stop_after=stop_after)
-        return _run_resume(config, stop_after=stop_after)
-    return _run_fresh(config, execution_name, signal_name, signal_payload, signal_file, stop_after=stop_after)
+            return _run_resume(config, resume_target=resume, stop_after=stop_after, skip_executions=skip_executions, skip_tasks=skip_tasks)
+        return _run_resume(config, stop_after=stop_after, skip_executions=skip_executions, skip_tasks=skip_tasks)
+    return _run_fresh(config, execution_name, signal_name, signal_payload, signal_file, stop_after=stop_after, skip_executions=skip_executions, skip_tasks=skip_tasks)
 
 
-def _run_resume(config: Config, resume_target: str | None = None, stop_after: str | None = None) -> int:
+def _run_resume(config: Config, resume_target: str | None = None, stop_after: str | None = None, skip_executions: set[str] | None = None, skip_tasks: dict[str, set[str]] | None = None) -> int:
     config_path = config.config_path
     signal_socket = None
     address = None
@@ -231,6 +236,8 @@ def _run_resume(config: Config, resume_target: str | None = None, stop_after: st
             run_state=run_state,
             signal_socket=signal_socket,
             stop_after=stop_after,
+            skip_executions=skip_executions,
+            skip_tasks=skip_tasks,
         )
         return 0
     except PropagateError as error:
@@ -252,6 +259,8 @@ def _run_fresh(
     signal_payload: str | None,
     signal_file: str | None,
     stop_after: str | None = None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
 ) -> int:
     config_path = config.config_path
     active_signal = parse_active_signal(signal_name, signal_payload, signal_file, config.signals)
@@ -286,6 +295,8 @@ def _run_fresh(
             run_state=run_state,
             signal_socket=signal_socket,
             stop_after=stop_after,
+            skip_executions=skip_executions,
+            skip_tasks=skip_tasks,
         )
         return 0
     except PropagateError as error:
@@ -380,6 +391,29 @@ def validate_command(config_value: str) -> int:
 
 def fail_command(kind: str, message: str) -> NoReturn:
     raise build_named_error(kind, message)
+
+
+def parse_and_validate_skip(
+    skip_values: list[str],
+    config: Config,
+) -> tuple[set[str], dict[str, set[str]]]:
+    """Parse --skip values into (skip_executions, skip_tasks) and validate against config."""
+    skip_executions: set[str] = set()
+    skip_tasks: dict[str, set[str]] = {}
+    for value in skip_values:
+        parts = value.split("/", 1)
+        exec_name = parts[0]
+        if exec_name not in config.executions:
+            raise PropagateError(f"--skip references unknown execution '{exec_name}'.")
+        if len(parts) == 1:
+            skip_executions.add(exec_name)
+        else:
+            task_id = parts[1]
+            task_ids = [t.task_id for t in config.executions[exec_name].sub_tasks]
+            if task_id not in task_ids:
+                raise PropagateError(f"--skip references unknown task '{task_id}' in execution '{exec_name}'.")
+            skip_tasks.setdefault(exec_name, set()).add(task_id)
+    return skip_executions, skip_tasks
 
 
 def _validate_stop_after(stop_after: str, config: Config) -> None:

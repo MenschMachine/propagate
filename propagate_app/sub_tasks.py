@@ -50,6 +50,7 @@ def run_execution_sub_tasks(
     on_phase_completed: Callable[[str, str, str], None] | None = None,
     on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
     on_tasks_reset: Callable[[str, list[str]], None] | None = None,
+    skip_task_ids: set[str] | None = None,
 ) -> RuntimeContext:
     current_runtime_context = runtime_context
     task_id_to_index = {t.task_id: i for i, t in enumerate(execution.sub_tasks)}
@@ -60,6 +61,10 @@ def run_execution_sub_tasks(
         task_status = execution_status.tasks.get(sub_task.task_id) if execution_status is not None else None
         if task_status is not None and task_status.phases.after_completed:
             LOGGER.info("Skipping already completed sub-task '%s' for execution '%s'.", sub_task.task_id, execution.name)
+            task_index += 1
+            continue
+        if skip_task_ids is not None and sub_task.task_id in skip_task_ids:
+            LOGGER.info("Skipping sub-task '%s' for execution '%s' (--skip).", sub_task.task_id, execution.name)
             task_index += 1
             continue
         if sub_task.when is not None and not evaluate_when_condition(sub_task.when, current_runtime_context):

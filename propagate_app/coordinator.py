@@ -84,7 +84,7 @@ class Coordinator:
             self._worker_stdout_logger = logger
             self._worker_stdout_handler = handler
 
-    def start(self, initial_configs: list[str], resume: bool | str = False) -> None:
+    def start(self, initial_configs: list[str], resume: bool | str = False, skip: list[str] | None = None) -> None:
         # Bind coordinator sockets first so clients (webhook, telegram, shell)
         # can connect immediately, even before workers are ready.
         self._pull_socket = bind_pull_socket(COORDINATOR_ADDRESS)
@@ -94,7 +94,7 @@ class Coordinator:
 
         for config_value in initial_configs:
             config_path = Path(config_value).expanduser().resolve()
-            self._load_worker(config_path, resume)
+            self._load_worker(config_path, resume, skip=skip)
 
     def run(self) -> None:
 
@@ -274,7 +274,7 @@ class Coordinator:
                 except zmq.ZMQError:
                     pass
 
-    def _load_worker(self, config_path: Path, resume: bool | str = False) -> None:
+    def _load_worker(self, config_path: Path, resume: bool | str = False, skip: list[str] | None = None) -> None:
         config = load_config(config_path)
         name = config_path.stem
         with self._lock:
@@ -288,6 +288,8 @@ class Coordinator:
                 cmd.extend(["--resume", resume])
             else:
                 cmd.append("--resume")
+        for skip_value in (skip or []):
+            cmd.extend(["--skip", skip_value])
 
         process = subprocess.Popen(
             cmd,

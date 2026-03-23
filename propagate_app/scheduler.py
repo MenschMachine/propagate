@@ -35,6 +35,8 @@ def run_execution_schedule(
     run_state: RunState | None = None,
     signal_socket: zmq.Socket | None = None,
     stop_after: str | None = None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
 ) -> None:
     execution_graph = build_execution_graph(config)
     received_signal_types: set[str] = set()
@@ -71,7 +73,7 @@ def run_execution_schedule(
                 current_runtime_context,
                 run_state,
             )
-        execution_name = select_next_runnable_execution(config, execution_graph, executions)
+        execution_name = select_next_runnable_execution(config, execution_graph, executions, skip_executions)
         if execution_name is None:
             if reconcile_pending_signals(config, execution_graph, executions, received_signal_types, reconciled_triggers):
                 continue
@@ -88,7 +90,8 @@ def run_execution_schedule(
                 continue
             completed = _completed_names(executions)
             active = _active_names(executions)
-            if completed == active:
+            remaining = active - completed
+            if not remaining or _all_blocked_by_skip(remaining, skip_executions, config):
                 if run_state is not None:
                     clear_run_state(run_state.config_path)
                 return
@@ -135,6 +138,7 @@ def run_execution_schedule(
                 lambda updated_context: _sync_and_save(run_state, updated_context, received_signal_types)
                 if run_state is not None else None,
                 on_tasks_reset,
+                skip_task_ids=skip_tasks.get(execution.name) if skip_tasks else None,
             )
         except PropagateError as error:
             raise wrap_execution_runtime_error(execution, error) from error
@@ -270,11 +274,13 @@ def select_next_runnable_execution(
     config: Config,
     execution_graph: ExecutionGraph,
     executions: dict[str, ExecutionStatus],
+    skip_executions: set[str] | None = None,
 ) -> str | None:
     runnable_names = [
         execution_name
         for execution_name in execution_graph.execution_order
         if execution_is_runnable(config.executions[execution_name], executions)
+        and (skip_executions is None or execution_name not in skip_executions)
     ]
     if not runnable_names:
         return None
@@ -436,6 +442,38 @@ def _pending_signal_types(
                 continue
             pending.add(trigger.on_signal)
     return pending
+
+
+def _all_blocked_by_skip(
+    remaining: set[str],
+    skip_executions: set[str] | None,
+    config: Config,
+) -> bool:
+    """Return True if every execution in *remaining* is either skipped or depends on a skipped execution."""
+    if not skip_executions:
+        return False
+    for name in remaining:
+        if name in skip_executions:
+            continue
+        if not _depends_on_skipped(name, skip_executions, config):
+            return False
+    return True
+
+
+def _depends_on_skipped(name: str, skip_executions: set[str], config: Config) -> bool:
+    """Return True if *name* transitively depends on any skipped execution."""
+    visited: set[str] = set()
+    stack = list(config.executions[name].depends_on)
+    while stack:
+        dep = stack.pop()
+        if dep in visited:
+            continue
+        visited.add(dep)
+        if dep in skip_executions:
+            return True
+        if dep in config.executions:
+            stack.extend(config.executions[dep].depends_on)
+    return False
 
 
 def _warn_if_stop_after_unreachable(

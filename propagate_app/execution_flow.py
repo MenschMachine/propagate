@@ -15,6 +15,7 @@ def run_configured_execution(
     on_phase_completed: Callable[[str, str, str], None] | None = None,
     on_runtime_context_updated: Callable[[RuntimeContext], None] | None = None,
     on_tasks_reset: Callable[[str, list[str]], None] | None = None,
+    skip_task_ids: set[str] | None = None,
 ) -> RuntimeContext:
     LOGGER.info("Running execution '%s' with %d sub-task(s).", execution.name, len(execution.sub_tasks))
     is_resuming = execution_status is not None and execution_status.state == "in_progress"
@@ -38,6 +39,7 @@ def run_configured_execution(
             on_phase_completed,
             on_runtime_context_updated,
             on_tasks_reset,
+            skip_task_ids=skip_task_ids,
         )
         if execution_status is not None and execution_status.after_completed:
             LOGGER.info("Skipping already completed execution 'after' hooks for '%s'.", execution.name)
