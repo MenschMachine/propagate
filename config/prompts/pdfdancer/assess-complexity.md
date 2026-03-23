@@ -1,4 +1,4 @@
-Assess the complexity of the upstream change that triggered this workflow.
+Assess the complexity of the downstream implementation work required by this workflow.
 
 Inputs:
 
@@ -9,26 +9,29 @@ Inputs:
 
 Tasks:
 
-1. Analyze the diff to judge what kind of change it is:
+1. Read the upstream PR to understand what changed.
 
-   - Is this a **core** change (touches data models, API contracts, core business logic, or requires multi-file coordination)?
-   - Or is this an **on-top** addition (slots into an existing API, adds new endpoints/methods without changing existing contracts)?
+2. Assess the downstream work required. Consider:
+   - For SDK implementations: how many SDKs need updating? Do the changes require new API surface, data model translations, or significant logic in each SDK?
+   - For docs/examples: is the downstream documentation complex (new concepts, new API surfaces) or straightforward?
+   - Is this a FULL pipeline (SDK + examples + docs) or DOCS-only?
 
-2. Decision criteria — set **agent-hard** if ANY of:
+3. Decision criteria — set **agent-hard** if ANY of:
 
-   - The change modifies data models, API schemas, or wire formats consumed by clients
-   - The change touches core business logic or introduces architectural changes
-   - The change requires coordinated updates across 3+ files for correctness
-   - The change is a refactor with non-trivial migration implications
-   - Despite being small, the change is high-risk (e.g., security-sensitive, auth, data handling)
+   - The downstream implementation requires significant logic in multiple SDKs (not just passthrough calls)
+   - The upstream change introduces new data models, API contracts, or wire formats that need careful handling across SDKs
+   - The downstream work spans FULL pipeline (multiple SDKs + examples + docs) with non-trivial coordination
+   - Despite being a small upstream PR, the downstream work is substantial (new concepts requiring careful SDK design)
+   - High risk of downstream regressions if done hastily (e.g., security-sensitive, auth changes)
 
    Set **agent-easy** if ALL of:
 
-   - The change is a pure addition — new endpoints, new SDK methods, new features — that do NOT modify existing contracts
-   - No coordinated cross-file changes needed (a few independent file additions are fine)
-   - Low risk of regressions — the existing system is not modified, only extended
+   - The downstream work is straightforward: adding new endpoints, new SDK methods, or new features that slot into existing patterns
+   - Each SDK change is independent and follows existing patterns (no new abstractions needed)
+   - DOCS-only pipeline or the new surface area is simple to document
+   - Low risk — the change is additive and doesn't alter existing behavior clients depend on
 
-3. Write the decision globally so all downstream executions use it:
+4. Write the decision globally so all downstream executions use it:
 
 ```bash
 propagate context set --global :agent agent-easy
