@@ -9,11 +9,11 @@ _current_project_stem: contextvars.ContextVar[str] = contextvars.ContextVar("pro
 
 
 class _ProjectStemFormatter(logging.Formatter):
-    """Formatter that safely handles project_stem from context var."""
+    """Formatter that safely handles project_stem from context var with fixed-width fields."""
 
     def format(self, record: logging.LogRecord) -> str:
-        if not hasattr(record, "project_stem"):
-            record.project_stem = _current_project_stem.get()
+        record.project_stem = str(_current_project_stem.get())[:12].ljust(12)
+        record.threadName = str(record.threadName)[:9].ljust(9)
         return super().format(record)
 
 

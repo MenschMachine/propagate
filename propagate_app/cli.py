@@ -84,6 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("shell", help="Interactive REPL for a running propagate instance.")
     validate_parser = subparsers.add_parser("validate", help="Validate a config file without running.")
     validate_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
+    visualize_parser = subparsers.add_parser("visualize", help="Visualize the execution DAG.")
+    visualize_parser.add_argument("--config", required=True, help="Path to the Propagate YAML config.")
     fail_parser = subparsers.add_parser("fail", help="Abort the current run with a structured failure kind.")
     fail_parser.add_argument("kind", help="Failure kind, for example 'unable-to-implement'.")
     fail_parser.add_argument("message", help="Human-readable failure detail.")
@@ -150,6 +152,9 @@ def dispatch_command(args: argparse.Namespace, working_dir: Path) -> int | None:
         return shell_command()
     if args.command == "validate":
         return validate_command(args.config)
+    if args.command == "visualize":
+        from .visualize import visualize_command
+        return visualize_command(args.config)
     if args.command == "fail":
         return fail_command(args.kind, args.message)
     if args.command == "context":
