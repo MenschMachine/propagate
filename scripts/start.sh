@@ -24,6 +24,7 @@ ALLOWED_USERS=""
 DEBUG=false
 RESUME=""
 WORKER_STDOUT_LOG=""
+SKIPS=()
 
 usage() {
     cat <<EOF
@@ -41,6 +42,7 @@ Options:
   --token-env <var>     Env var containing the Telegram bot token (default: TELEGRAM_BOT_TOKEN)
   --allowed-users <ids> Comma-separated Telegram user IDs
   --resume [target]     Resume a previous run, optionally from a specific execution/task (e.g. suggest/wait-for-verdict)
+  --skip <target>       Skip an execution or task (execution_name or execution_name/task_id, repeatable)
   --worker-stdout-log <path>
                         Write worker stdout transcripts to this file
   --debug               Enable debug logging on all services
@@ -60,6 +62,7 @@ while [[ $# -gt 0 ]]; do
         --token)      TOKEN="$2"; shift 2 ;;
         --token-env)  TOKEN_ENV="$2"; shift 2 ;;
         --allowed-users) ALLOWED_USERS="$2"; shift 2 ;;
+        --skip)           SKIPS+=("$2"); shift 2 ;;
         --worker-stdout-log) WORKER_STDOUT_LOG="$2"; shift 2 ;;
         --resume)
             if [[ $# -ge 2 && ! "$2" =~ ^-- ]]; then
@@ -133,6 +136,9 @@ fi
 if [[ -n "$WORKER_STDOUT_LOG" ]]; then
     SERVE_ARGS+=(--worker-stdout-log "$WORKER_STDOUT_LOG")
 fi
+for skip_val in "${SKIPS[@]}"; do
+    SERVE_ARGS+=(--skip "$skip_val")
+done
 
 # Webhook connects to coordinator. No --config or --project needed —
 # coordinator routes signals by matching repository in the payload.
