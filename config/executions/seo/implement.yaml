@@ -32,7 +32,7 @@ implement:
         - git:pr
     - id: wait-for-verdict
       after:
-        - git:pr-comments-list :review-comments
+        - git:pr-comments-list :pr-comments
       wait_for_signal: pull_request.labeled
       routes:
         - when: { label: "changes_required" }

@@ -222,3 +222,27 @@
       action:
         type: string
     check: "! gh issue view {issue_number} --repo {repository} --json labels --jq '.labels[].name' | grep -q '^{label}$'"
+
+  pull_request_review_comment.created:
+    payload:
+      repository:
+        type: string
+        required: true
+      pr_number:
+        type: number
+        required: true
+      path:
+        type: string
+        required: true
+      line:
+        type: number
+        required: true
+      body:
+        type: string
+        required: true
+      author:
+        type: string
+      sender:
+        type: string
+      action:
+        type: string

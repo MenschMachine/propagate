@@ -24,8 +24,10 @@ Always inspect prior revision context before making changes:
 propagate context get :revision-reason || true
 propagate context get :review-findings || true
 propagate context get :review-check-results || true
-propagate context get :review-comments || true
+propagate context get :pr-comments || true
 ```
+
+The `:pr-comments` value is a JSON object with `comments` (issue-style) and `review_comments` (line-specific diff comments).
 
 Keep changes scoped to Java examples or sample applications that must reflect the approved client changes.
 Run the examples you change and make sure they work.

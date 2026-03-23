@@ -61,6 +61,7 @@ GitHub events are mapped to propagate signal names using the convention `{event}
 | `issues` | `unlabeled` | `issues.unlabeled` |
 | `push` | — | `push` |
 | `issue_comment` | `created` | `issue_comment.created` |
+| `pull_request_review_comment` | `created` | `pull_request_review_comment.created` |
 
 Unsupported event types are ignored with a 200 response.
 
@@ -110,6 +111,19 @@ Unsupported event types are ignored with a 200 response.
 | `comment_body` | Comment text |
 | `is_pull_request` | `true` if comment is on a PR |
 | `sender` | GitHub username |
+
+**pull_request_review_comment.created:**
+
+| Field | Description |
+|-------|-------------|
+| `repository` | `owner/repo` |
+| `pr_number` | Pull request number |
+| `path` | File path in the PR diff |
+| `line` | Line number in the diff |
+| `body` | Comment text |
+| `author` | GitHub username of comment author |
+| `sender` | GitHub username who triggered the event |
+| `action` | GitHub action (created, edited, etc.) |
 
 ---
 

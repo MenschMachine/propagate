@@ -6,7 +6,7 @@ from typing import Any
 
 logger = logging.getLogger("propagate.webhook")
 
-SUPPORTED_EVENT_TYPES = {"pull_request", "push", "issues", "issue_comment"}
+SUPPORTED_EVENT_TYPES = {"pull_request", "push", "issues", "issue_comment", "pull_request_review_comment"}
 
 
 def parse_github_event(event_type: str, body: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
@@ -84,9 +84,26 @@ def extract_issues_payload(body: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def extract_pull_request_review_comment_payload(body: dict[str, Any]) -> dict[str, Any]:
+    comment = body.get("comment", {})
+    pr = body.get("pull_request", {})
+    repo = body.get("repository", {})
+    return {
+        "repository": repo.get("full_name", ""),
+        "pr_number": pr.get("number", 0),
+        "path": comment.get("path", ""),
+        "line": comment.get("line", 0),
+        "body": comment.get("body", ""),
+        "author": comment.get("user", {}).get("login", ""),
+        "action": body.get("action", ""),
+        "sender": body.get("sender", {}).get("login", ""),
+    }
+
+
 _EXTRACTORS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "pull_request": extract_pull_request_payload,
     "push": extract_push_payload,
     "issues": extract_issues_payload,
     "issue_comment": extract_issue_comment_payload,
+    "pull_request_review_comment": extract_pull_request_review_comment_payload,
 }

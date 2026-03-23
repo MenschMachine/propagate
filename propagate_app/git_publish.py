@@ -268,15 +268,42 @@ def add_pr_comment(body: str, working_dir: Path) -> None:
 
 
 def list_pr_comments(working_dir: Path) -> str:
-    LOGGER.debug("Listing PR comments.")
-    result = run_process_command(
+    """Fetch all PR comments (regular comments + line-specific review comments).
+
+    Returns JSON object with 'comments' (issue-style PR comments) and
+    'review_comments' (line-specific diff comments).
+    """
+    LOGGER.debug("Listing PR comments (including review comments).")
+    # Fetch regular PR comments
+    comments_result = run_process_command(
         ["gh", "pr", "view", "--json", "comments"],
         working_dir,
         failure_message="Failed to list PR comments.",
         start_failure_message="Failed to start gh pr view --json comments: {error}",
         capture_output=True,
     )
-    return result.stdout
+    # Fetch line-specific review comments
+    pr_view = run_process_command(
+        ["gh", "pr", "view", "--json", "number", "-q", ".number"],
+        working_dir,
+        failure_message="Failed to get PR number for review comments.",
+        start_failure_message="Failed to start gh pr view for PR number: {error}",
+        capture_output=True,
+    )
+    pr_number = pr_view.stdout.strip()
+    review_comments_result = run_process_command(
+        ["gh", "api", f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments"],
+        working_dir,
+        failure_message="Failed to list PR review comments.",
+        start_failure_message="Failed to start gh api for PR review comments: {error}",
+        capture_output=True,
+    )
+    # Combine both into a single object
+    combined = {
+        "comments": json.loads(comments_result.stdout).get("comments", []),
+        "review_comments": json.loads(review_comments_result.stdout),
+    }
+    return json.dumps(combined)
 
 
 _FAILURE_BUCKETS = {"fail", "cancel"}

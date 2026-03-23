@@ -4,9 +4,13 @@
 
 Before doing anything else, run:
 ```bash
-propagate context get :review-comments
+propagate context get :pr-comments
 ```
-If this returns review comments, they are the reviewer's feedback on your previous implementation. Address every comment — fix what was asked, revert what was rejected, and note what you changed. This takes priority over everything below.
+This returns a JSON object with two keys:
+- `comments`: issue-style PR comments (general feedback on the PR)
+- `review_comments`: line-specific diff comments (reviewer feedback on specific lines)
+
+If there are review_comments, they are the reviewer's feedback on your previous implementation. Address every comment — fix what was asked, revert what was rejected, and note what you changed. This takes priority over everything below.
 
 ---
 

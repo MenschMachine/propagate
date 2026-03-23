@@ -228,3 +228,36 @@ def test_unsupported_event_returns_none():
 def test_ping_event_returns_none():
     result = parse_github_event("ping", {"zen": "Keep it simple"})
     assert result is None
+
+
+def test_pull_request_review_comment_created():
+    body = {
+        "action": "created",
+        "comment": {
+            "id": 1,
+            "body": "Consider adding alt text to this image",
+            "path": "src/components/Hero.tsx",
+            "line": 42,
+            "commit_id": "abc123",
+            "user": {"login": "reviewer"},
+        },
+        "pull_request": {
+            "number": 123,
+            "head": {"ref": "feature-branch"},
+            "base": {"ref": "main"},
+        },
+        "repository": {"full_name": "owner/repo"},
+        "sender": {"login": "reviewer"},
+    }
+    result = parse_github_event("pull_request_review_comment", body)
+    assert result is not None
+    signal_name, payload = result
+    assert signal_name == "pull_request_review_comment.created"
+    assert payload["repository"] == "owner/repo"
+    assert payload["pr_number"] == 123
+    assert payload["path"] == "src/components/Hero.tsx"
+    assert payload["line"] == 42
+    assert payload["body"] == "Consider adding alt text to this image"
+    assert payload["author"] == "reviewer"
+    assert payload["sender"] == "reviewer"
+    assert payload["action"] == "created"

@@ -14,8 +14,10 @@ Always inspect prior revision context before making changes:
 propagate context get :revision-reason || true
 propagate context get :review-findings || true
 propagate context get :review-check-results || true
-propagate context get :review-comments || true
+propagate context get :pr-comments || true
 ```
+
+The `:pr-comments` value is a JSON object with `comments` (issue-style) and `review_comments` (line-specific diff comments).
 
 Requirements:
 
