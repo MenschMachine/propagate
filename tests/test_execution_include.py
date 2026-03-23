@@ -323,3 +323,71 @@ def test_parameterized_include_unused_parameter_raises(config_dir):
     }
     with pytest.raises(PropagateError, match="unused template parameters: unused_value"):
         resolve_execution_includes(executions, config_dir)
+
+
+def test_parameterized_include_with_default_value_used_when_param_absent(config_dir):
+    write_include(config_dir, "review.yaml", {
+        "review-loop": {
+            "repository": "{{ repository }}",
+            "agent": "{{ agent|'default-agent' }}",
+            "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
+        },
+    })
+    executions = {
+        "include": [{
+            "path": "signals/review.yaml",
+            "with": {
+                "repository": "my-repo",
+                "implement_prompt": "./prompts/implement.md",
+                # agent not passed — should use default
+            },
+        }],
+    }
+    resolved = resolve_execution_includes(executions, config_dir)
+    assert resolved["review-loop"]["agent"] == "default-agent"
+    assert resolved["review-loop"]["repository"] == "my-repo"
+
+
+def test_parameterized_include_with_default_value_overridden_when_param_provided(config_dir):
+    write_include(config_dir, "review.yaml", {
+        "review-loop": {
+            "repository": "{{ repository }}",
+            "agent": "{{ agent|'default-agent' }}",
+            "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
+        },
+    })
+    executions = {
+        "include": [{
+            "path": "signals/review.yaml",
+            "with": {
+                "repository": "my-repo",
+                "agent": "custom-agent",
+                "implement_prompt": "./prompts/implement.md",
+            },
+        }],
+    }
+    resolved = resolve_execution_includes(executions, config_dir)
+    assert resolved["review-loop"]["agent"] == "custom-agent"
+
+
+def test_parameterized_include_default_value_not_flagged_as_unused(config_dir):
+    """A param with a default that isn't passed should not cause 'unused param' error."""
+    write_include(config_dir, "review.yaml", {
+        "review-loop": {
+            "repository": "{{ repository }}",
+            "agent": "{{ agent|'default-agent' }}",
+            "sub_tasks": [{"id": "implement", "prompt": "{{ implement_prompt }}"}],
+        },
+    })
+    executions = {
+        "include": [{
+            "path": "signals/review.yaml",
+            "with": {
+                "repository": "my-repo",
+                "implement_prompt": "./prompts/implement.md",
+            },
+        }],
+    }
+    # Should not raise — agent is referenced in template but uses its default
+    resolved = resolve_execution_includes(executions, config_dir)
+    assert resolved["review-loop"]["agent"] == "default-agent"

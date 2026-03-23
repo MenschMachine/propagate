@@ -14,6 +14,7 @@ from .validation import validate_allowed_keys, validate_context_source_name
 
 _PLACEHOLDER_PATTERN: Pattern[str] = re.compile(r"{{\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*}}")
 _FULL_PLACEHOLDER_PATTERN: Pattern[str] = re.compile(r"^\s*{{\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*}}\s*$")
+_FULL_PLACEHOLDER_WITH_DEFAULT_PATTERN: Pattern[str] = re.compile(r"^\s*{{\s*([A-Za-z0-9][A-Za-z0-9._-]*)\|([^}]+)}}\s*$")
 _ScalarParameter = str | int | float | bool
 _ParameterValue = _ScalarParameter | list[str] | None
 
@@ -169,6 +170,16 @@ def render_included_value(
             raise PropagateError(f"Include file {source_path} references unknown template parameter '{parameter_name}'.")
         used_parameters.add(parameter_name)
         return parameters[parameter_name]
+    with_default_match = _FULL_PLACEHOLDER_WITH_DEFAULT_PATTERN.fullmatch(value)
+    if with_default_match is not None:
+        parameter_name = with_default_match.group(1)
+        default_value = with_default_match.group(2).strip()
+        if default_value.startswith(("'", '"')) and default_value.endswith(("'", '"')) and len(default_value) >= 2:
+            default_value = default_value[1:-1]
+        used_parameters.add(parameter_name)
+        if parameter_name in parameters:
+            return parameters[parameter_name]
+        return default_value
 
     def replace_placeholder(match: re.Match[str]) -> str:
         parameter_name = match.group(1)
@@ -203,6 +214,6 @@ def _validate_template_syntax(value: str, source_path: Path) -> None:
         if end == -1:
             raise PropagateError(f"Include file {source_path} contains invalid template placeholder syntax.")
         candidate = value[start:end + 2]
-        if _PLACEHOLDER_PATTERN.fullmatch(candidate) is None:
+        if _PLACEHOLDER_PATTERN.fullmatch(candidate) is None and _FULL_PLACEHOLDER_WITH_DEFAULT_PATTERN.fullmatch(candidate) is None:
             raise PropagateError(f"Include file {source_path} contains invalid template placeholder syntax.")
         index = end + 2
