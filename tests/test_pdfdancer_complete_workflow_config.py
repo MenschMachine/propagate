@@ -56,15 +56,15 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
 
         triage = config.executions["triage-backend-pr"]
         self.assertEqual(triage.repository, "pdfdancer-backend")
-        self.assertEqual(triage.signals[0].signal_name, "pull_request.closed")
+        self.assertEqual(triage.signals[0].signal_name, "pull_request.labeled")
         self.assertEqual(
             triage.signals[0].when,
-            {"repository": "MenschMachine/pdfdancer-backend", "merged": True},
+            {"repository": "MenschMachine/pdfdancer-backend", "label": "propagate"},
         )
         self.assertEqual([task.task_id for task in triage.sub_tasks], ["validate-backend-pr", "decide-pipeline"])
         self.assertEqual(
             triage.sub_tasks[0].before,
-            ["validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=signal.pr_number require_merged=true"],
+            ["validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=signal.pr_number"],
         )
 
         triage_api = config.executions["triage-api-pr"]

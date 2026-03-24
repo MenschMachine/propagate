@@ -1,9 +1,9 @@
-# Complete downstream workflow for a merged `pdfdancer-backend` PR or a labeled open
+# Complete downstream workflow for a labeled `pdfdancer-backend` PR or a labeled open
 # `pdfdancer-api` PR.
 #
 # Trigger semantics:
 # - This config starts from either:
-#   - `pull_request.closed` on `MenschMachine/pdfdancer-backend` with `merged=true`
+#   - `pull_request.labeled` on `MenschMachine/pdfdancer-backend` with `label=propagate`
 #   - `pull_request.labeled` on `MenschMachine/pdfdancer-api` with `label=propagate`
 #     while the PR is still open
 # - Review-loop labels such as `approved` and `changes_required` are only used for the
@@ -257,14 +257,14 @@ executions:
   triage-backend-pr:
     repository: pdfdancer-backend
     signals:
-      - signal: pull_request.closed
+      - signal: pull_request.labeled
         when:
           repository: MenschMachine/pdfdancer-backend
-          merged: true
+          label: propagate
     sub_tasks:
       - id: validate-backend-pr
         before:
-          - validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=signal.pr_number require_merged=true
+          - validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=signal.pr_number
       - id: decide-pipeline
         prompt: ./prompts/pdfdancer/decide-backend-pipeline.md
 

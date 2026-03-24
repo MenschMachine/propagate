@@ -1,32 +1,32 @@
-# Testing `pdfdancer-complete-workflow` Without Merging Again
+# Testing `pdfdancer-complete-workflow` Without Waiting for Merge
 
 This bundle lets you start the workflow from a local signal file instead of waiting for a real GitHub webhook.
 
-Use an already merged `MenschMachine/pdfdancer-backend` PR number so the prompts can still run their `gh pr view` /
+Use an open `MenschMachine/pdfdancer-backend` PR with the `propagate` label so the prompts can still run their `gh pr view` /
 `gh pr diff` commands successfully.
 
-## 1. Pick a real merged backend PR number
+## 1. Pick a real open backend PR number
 
 Find one:
 
 ```bash
-gh pr list --repo MenschMachine/pdfdancer-backend --state merged --limit 10
+gh pr list --repo MenschMachine/pdfdancer-backend --state open --limit 10
 ```
 
 Take one PR number from that list and replace `123` in the sample signal files below.
 
-## 2. Start from the merged-PR signal file
+## 2. Start from the labeled-PR signal file
 
 Edit:
 
-- `signals/backend-pr-merged.yaml`
+- `signals/backend-pr-labeled.yaml`
 
 Then run:
 
 ```bash
 venv/bin/propagate run \
   --config config/pdfdancer-complete-workflow.yaml \
-  --signal-file config/examples/pdfdancer-complete-workflow/signals/backend-pr-merged.yaml
+  --signal-file config/examples/pdfdancer-complete-workflow/signals/backend-pr-labeled.yaml
 ```
 
 This exercises:
@@ -36,7 +36,7 @@ This exercises:
 - backend validation
 - pipeline decision
 
-It does not require a new merge event.
+It does not require a merge event.
 
 ## 3. Test the approval loops under `serve`
 
@@ -51,7 +51,7 @@ In another terminal, send the starting signal:
 ```bash
 venv/bin/propagate send-signal \
   --project pdfdancer-complete-workflow \
-  --signal-file config/examples/pdfdancer-complete-workflow/signals/backend-pr-merged.yaml
+  --signal-file config/examples/pdfdancer-complete-workflow/signals/backend-pr-labeled.yaml
 ```
 
 Then replay downstream review labels with the sample files in `signals/` after replacing the PR numbers with the ones
@@ -78,7 +78,7 @@ To test only the first stage:
 ```bash
 venv/bin/propagate run \
   --config config/pdfdancer-complete-workflow.yaml \
-  --signal-file config/examples/pdfdancer-complete-workflow/signals/backend-pr-merged.yaml \
+  --signal-file config/examples/pdfdancer-complete-workflow/signals/backend-pr-labeled.yaml \
   --stop-after triage-backend-pr
 ```
 
@@ -93,5 +93,5 @@ venv/bin/propagate run \
 ## Notes
 
 - The downstream approval signal files are templates. Replace the repository and PR number fields before using them.
-- `pull_request.closed` only starts the workflow when `merged: true`.
+- `pull_request.labeled` with `label: propagate` starts the workflow for backend PRs.
 - Review loops match on the exact downstream repo and PR number, so replaying a label against the wrong PR will be ignored.
