@@ -20,6 +20,18 @@ propagate context get :pr-comments || true
 
 The `:pr-comments` value is a JSON object with `comments` (issue-style) and `review_comments` (line-specific diff comments).
 
+## Dependency Update
+
+Before implementing changes, fetch `version.properties` from the backend PR branch and update the backend
+dependency version in `build.gradle.kts`:
+
+```bash
+BRANCH="$(gh pr view "$BACKEND_PR_NUMBER" --repo MenschMachine/pdfdancer-backend --json headRefName --jq '.headRefName')"
+gh api "repos/MenschMachine/pdfdancer-backend/contents/version.properties?ref=$BRANCH" --jq '.content' | base64 -d
+```
+
+Use the version from `version.properties` to update the backend dependency in `build.gradle.kts`.
+
 Requirements:
 
 - Implement the API support implied by the backend PR in this repository.
