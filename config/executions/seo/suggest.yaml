@@ -50,15 +50,3 @@ suggest:
             pr_number:
               equals_context: ":pr-number"
           continue: true
-    - id: wait-for-closed
-      after:
-        - 'propagate context set :wontfix true'
-      wait_for_signal: pull_request.closed
-    - id: clear-findings-on-wontfix
-      when: ":wontfix"
-      after:
-        - 'propagate context delete :review-findings'
-    - id: post-wontfix-comment
-      when: ":wontfix"
-      before:
-        - git:pr-comment-add :wontfix
