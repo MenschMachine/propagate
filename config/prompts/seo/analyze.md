@@ -131,6 +131,12 @@ For each flagged page, check whether the indexed `title` and `meta_description` 
 - If title aligns with queries but CTR is still low → the problem is description, competition, or content depth — not the title
 - If title doesn't contain query terms at all → flag as meta alignment issue
 
+**When flagging a page with a `description` or `title` diagnosis, always include the actual current indexed values in the report:**
+- Current title: `<title value from page JSON>`
+- Current description: `<meta_description value from page JSON>`
+
+Do not write "not provided" or omit the current values — if the page JSON exists, extract and report them. These values are needed by the suggest step to generate concrete meta suggestions.
+
 ### b) Thin content detection
 
 Use `text_content` word count as a rough signal. Threshold: ~500 total words (we're catching thin pages vs substantive ones, not drawing a fine line).
