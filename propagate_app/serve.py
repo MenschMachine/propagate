@@ -332,7 +332,7 @@ def _handle_incoming_signal(
     try:
         initial_execution = select_initial_execution(config, None, active_signal)
     except PropagateError as error:
-        LOGGER.warning("Signal '%s' ignored: %s", signal_type, error)
+        LOGGER.info("Signal '%s' ignored: %s", signal_type, error)
         return
     run_metadata = metadata or {}
     run_state = RunState(
