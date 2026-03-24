@@ -108,7 +108,7 @@ executions:
         github_repository: MenschMachine/pdfdancer-api
         validate_before_actions:
           - validate:github-pr repo=MenschMachine/pdfdancer-backend pr_from=context:triage-backend-pr/:source-backend-pr-number require_merged=true
-          - validate:context-key key=:run-full-pipeline scope=global
+          - validate:context-key key=run-full-pipeline scope=global
         validate_prompt: null
         implement_prompt: ./prompts/pdfdancer/implement-api-from-backend-pr.md
         review_prompt: ./prompts/pdfdancer/review-api.md
