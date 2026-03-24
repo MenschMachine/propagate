@@ -32,7 +32,7 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
         self.assertIn("pull_request.labeled", config.signals)
         self.assertEqual(
             tuple(config.context_sources),
-            ("capture-upstream-api-pr", "mark-all-sdks-approved", "mark-all-examples-approved"),
+            ("gommit", "capture-upstream-api-pr", "mark-all-sdks-approved", "mark-all-examples-approved"),
         )
 
         self.assertEqual(

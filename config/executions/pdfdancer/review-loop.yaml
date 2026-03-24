@@ -6,7 +6,7 @@
       name_template: "{{ branch_name_template }}"
       base: main
     commit:
-      message_template: "{{ commit_message_template }}"
+      message_source: gommit
     push:
       remote: origin
     pr:

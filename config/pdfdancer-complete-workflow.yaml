@@ -88,6 +88,8 @@ signals:
     - signals/github-signals.yaml
 
 context_sources:
+  gommit:
+    command: 'gommit -A -n -I'
   capture-upstream-api-pr:
     command: 'UPSTREAM="$(propagate context get :api-pr-number | xargs)"; if [[ -n "$UPSTREAM" ]]; then propagate context set --global :upstream-api-pr-number "$UPSTREAM"; fi'
   mark-all-sdks-approved:
@@ -102,7 +104,6 @@ executions:
         execution_name: implement-pdfdancer-api
         repository: pdfdancer-api
         branch_name_template: "api/backend-pr-{context[triage-backend-pr][:source-backend-pr-number]}"
-        commit_message_template: "api: support backend PR #{context[triage-backend-pr][:source-backend-pr-number]}"
         pr_body_key: :api-pr-body
         pr_number_key: :api-pr-number
         github_repository: MenschMachine/pdfdancer-api
@@ -119,7 +120,6 @@ executions:
         execution_name: implement-client-typescript
         repository: pdfdancer-client-typescript
         branch_name_template: "client-typescript/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "client-typescript: follow up source PR #{context[global][:source-pr-number]}"
         pr_body_key: :client-typescript-pr-body
         pr_number_key: :client-typescript-pr-number
         github_repository: MenschMachine/pdfdancer-client-typescript
@@ -136,7 +136,6 @@ executions:
         execution_name: implement-client-python
         repository: pdfdancer-client-python
         branch_name_template: "client-python/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "client-python: follow up source PR #{context[global][:source-pr-number]}"
         pr_body_key: :client-python-pr-body
         pr_number_key: :client-python-pr-number
         github_repository: MenschMachine/pdfdancer-client-python
@@ -153,7 +152,6 @@ executions:
         execution_name: implement-client-java
         repository: pdfdancer-client-java
         branch_name_template: "client-java/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "client-java: follow up source PR #{context[global][:source-pr-number]}"
         pr_body_key: :client-java-pr-body
         pr_number_key: :client-java-pr-number
         github_repository: MenschMachine/pdfdancer-client-java
@@ -171,7 +169,6 @@ executions:
         execution_name: implement-client-typescript-examples
         repository: pdfdancer-client-typescript-examples
         branch_name_template: "client-typescript-examples/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "client-typescript-examples: follow up source PR #{context[global][:source-pr-number]}"
         pr_body_key: :client-typescript-examples-pr-body
         pr_number_key: :client-typescript-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-typescript-examples
@@ -189,7 +186,6 @@ executions:
         execution_name: implement-client-python-examples
         repository: pdfdancer-client-python-examples
         branch_name_template: "client-python-examples/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "client-python-examples: follow up source PR #{context[global][:source-pr-number]}"
         pr_body_key: :client-python-examples-pr-body
         pr_number_key: :client-python-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-python-examples
@@ -207,7 +203,6 @@ executions:
         execution_name: implement-client-java-examples
         repository: pdfdancer-client-java-examples
         branch_name_template: "client-java-examples/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "client-java-examples: follow up source PR #{context[global][:source-pr-number]}"
         pr_body_key: :client-java-examples-pr-body
         pr_number_key: :client-java-examples-pr-number
         github_repository: MenschMachine/pdfdancer-client-java-examples
@@ -224,7 +219,6 @@ executions:
         execution_name: implement-pdfdancer-api-docs
         repository: pdfdancer-api-docs
         branch_name_template: "api-docs/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "api-docs: document source PR #{context[global][:source-pr-number]}"
         pr_body_key: :api-docs-pr-body
         pr_number_key: :api-docs-pr-number
         github_repository: MenschMachine/pdfdancer-api-docs
@@ -241,7 +235,6 @@ executions:
         execution_name: implement-pdfdancer-www
         repository: pdfdancer-www
         branch_name_template: "website/source-pr-{context[global][:source-pr-number]}"
-        commit_message_template: "website: reflect source PR #{context[global][:source-pr-number]}"
         pr_body_key: :website-pr-body
         pr_number_key: :website-pr-number
         github_repository: MenschMachine/pdfdancer-www
