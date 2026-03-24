@@ -189,7 +189,7 @@ def parse_sub_task(
     if not isinstance(sub_task_data, dict):
         raise PropagateError(f"Execution '{name}' sub-task #{index} must be a mapping.")
     location = f"Execution '{name}' sub-task #{index}"
-    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when", "goto", "max_goto", "wait_for_signal", "routes", "must_set"}, location)
+    validate_allowed_keys(sub_task_data, {"id", "prompt", "before", "after", "on_failure", "when", "goto", "max_goto", "on_max_goto", "wait_for_signal", "routes", "must_set"}, location)
     task_id = sub_task_data.get("id")
     prompt_value = sub_task_data.get("prompt")
     if not isinstance(task_id, str) or not task_id.strip():
@@ -214,6 +214,14 @@ def parse_sub_task(
         if not isinstance(max_goto_value, int) or isinstance(max_goto_value, bool) or max_goto_value < 1:
             raise PropagateError(f"{location} 'max_goto' must be a positive integer.")
         max_goto = max_goto_value
+    on_max_goto_value = sub_task_data.get("on_max_goto")
+    on_max_goto = "fail"
+    if on_max_goto_value is not None:
+        if goto is None:
+            raise PropagateError(f"{location} 'on_max_goto' requires 'goto'.")
+        if on_max_goto_value not in ("fail", "continue"):
+            raise PropagateError(f"{location} 'on_max_goto' must be 'fail' or 'continue'.")
+        on_max_goto = on_max_goto_value
     wait_for_signal = sub_task_data.get("wait_for_signal")
     routes_data = sub_task_data.get("routes")
     routes: list[SubTaskRouteConfig] = []
@@ -243,6 +251,7 @@ def parse_sub_task(
         when=when_value,
         goto=goto,
         max_goto=max_goto,
+        on_max_goto=on_max_goto,
         wait_for_signal=wait_for_signal,
         routes=routes,
         must_set=must_set,

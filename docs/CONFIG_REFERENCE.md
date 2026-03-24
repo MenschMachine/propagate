@@ -430,6 +430,7 @@ sub_tasks:
 | `on_failure` | list of strings | No | `[]` | Hook actions run if the task fails. |
 | `goto` | string | No | `null` | Sub-task ID to jump to after this task completes (must be defined earlier in the list). Mutually exclusive with `wait_for_signal`. |
 | `max_goto` | integer | No | `3` | Maximum number of times this sub-task's `goto` can fire before raising an error. Requires `goto`. Prevents infinite retry loops. |
+| `on_max_goto` | string | No | `"fail"` | What happens when `max_goto` is exceeded. `"fail"` raises an error (default). `"continue"` logs a warning and proceeds to the next sub-task. Requires `goto`. |
 | `wait_for_signal` | string | No | `null` | Signal name to wait for. Requires `routes`. Must not have `prompt` or `on_failure`. |
 | `routes` | list | No | `[]` | Route definitions for signal-gated sub-tasks. Requires `wait_for_signal`. |
 | `must_set` | list of strings | No | `[]` | Context keys the agent must set during this task. Validated after the agent phase; raises an error if any key is missing or empty. Keys are injected into the agent prompt as a notice. Must not be used with `wait_for_signal`. |
@@ -476,7 +477,15 @@ A sub-task can use `goto` directly (without `wait_for_signal`) for automated ret
   max_goto: 5                                 # default is 3
 ```
 
-This is a control-flow node — no `prompt` is needed. The `when` condition and hooks do the work; the `goto` handles routing. When `max_goto` is exceeded, the execution fails with an error. This prevents infinite loops when an automated retry cannot resolve the issue.
+This is a control-flow node — no `prompt` is needed. The `when` condition and hooks do the work; the `goto` handles routing. When `max_goto` is exceeded, the default behavior (`on_max_goto: fail`) raises an error. Set `on_max_goto: continue` to skip the goto and proceed to the next sub-task instead:
+
+```yaml
+- id: reroute-on-suggestions
+  when: ":review-suggestions"
+  goto: implement
+  max_goto: 3
+  on_max_goto: continue                         # proceed instead of failing
+```
 
 Signal-gated sub-tasks require `propagate serve` (they need a ZMQ socket to receive signals).
 

@@ -96,6 +96,14 @@ def run_execution_sub_tasks(
         if sub_task.goto is not None:
             count = goto_counts.get(sub_task.task_id, 0) + 1
             if count > sub_task.max_goto:
+                if sub_task.on_max_goto == "continue":
+                    LOGGER.warning(
+                        "Sub-task '%s' in execution '%s' exceeded maximum goto count (%d). "
+                        "on_max_goto is 'continue', skipping goto to '%s'.",
+                        sub_task.task_id, execution.name, sub_task.max_goto, sub_task.goto,
+                    )
+                    task_index += 1
+                    continue
                 raise PropagateError(
                     f"Sub-task '{sub_task.task_id}' in execution '{execution.name}' exceeded maximum goto count"
                     f" ({sub_task.max_goto}). Target: '{sub_task.goto}'."

@@ -24,21 +24,36 @@
       before:
         - git:branch
         - 'propagate context delete :wontfix'
+        - 'propagate context delete :review-suggestions'
       prompt: "{{ implement_prompt }}"
     - id: clear-findings-on-wontfix
       when: ":wontfix"
       after:
         - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
     - id: review
       when: "!:wontfix"
       before:
         - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+        - 'propagate context delete :upstream-bug'
       prompt: "{{ review_prompt }}"
+    - id: fail-on-upstream-bug
+      when: ":upstream-bug"
+      before:
+        - 'exit 1'  # abort execution — upstream bug makes this output incorrect
     - id: reroute-on-review-findings
       when: ":review-findings"
       after:
         - 'propagate context set :revision-reason review-findings'
       goto: implement
+    - id: reroute-on-suggestions
+      when: ":review-suggestions"
+      after:
+        - 'propagate context set :revision-reason review-suggestions'
+      goto: implement
+      max_goto: 3
+      on_max_goto: continue
     - id: summarize
       prompt: "{{ summarize_prompt }}"
       must_set:
