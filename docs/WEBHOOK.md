@@ -197,45 +197,6 @@ When a PR is labeled in GitHub, the webhook fires, the signal is delivered, and 
 
 When the webhook fails to arrive (e.g., network issues) but you still need to trigger a workflow, send the signal manually via CLI instead of waiting for GitHub.
 
-### Prerequisites
-
-Ensure `propagate serve` is running with the project loaded:
-
-```bash
-propagate serve --config config/pdfdancer-complete-workflow.yaml
-```
-
-### Send a pull_request.labeled signal for backend PR
-
-The project name is the config file stem (e.g., `pdfdancer-complete-workflow` for `config/pdfdancer-complete-workflow.yaml`).
-
-**Using a signal file** (recommended — see example at `config/examples/pdfdancer-complete-workflow/signals/backend-pr-labeled.yaml`):
-
-```bash
-propagate send-signal \
-  --project pdfdancer-complete-workflow \
-  --signal-file config/examples/pdfdancer-complete-workflow/signals/backend-pr-labeled.yaml
-```
-
-Update `pr_number` in the signal file to match your PR before sending.
-
-**Inline** (replace `<YOUR_PR_NUMBER>`):
-
-```bash
-propagate send-signal \
-  --project pdfdancer-complete-workflow \
-  --signal pull_request.labeled \
-  --signal-payload '{
-    "repository": "MenschMachine/pdfdancer-backend",
-    "pr_number": <YOUR_PR_NUMBER>,
-    "label": "propagate",
-    "action": "labeled",
-    "head_ref": "main",
-    "base_ref": "main",
-    "sender": "manual"
-  }'
-```
-
 ### Send other signal types
 
 The same approach works for any signal defined in your config:

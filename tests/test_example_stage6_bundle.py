@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 class Stage6ExampleBundleTests(unittest.TestCase):
     def test_stage6_example_bundle_loads_and_references_existing_files(self) -> None:
-        bundle_dir = REPO_ROOT / "config" / "examples" / "stage6"
+        bundle_dir = REPO_ROOT / "tests" / "stage6_bundle"
         config_path = bundle_dir / "propagate.yaml"
         readme_path = bundle_dir / "README.md"
         signal_path = bundle_dir / "signals" / "repo-change.yaml"

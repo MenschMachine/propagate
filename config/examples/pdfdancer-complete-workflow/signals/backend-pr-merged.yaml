@@ -1,9 +1,0 @@
-type: pull_request.closed
-payload:
-  repository: MenschMachine/pdfdancer-backend
-  pr_number: 75
-  merged: true
-  action: closed
-  head_ref: feature/test-backend-pr
-  base_ref: main
-  sender: local-test
