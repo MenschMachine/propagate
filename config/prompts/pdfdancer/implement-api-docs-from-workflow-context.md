@@ -40,11 +40,12 @@ Do not make changes to GitHub workflow files.
 - Do not document speculative future behavior beyond what is present in the current upstream PRs.
 - Pay attention to e2e tests and examples in the upstream repositories; they are the most concrete source for usage patterns.
 
-## API Versioning and Page Indexing
+## Guidelines
 
-- Always prefer the latest API version.
-- API v0 uses 0-based page indexing.
-- API v1 uses 1-based page indexing.
+1. Document the new features in their sections. If a feature is big or important enough to deserve it's own page, create it.
+2. Always update the version sdk-versions.md
+3. Update the glossary if appropriate
+4. Double check all code samples in this documention if they need to be updated
 
 ## SDK Dependency Reference
 
