@@ -6,7 +6,7 @@ Git operations are driven by explicit hook commands (`git:branch`, `git:commit`,
 
 | Command | Effect |
 |---------|--------|
-| `git:branch` | Verify git repo, capture starting branch, ensure clean tree, create/checkout target branch |
+| `git:branch` | Verify git repo, capture starting branch, ensure clean tree, create/checkout target branch, sync reused branches with remote |
 | `git:commit` | Stage all changes and commit; **skipped silently if the tree is clean** |
 | `git:publish` | Run `git:commit`, `git:push`, and `git:pr` in order |
 | `git:push` | Push the current branch to the configured remote |
@@ -190,12 +190,12 @@ git:
 | Scenario | Behaviour |
 |----------|-----------|
 | `name` is set and branch doesn't exist | Create branch from `base` (or starting branch) |
-| `name` is set, branch exists, `reuse: true` | Check out existing branch |
+| `name` is set, branch exists, `reuse: true` | Check out existing branch, fetch matching remote branch, and fast-forward if behind |
 | `name` is set, branch exists, `reuse: false` | Error |
 | `name` is omitted (no `name_key` / `name_template` either) | Use `propagate/{execution-name}` as the branch name |
 | `name_key` is set | Read branch name from context key |
 | `name_template` is set | Render branch name from template |
-| Target branch is already checked out | Use it as-is, skip checkout |
+| Target branch is already checked out | Reuse it, fetch matching remote branch, and fast-forward if behind |
 
 ## Example
 

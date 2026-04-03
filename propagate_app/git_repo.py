@@ -86,12 +86,14 @@ def prepare_execution_branch(
 ) -> str:
     if target_branch == starting_branch:
         LOGGER.info("Using already checked out branch '%s'.", target_branch)
+        sync_existing_branch(target_branch, remote_name, working_dir)
         return target_branch
     if local_branch_exists(target_branch, working_dir):
         if not reuse_branch:
             raise PropagateError(f"Git branch '{target_branch}' already exists and reuse is disabled.")
         LOGGER.info("Checking out existing branch '%s'.", target_branch)
         checkout_branch(target_branch, working_dir)
+        sync_existing_branch(target_branch, remote_name, working_dir)
         return target_branch
     resolved_base_ref = resolve_branch_base_ref(base_ref, remote_name, working_dir)
     ensure_git_ref_exists(resolved_base_ref, working_dir)
@@ -159,3 +161,64 @@ def checkout_branch(branch_name: str, working_dir: Path) -> None:
         failure_message=f"Failed to checkout branch '{branch_name}'.",
         start_failure_message=f"Failed to start branch checkout for '{branch_name}': {{error}}",
     )
+
+
+def sync_existing_branch(branch_name: str, remote_name: str | None, working_dir: Path) -> None:
+    if remote_name is None:
+        return
+    LOGGER.info("Fetching latest '%s' from remote '%s' before reusing branch.", branch_name, remote_name)
+    fetch = run_git_command(
+        ["fetch", remote_name, branch_name],
+        working_dir,
+        failure_message=f"Failed to fetch branch '{branch_name}' from remote '{remote_name}'.",
+        start_failure_message=f"Failed to start fetch of branch '{branch_name}' from '{remote_name}': {{error}}",
+        check=False,
+    )
+    if fetch.returncode != 0:
+        LOGGER.warning(
+            "Git branch '%s' could not be fetched from remote '%s'; continuing with local branch.",
+            branch_name,
+            remote_name,
+        )
+        return
+
+    ahead_count, behind_count = get_branch_divergence(branch_name, f"{remote_name}/{branch_name}", working_dir)
+    if ahead_count == 0 and behind_count == 0:
+        LOGGER.info("Existing branch '%s' is already up to date with '%s/%s'.", branch_name, remote_name, branch_name)
+        return
+    if ahead_count == 0 and behind_count > 0:
+        LOGGER.info("Fast-forwarding existing branch '%s' to '%s/%s'.", branch_name, remote_name, branch_name)
+        run_git_command(
+            ["merge", "--ff-only", f"{remote_name}/{branch_name}"],
+            working_dir,
+            failure_message=f"Failed to fast-forward branch '{branch_name}' to '{remote_name}/{branch_name}'.",
+            start_failure_message=f"Failed to start fast-forward for branch '{branch_name}': {{error}}",
+        )
+        return
+    if ahead_count > 0 and behind_count == 0:
+        raise PropagateError(
+            f"Existing branch '{branch_name}' has {ahead_count} local commit(s) not on '{remote_name}/{branch_name}'. "
+            "Push, reset, or delete the local branch before starting a new execution."
+        )
+    raise PropagateError(
+        f"Existing branch '{branch_name}' has diverged from '{remote_name}/{branch_name}' "
+        f"({ahead_count} local-only, {behind_count} remote-only commit(s)). "
+        "Reconcile the branch before starting a new execution."
+    )
+
+
+def get_branch_divergence(local_ref: str, remote_ref: str, working_dir: Path) -> tuple[int, int]:
+    result = run_git_command(
+        ["rev-list", "--left-right", "--count", f"{local_ref}...{remote_ref}"],
+        working_dir,
+        failure_message=f"Failed to compare branch '{local_ref}' with '{remote_ref}'.",
+        start_failure_message="Failed to start git rev-list for branch divergence: {error}",
+        capture_output=True,
+    )
+    parts = result.stdout.strip().split()
+    if len(parts) != 2:
+        raise PropagateError(f"Unexpected divergence output while comparing '{local_ref}' and '{remote_ref}'.")
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError as error:
+        raise PropagateError(f"Unexpected divergence output while comparing '{local_ref}' and '{remote_ref}'.") from error
