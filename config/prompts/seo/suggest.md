@@ -1,5 +1,19 @@
 # Generate SEO Suggestions
 
+Your job is to convert the analysis into implementation briefs for a human-quality website editor.
+
+These suggestions are not the final website copy. They are instructions for what problem to solve on the page, why it
+matters, and what the implementation must accomplish.
+
+The key distinction:
+
+- `analyze` produces diagnosis
+- `suggest` produces implementation briefs
+- `implement` produces public-facing website content
+
+Use SEO data as evidence, but frame recommendations around what would make the page more useful, clearer, and more
+compelling for an actual visitor.
+
 ## Review feedback (check first)
 
 Before doing anything else, run:
@@ -14,7 +28,7 @@ If there are review_comments, they are the reviewer's feedback on your previous 
 
 ---
 
-Read `:findings` from context. Turn each finding into a typed, actionable suggestion.
+Read `:findings` from context. Turn each finding into a typed, actionable implementation brief.
 
 ## Past suggestions and cool-down rules
 
@@ -26,6 +40,20 @@ the feedback ledger. Use that data to apply these rules:
 - **Build on successes**: If entries evaluated as `improved` share a common suggestion type (e.g., meta rewrites), favor that approach for similar pages.
 - **Deprioritize low-volume pages**: If a URL was marked `inconclusive` with `insufficient_volume`, deprioritize it. Changes on pages that can't accumulate enough impressions to measure aren't worth optimizing further.
 - **Note history when re-suggesting**: When suggesting changes for a page with prior evaluations in `:findings`, mention what was tried before, the outcome, and why the new suggestion takes a different approach.
+
+## Framing rules
+
+Each suggestion should answer:
+
+- What user problem or expectation is not being met?
+- What page change would resolve that problem?
+- What must the implementation include?
+- What should the editor preserve or avoid?
+
+For `content-edit` and `new-content`, prefer describing the editorial job clearly over drafting final body copy. The
+implement step should still have room to write natural site copy.
+
+For `meta`, exact title/description text is appropriate.
 
 ## Grounding rules
 
@@ -90,7 +118,9 @@ Always include all high and medium priority suggestions. If the total count is b
 ## How prescriptive to be
 
 - **meta** suggestions: Write the exact title and description text. These are short, and you have enough data to get them right.
-- **content-edit** and **new-content** suggestions: Provide the structure (headings, key phrases to include, internal links) but not full body copy. The implement step knows the site voice and can write better prose with access to the codebase.
+- **content-edit** and **new-content** suggestions: Provide the editorial brief: the user problem, the structural change,
+  the required topics/sections/links, and any constraints. Do not draft full body copy unless a very short snippet is
+  essential to clarify the intent.
 - **technical** suggestions: Specify the exact fix (redirect rule, canonical tag, config change) — don't leave it vague.
 
 ## Suggestion types
@@ -109,14 +139,34 @@ Technical SEO fixes — canonical tags, structured data, redirects, sitemap entr
 
 ## Format
 
-Write suggestions as a structured list. Be detailed and explicit — a reviewer reading the PR should fully understand the reasoning and know exactly what to do without needing to look anything up. For each suggestion include:
+Write suggestions as a structured list. Be detailed and explicit, but keep the output in the form of implementation
+briefs rather than draft website copy.
+
+For each suggestion include:
 
 - **Type**: meta | content-edit | new-content | technical
 - **Priority**: high | medium | low
 - **Target**: URL or page path
-- **What**: the specific change to make. Write out the exact text, markup, or configuration to add/change/remove. Do not leave anything vague or implied — spell it out so someone could implement it directly from this description.
+- **Objective**: the page-level outcome this change should achieve for users and searchers
+- **User problem**: what is currently missing, unclear, mismatched, or weak from the visitor's perspective
+- **Evidence**: the specific supporting data points from `:findings`
+- **Implementation brief**: the change to make
+  For `meta`: include the exact replacement title and description text
+  For `content-edit` / `new-content`: include the sections to add or revise, the topics to cover, key phrases to
+  incorporate, internal links to add, and what the page should help the reader do
+  For `technical`: include the exact technical fix
+- **Constraints**: things the implement step must preserve, avoid, or keep consistent with
+- **Acceptance criteria**: a short checklist for what must be true in the final implementation
 - **Why**: explain the reasoning behind this suggestion. Reference the specific data points (e.g., "page has 500 impressions but only 0.5% CTR, well below the site average of 2.1%"), explain what the problem is, and why this particular change is expected to improve the situation. Connect the dots between the data and the recommendation.
 - **Expected impact**: describe what improvement this change should produce and how it can be measured (e.g., "should increase CTR by making the title more compelling for the target query; track impressions-to-clicks ratio in GSC over the next 2 weeks")
+
+For `content-edit` and `new-content`, `Acceptance criteria` should focus on user-facing outcomes such as:
+
+- the page clearly addresses a specific user task or question
+- headings describe topics or tasks, not editorial process
+- added sections fit the existing page voice and structure
+- internal links are relevant and useful
+- the resulting copy reads naturally without exposing internal optimization reasoning
 
 ## Output
 

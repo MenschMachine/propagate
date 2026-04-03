@@ -22,7 +22,25 @@ implement:
     - id: code
       before:
         - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
       prompt: ./prompts/seo/implement.md
+    - id: review
+      before:
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+      prompt: ./prompts/seo/review-implement.md
+    - id: reroute-on-review-findings
+      when: ":review-findings"
+      after:
+        - 'propagate context set :revision-reason review-findings'
+      goto: code
+    - id: reroute-on-suggestions
+      when: ":review-suggestions"
+      after:
+        - 'propagate context set :revision-reason review-suggestions'
+      goto: code
+      max_goto: 3
+      on_max_goto: continue
     - id: summarize
       prompt: ./prompts/seo/summarize-implement.md
     - id: publish
