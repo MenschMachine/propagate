@@ -31,6 +31,11 @@ def format_event_reply(event: dict) -> str:
         execution = event.get("execution", "unknown")
         pr_url = event.get("pr_url", "")
         return f"PR updated for '{execution}':\n{pr_url}"
+    if event_type == "clarification_requested":
+        question = event.get("question", "No question provided.")
+        request_id = event.get("request_id", "unknown")
+        execution = event.get("metadata", {}).get("execution", "unknown")
+        return f"Clarification requested in execution '{execution}' (id: {request_id}):\n{question}\n\n(Please reply to this message with your answer)"
     if event_type in ("run_completed", "run_failed"):
         signal_type = event.get("signal_type", "unknown")
         messages = event.get("messages") or []

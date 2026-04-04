@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -453,6 +454,35 @@ async def _handle_unknown_command(update, context) -> None:
     await update.message.reply_text(f"Unknown command: {cmd}. Use /help to see available commands.")
 
 
+async def handle_text_reply(update, context) -> None:
+    """Handle text replies to bot messages, such as clarification requests."""
+    if update.message is None or update.message.reply_to_message is None:
+        return
+    if not _is_allowed(update, context.bot_data["allowed_users"]):
+        return
+
+    reply_to_text = update.message.reply_to_message.text or ""
+    if "Clarification requested" in reply_to_text and "(id: " in reply_to_text:
+        match = re.search(r"\(id: ([^)]+)\)", reply_to_text)
+        if not match:
+            return
+        request_id = match.group(1)
+        answer = update.message.text
+
+        push_socket = context.bot_data["push_socket"]
+        payload = {"request_id": request_id, "answer": answer}
+        metadata = {"chat_id": str(update.message.chat_id), "message_id": str(update.message.message_id)}
+
+        msg = {
+            "command": "event",
+            "name": "clarification_response",
+            "payload": payload,
+            "metadata": metadata,
+        }
+        push_socket.send_json(msg)
+        await update.message.reply_text("Sent clarification response.")
+
+
 async def _poll_events(application, sub_socket) -> None:
     """Background task that polls the SUB socket and sends replies."""
     from propagate_app.log_buffer import append_line
@@ -552,6 +582,7 @@ def run_bot(
     application.add_handler(CommandHandler("unload", handle_unload))
     application.add_handler(CommandHandler("reload", handle_reload))
     application.add_handler(CommandHandler("help", handle_help))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_reply))
     application.add_handler(MessageHandler(filters.COMMAND, _handle_unknown_command))
 
     logger.info("Starting Telegram bot (allowed users: %s).", ", ".join(str(u) for u in sorted(allowed_users)))

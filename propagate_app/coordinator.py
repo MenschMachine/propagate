@@ -160,6 +160,10 @@ class Coordinator:
                 self._send_response(metadata.get("request_id"), error="Missing 'project' in metadata for command.")
                 return
             self._forward_command(project, name, metadata)
+        elif kind == "event":
+            # Re-publish event to all listeners
+            from .signal_transport import publish_event_if_available
+            publish_event_if_available(self._pub_socket, name, {**payload, "metadata": metadata})
 
     def _handle_list(self, metadata: dict) -> None:
         request_id = metadata.get("request_id")

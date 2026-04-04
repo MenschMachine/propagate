@@ -3,3 +3,4 @@ httpx
 fastapi
 uvicorn
 python-telegram-bot
+mcp
