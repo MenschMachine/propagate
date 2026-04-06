@@ -23,7 +23,7 @@ def repo_ctx(tmp_path: Path):
     _run_git("init", "-b", "main", cwd=repo)
     _run_git("config", "user.name", "Propagate Tests", cwd=repo)
     _run_git("config", "user.email", "propagate@example.com", cwd=repo)
-    subprocess.run(["git", "init", "--bare", str(remote_repo)], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "init", "--bare", "-b", "main", str(remote_repo)], cwd=tmp_path, check=True, capture_output=True)
     _run_git("remote", "add", "origin", str(remote_repo), cwd=repo)
 
     (repo / "artifact.txt").write_text("initial\n", encoding="utf-8")
