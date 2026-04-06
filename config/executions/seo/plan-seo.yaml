@@ -21,8 +21,6 @@ plan-seo:
         - git:branch
     - id: strategy
       before:
-        - 'propagate context delete :review-findings'
-        - 'propagate context delete :review-suggestions'
         - 'propagate context delete :rewrite-targets'
         - 'propagate context delete :new-content-targets'
         - 'propagate context delete :has-rewrite-targets'
@@ -45,13 +43,6 @@ plan-seo:
         - 'propagate context set :revision-reason review-findings'
       goto: strategy
       max_goto: 5
-    - id: reroute-on-suggestions
-      when: ":review-suggestions"
-      after:
-        - 'propagate context set :revision-reason review-suggestions'
-      goto: strategy
-      max_goto: 3
-      on_max_goto: continue
     - id: summarize
       prompt: ./prompts/seo/summarize-plan-seo.md
       must_set:

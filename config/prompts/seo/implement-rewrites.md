@@ -14,11 +14,22 @@ If a refined local brief exists from a prior review pass, use it instead:
 propagate context get :active-rewrite-briefs
 ```
 
+Read prior review feedback if present:
+
+```bash
+propagate context get :review-findings || true
+propagate context get :review-suggestions || true
+propagate context get :revision-reason || true
+propagate context get :pr-comments || true
+```
+
 Read `AGENTS.md` in the site root before making changes.
 
 ## Working method
 
 Prefer `:active-rewrite-briefs` when present; otherwise use the approved briefs from `brief-rewrites`.
+
+If prior review findings exist, resolve them directly instead of reinterpreting the whole brief from scratch.
 
 For each target page:
 

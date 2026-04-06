@@ -37,29 +37,39 @@ class SeoAutomationConfigTests(unittest.TestCase):
         self.assertEqual(plan.repository, "pdfdancer-marketing-data")
         self.assertEqual(
             [task.task_id for task in plan.sub_tasks],
-            ["set-branch", "create-branch", "strategy", "review-plan", "reroute-on-review-findings", "reroute-on-suggestions", "summarize", "publish", "wait-for-verdict"],
+            ["set-branch", "create-branch", "strategy", "review-plan", "reroute-on-review-findings", "summarize", "publish", "wait-for-verdict"],
         )
         self.assertEqual(plan.sub_tasks[4].goto, "strategy")
+        self.assertNotIn("propagate context delete :review-findings", plan.sub_tasks[2].before)
+        self.assertNotIn("propagate context delete :review-suggestions", plan.sub_tasks[2].before)
 
         brief_rewrites = config.executions["brief-rewrites"]
         self.assertEqual(brief_rewrites.repository, "pdfdancer-marketing-data")
         self.assertEqual(brief_rewrites.sub_tasks[2].must_set, [":rewrite-briefs-path", ":rewrite-briefs"])
+        self.assertNotIn("propagate context delete :review-findings", brief_rewrites.sub_tasks[2].before)
+        self.assertNotIn("propagate context delete :review-suggestions", brief_rewrites.sub_tasks[2].before)
 
         brief_new = config.executions["brief-new-content"]
         self.assertEqual(brief_new.repository, "pdfdancer-marketing-data")
         self.assertEqual(brief_new.sub_tasks[2].must_set, [":new-content-briefs-path", ":new-content-briefs"])
+        self.assertNotIn("propagate context delete :review-findings", brief_new.sub_tasks[2].before)
+        self.assertNotIn("propagate context delete :review-suggestions", brief_new.sub_tasks[2].before)
 
         implement_rewrites = config.executions["implement-rewrites"]
         self.assertEqual(implement_rewrites.repository, "pdfdancer-www")
         self.assertEqual(implement_rewrites.sub_tasks[2].must_set, [":changed-urls-rewrites"])
         self.assertEqual(implement_rewrites.sub_tasks[4].goto, "code")
         self.assertEqual(implement_rewrites.sub_tasks[4].max_goto, 5)
+        self.assertNotIn("propagate context delete :review-findings", implement_rewrites.sub_tasks[2].before)
+        self.assertNotIn("propagate context delete :review-suggestions", implement_rewrites.sub_tasks[2].before)
 
         implement_new = config.executions["implement-new-content"]
         self.assertEqual(implement_new.repository, "pdfdancer-www")
         self.assertEqual(implement_new.sub_tasks[2].must_set, [":changed-urls-new-content"])
         self.assertEqual(implement_new.sub_tasks[4].goto, "code")
         self.assertEqual(implement_new.sub_tasks[4].max_goto, 5)
+        self.assertNotIn("propagate context delete :review-findings", implement_new.sub_tasks[2].before)
+        self.assertNotIn("propagate context delete :review-suggestions", implement_new.sub_tasks[2].before)
 
         triggers = {(t.after, t.run, t.when_context) for t in config.propagation_triggers}
         self.assertIn(("analyze", "plan-seo", None), triggers)

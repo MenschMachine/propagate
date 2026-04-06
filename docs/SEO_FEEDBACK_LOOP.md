@@ -7,17 +7,21 @@ performance in subsequent runs.
 
 ```
 Weekly run:
-  pull-data → evaluate-implementations → intent-match → analyze → suggest → implement → track-implementations → request-index
-                     ↑                                                          |
+  pull-data → evaluate-implementations → intent-match → analyze → plan-seo → brief-rewrites → implement-rewrites
+                                                                      └────────→ brief-new-content → implement-new-content
+                                                                                                           ↓
+                                                                                         track-implementations → request-index
+                     ↑
                      └──────────── reads ledger entries written by ─────────────┘
 ```
 
 Two executions own the ledger (`data/feedback/implementations.yaml`), with clear separation:
-- **track-implementations**: appends new `pending` entries (after implement)
+- **track-implementations**: appends new `pending` entries (after the final implementation lane)
 - **evaluate-implementations**: scores `pending` → `evaluated` entries (before analyze)
 
-No other execution writes to the ledger. `analyze` reads it (via context) to include in reports. `suggest` reads
-effectiveness data from `:findings` only.
+No other execution writes to the ledger. `analyze` reads it (via context) to include in reports. `plan-seo` reads
+effectiveness data from `:findings` only, and the briefing lanes translate approved strategy into editorial briefs for
+implementation.
 
 ## Implementation Ledger
 
@@ -106,7 +110,7 @@ An entry is ready for evaluation when **both** conditions are met:
 
 **90-day ceiling**: if 90 days pass without meeting both gates, evaluate anyway and mark as `inconclusive` with reason
 `insufficient_volume`. This prevents zombie entries and signals that the page isn't worth optimizing further — the
-suggest step should deprioritize future recommendations for it.
+planning step should deprioritize future recommendations for it.
 
 The 90-day ceiling is checked at evaluation time (when evaluate-implementations runs), not enforced by a timer. If runs
 are skipped or delayed, entries may linger past 90 days until the next run picks them up.
@@ -194,11 +198,12 @@ in the evaluation summary JSON and is surfaced in the analyze report as a techni
 
 ## Execution: `track-implementations`
 
-Runs on pdfdancer-marketing-data. Triggers after `implement` completes. Sole owner of ledger **append** writes.
+Runs on pdfdancer-marketing-data. Triggers after the final implementation lane completes. Sole owner of ledger
+**append** writes.
 
 **Tasks**:
-1. Read `:changed-urls` and `:suggestions` from implement/suggest context (cross-execution reads)
-2. Match each changed URL to its suggestion for type and change description
+1. Read changed URLs from the rewrite and new-content implementation lanes
+2. Match each changed URL to its applied brief/strategy metadata for type and change description
 3. Pull trailing 4 weeks of GSC data as baseline (raw weeks + averages)
 4. Calculate `min_impressions_for_eval` using the type multiplier
 5. Append entries to `data/feedback/implementations.yaml`
@@ -225,14 +230,15 @@ source. The script:
 
 ## Deployment Gate for Indexing
 
-The `request-index` execution waits for the implement PR to be merged and deployed before requesting Google re-indexing.
+The `request-index` execution waits for the final implementation PR to be merged and deployed before requesting Google
+re-indexing.
 
-Cloudflare Pages auto-deploys from the main branch. When the implement PR is merged, GitHub fires a `push` webhook
+Cloudflare Pages auto-deploys from the main branch. When the implementation PR is merged, GitHub fires a `push` webhook
 targeting `refs/heads/main`. The `wait-for-deploy` sub-task blocks on this signal, then a 10-minute delay (`sleep 600`)
 gives Cloudflare time to finish the deploy before the indexing requests go out.
 
 ```
-implement PR merged → GitHub push webhook → wait-for-deploy unblocks → 10 min delay → request indexing
+implementation PR merged → GitHub push webhook → wait-for-deploy unblocks → 10 min delay → request indexing
 ```
 
 ## Data flow to downstream steps
@@ -247,10 +253,9 @@ implement PR merged → GitHub push webhook → wait-for-deploy unblocks → 10 
   flagged page's engagement quality as `content-problem` (bounce > 70%), `content-weak` (50–70%), or
   `content-delivers` (< 40%), with a `low-confidence` flag for pages under 5 pageviews. Passes effectiveness data,
   page content diagnosis, and engagement quality signal through to `:findings`.
-- **suggest**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
-  matching (what works), and deprioritization (insufficient_volume). Uses page content diagnosis and engagement quality
-  signal to select the right suggestion type — e.g., `content-problem` pages get `content-edit` (not meta),
-  `content-delivers` with low traffic gets `meta` or `new-content` (visibility problem). Uses intent-match data to
-  override other signals when a mismatch is detected — intent mismatch → `content-edit` restructuring, partial →
-  `content-edit` deepening, split-intent → restructure or `new-content`. When engagement signal conflicts with page
-  content diagnosis, bounce rate wins. Does **not** read the raw ledger file.
+- **plan-seo**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
+  matching (what works), and deprioritization (insufficient_volume). Chooses which rewrite, technical, and new-content
+  opportunities should advance this run. Does **not** write implementation copy.
+- **brief-rewrites** / **brief-new-content**: convert approved strategy items into editorial briefs. This is the step
+  that translates internal SEO reasoning into audience, page-role, and section-structure guidance that implementation
+  can follow without leaking strategy language into public copy.

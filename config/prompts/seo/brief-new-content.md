@@ -19,6 +19,14 @@ Read the selected new-content targets:
 propagate context get :new-content-targets --task plan-seo
 ```
 
+Read prior review feedback if present:
+
+```bash
+propagate context get :review-findings || true
+propagate context get :review-suggestions || true
+propagate context get :revision-reason || true
+```
+
 ## Brief requirements
 
 Create `reports/YYYY-MM-DD/briefs/new-content-briefs.yaml`.
@@ -34,6 +42,7 @@ For new-content pages, be especially clear about:
 - why the page deserves to exist as its own destination
 - what unique user need it serves
 - how it differs from existing nearby pages
+- If you are revising after `:review-findings`, resolve those issues directly instead of regenerating the brief blindly.
 
 ## Required context keys
 

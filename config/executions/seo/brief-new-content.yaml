@@ -21,8 +21,6 @@ brief-new-content:
         - git:branch
     - id: brief
       before:
-        - 'propagate context delete :review-findings'
-        - 'propagate context delete :review-suggestions'
         - 'propagate context delete :new-content-briefs'
         - 'propagate context delete :new-content-briefs-path'
       prompt: ./prompts/seo/brief-new-content.md
@@ -40,13 +38,6 @@ brief-new-content:
         - 'propagate context set :revision-reason review-findings'
       goto: brief
       max_goto: 5
-    - id: reroute-on-suggestions
-      when: ":review-suggestions"
-      after:
-        - 'propagate context set :revision-reason review-suggestions'
-      goto: brief
-      max_goto: 3
-      on_max_goto: continue
     - id: summarize
       prompt: ./prompts/seo/summarize-brief-new-content.md
       must_set:

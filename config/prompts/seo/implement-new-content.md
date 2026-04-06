@@ -14,11 +14,22 @@ If a refined local brief exists from a prior review pass, use it instead:
 propagate context get :active-new-content-briefs
 ```
 
+Read prior review feedback if present:
+
+```bash
+propagate context get :review-findings || true
+propagate context get :review-suggestions || true
+propagate context get :revision-reason || true
+propagate context get :pr-comments || true
+```
+
 Read `AGENTS.md` in the site root before making changes.
 
 ## Working method
 
 Prefer `:active-new-content-briefs` when present; otherwise use the approved briefs from `brief-new-content`.
+
+If prior review findings exist, resolve them directly instead of reinterpreting the page from scratch.
 
 For each new page:
 

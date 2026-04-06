@@ -21,9 +21,6 @@ implement-rewrites:
         - git:branch
     - id: code
       before:
-        - 'propagate context delete :review-findings'
-        - 'propagate context delete :review-suggestions'
-        - 'propagate context delete :review-findings-brief'
         - 'propagate context delete :needs-rewrite-briefs'
         - 'propagate context delete :rewrite-briefs-refined'
         - 'propagate context delete :checks-passed'

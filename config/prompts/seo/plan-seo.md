@@ -13,10 +13,18 @@ Read the findings from analyze:
 propagate context get :findings --task analyze
 ```
 
+Read prior review feedback if present:
+
+```bash
+propagate context get :review-findings || true
+propagate context get :review-suggestions || true
+propagate context get :revision-reason || true
+```
+
 Read prior PR feedback if present:
 
 ```bash
-propagate context get :pr-comments
+propagate context get :pr-comments || true
 ```
 
 ## Output responsibilities
@@ -31,6 +39,14 @@ Produce a strategy artifact at `reports/YYYY-MM-DD/strategy.md` that contains:
 
 Keep strategy language internal. This file is for planning and review, not for implementation.
 
+## Revision mode
+
+If `:review-findings` exists, you are revising a previously rejected strategy. Address those findings first and make the
+smallest coherent changes needed to resolve them.
+
+If `:review-suggestions` exists without blocking findings, treat them as optional improvements. Incorporate them when
+they clearly strengthen the strategy, but do not churn an otherwise sound plan just to satisfy every non-blocking note.
+
 ## Selection rules
 
 - Select the strongest rewrite and technical opportunities that can plausibly be implemented well in one run.
@@ -38,6 +54,9 @@ Keep strategy language internal. This file is for planning and review, not for i
 - Select at most **2 new-content items**.
 - Prefer coherent sets of pages over scattered low-leverage work.
 - If a page is still in cool-down or lacks enough support in `:findings`, defer it.
+- If the evidence supports a technical cleanup or ownership fix rather than a public page brief, classify it that way.
+  Do not force a page-rewrite or new-content target when the underlying job is redirect cleanup, internal links,
+  sitemap repair, canonical cleanup, or another technical change.
 - Every approved item must have a `page_type`:
   - `sdk-page`
   - `feature-page`

@@ -21,8 +21,6 @@ brief-rewrites:
         - git:branch
     - id: brief
       before:
-        - 'propagate context delete :review-findings'
-        - 'propagate context delete :review-suggestions'
         - 'propagate context delete :rewrite-briefs'
         - 'propagate context delete :rewrite-briefs-path'
       prompt: ./prompts/seo/brief-rewrites.md
@@ -40,13 +38,6 @@ brief-rewrites:
         - 'propagate context set :revision-reason review-findings'
       goto: brief
       max_goto: 5
-    - id: reroute-on-suggestions
-      when: ":review-suggestions"
-      after:
-        - 'propagate context set :revision-reason review-suggestions'
-      goto: brief
-      max_goto: 3
-      on_max_goto: continue
     - id: summarize
       prompt: ./prompts/seo/summarize-brief-rewrites.md
       must_set:

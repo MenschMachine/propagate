@@ -19,6 +19,14 @@ Read the selected rewrite targets:
 propagate context get :rewrite-targets --task plan-seo
 ```
 
+Read prior review feedback if present:
+
+```bash
+propagate context get :review-findings || true
+propagate context get :review-suggestions || true
+propagate context get :revision-reason || true
+```
+
 ## Brief requirements
 
 Create `reports/YYYY-MM-DD/briefs/rewrite-briefs.yaml`.
@@ -48,6 +56,8 @@ Each brief entry must include:
 - Translate internal SEO reasoning into visitor, page-role, and section-structure language.
 - Do not describe the page as funnel architecture.
 - Make the brief specific enough that an editor can revise the page without making new product decisions.
+- If you are revising after `:review-findings`, resolve those issues directly instead of rewriting the brief from
+  scratch.
 
 ## Required context keys
 
