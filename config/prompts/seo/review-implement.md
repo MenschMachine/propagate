@@ -22,7 +22,7 @@ Check:
 - **Editorial quality** — does the copy read naturally and confidently, rather than mechanically or awkwardly?
 - **Page fit** — do the new headings, sections, links, and FAQs fit the page's purpose and existing structure?
 - **Interpretation quality** — did the implementation correctly interpret the approved brief, or did it literalize internal reasoning into public copy?
-- **Consistency** — does the content match the site's existing voice and conventions?
+- **Consistency** — does the content match the site's existing voice and conventions? Compare to CONTENT_GUIDELINE.md
 
 Pay special attention to weak AI-style failure modes:
 
