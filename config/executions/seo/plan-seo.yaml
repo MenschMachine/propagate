@@ -67,3 +67,7 @@ plan-seo:
             pr_number:
               equals_context: ":plan-seo-pr-number"
           continue: true
+    - id: route-after-approval
+      before:
+        - 'if propagate context get :has-rewrite-targets >/dev/null 2>&1; then propagate context set :plan-approved-rewrites true; fi'
+        - 'if propagate context get :run-new-content-direct >/dev/null 2>&1; then propagate context set :plan-approved-new-content-direct true; fi'

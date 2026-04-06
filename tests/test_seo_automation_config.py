@@ -37,23 +37,28 @@ class SeoAutomationConfigTests(unittest.TestCase):
         self.assertEqual(plan.repository, "pdfdancer-marketing-data")
         self.assertEqual(
             [task.task_id for task in plan.sub_tasks],
-            ["set-branch", "create-branch", "strategy", "review-plan", "reroute-on-review-findings", "summarize", "publish", "wait-for-verdict"],
+            ["set-branch", "create-branch", "strategy", "review-plan", "reroute-on-review-findings", "summarize", "publish", "wait-for-verdict", "route-after-approval"],
         )
         self.assertEqual(plan.sub_tasks[4].goto, "strategy")
         self.assertNotIn("propagate context delete :review-findings", plan.sub_tasks[2].before)
         self.assertNotIn("propagate context delete :review-suggestions", plan.sub_tasks[2].before)
+        self.assertIn("propagate context set :plan-approved-rewrites true", plan.sub_tasks[8].before[0])
 
         brief_rewrites = config.executions["brief-rewrites"]
         self.assertEqual(brief_rewrites.repository, "pdfdancer-marketing-data")
         self.assertEqual(brief_rewrites.sub_tasks[2].must_set, [":rewrite-briefs-path", ":rewrite-briefs"])
         self.assertNotIn("propagate context delete :review-findings", brief_rewrites.sub_tasks[2].before)
         self.assertNotIn("propagate context delete :review-suggestions", brief_rewrites.sub_tasks[2].before)
+        self.assertEqual(brief_rewrites.sub_tasks[-1].task_id, "route-after-approval")
+        self.assertEqual(brief_rewrites.sub_tasks[-1].before, ["propagate context set :rewrite-briefs-approved true"])
 
         brief_new = config.executions["brief-new-content"]
         self.assertEqual(brief_new.repository, "pdfdancer-marketing-data")
         self.assertEqual(brief_new.sub_tasks[2].must_set, [":new-content-briefs-path", ":new-content-briefs"])
         self.assertNotIn("propagate context delete :review-findings", brief_new.sub_tasks[2].before)
         self.assertNotIn("propagate context delete :review-suggestions", brief_new.sub_tasks[2].before)
+        self.assertEqual(brief_new.sub_tasks[-1].task_id, "route-after-approval")
+        self.assertEqual(brief_new.sub_tasks[-1].before, ["propagate context set :new-content-briefs-approved true"])
 
         implement_rewrites = config.executions["implement-rewrites"]
         self.assertEqual(implement_rewrites.repository, "pdfdancer-www")
@@ -73,12 +78,12 @@ class SeoAutomationConfigTests(unittest.TestCase):
 
         triggers = {(t.after, t.run, t.when_context) for t in config.propagation_triggers}
         self.assertIn(("analyze", "plan-seo", None), triggers)
-        self.assertIn(("plan-seo", "brief-rewrites", ":has-rewrite-targets"), triggers)
-        self.assertIn(("plan-seo", "brief-new-content", ":run-new-content-direct"), triggers)
-        self.assertIn(("brief-rewrites", "implement-rewrites", ":rewrite-briefs"), triggers)
+        self.assertIn(("plan-seo", "brief-rewrites", ":plan-approved-rewrites"), triggers)
+        self.assertIn(("plan-seo", "brief-new-content", ":plan-approved-new-content-direct"), triggers)
+        self.assertIn(("brief-rewrites", "implement-rewrites", ":rewrite-briefs-approved"), triggers)
         self.assertIn(("implement-rewrites", "brief-new-content", ":run-new-content-after-rewrites"), triggers)
         self.assertIn(("implement-rewrites", "track-implementations", ":ready-to-track"), triggers)
-        self.assertIn(("brief-new-content", "implement-new-content", ":new-content-briefs"), triggers)
+        self.assertIn(("brief-new-content", "implement-new-content", ":new-content-briefs-approved"), triggers)
         self.assertIn(("implement-new-content", "track-implementations", ":ready-to-track"), triggers)
 
         for prompt_path in [

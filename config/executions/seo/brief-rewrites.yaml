@@ -62,3 +62,6 @@ brief-rewrites:
             pr_number:
               equals_context: ":brief-rewrites-pr-number"
           continue: true
+    - id: route-after-approval
+      before:
+        - 'propagate context set :rewrite-briefs-approved true'

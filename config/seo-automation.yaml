@@ -139,13 +139,13 @@ propagation:
       run: plan-seo
     - after: plan-seo
       run: brief-rewrites
-      when_context: :has-rewrite-targets
+      when_context: :plan-approved-rewrites
     - after: plan-seo
       run: brief-new-content
-      when_context: :run-new-content-direct
+      when_context: :plan-approved-new-content-direct
     - after: brief-rewrites
       run: implement-rewrites
-      when_context: :rewrite-briefs
+      when_context: :rewrite-briefs-approved
     - after: implement-rewrites
       run: brief-new-content
       when_context: :run-new-content-after-rewrites
@@ -154,7 +154,7 @@ propagation:
       when_context: :ready-to-track
     - after: brief-new-content
       run: implement-new-content
-      when_context: :new-content-briefs
+      when_context: :new-content-briefs-approved
     - after: implement-new-content
       run: track-implementations
       when_context: :ready-to-track

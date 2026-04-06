@@ -23,6 +23,11 @@ No other execution writes to the ledger. `analyze` reads it (via context) to inc
 effectiveness data from `:findings` only, and the briefing lanes translate approved strategy into editorial briefs for
 implementation.
 
+Approval gates matter in the middle of the DAG:
+- `plan-seo` only hands off to a briefing lane after its strategy PR is approved
+- `brief-rewrites` only hands off to `implement-rewrites` after its brief PR is approved
+- `brief-new-content` only hands off to `implement-new-content` after its brief PR is approved
+
 ## Implementation Ledger
 
 **File**: `data/feedback/implementations.yaml` in pdfdancer-marketing-data, committed to main.
