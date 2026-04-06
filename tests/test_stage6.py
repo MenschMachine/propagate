@@ -1012,7 +1012,7 @@ class PropagateResumeTests(unittest.TestCase):
         for inv in invocations:
             self.assertEqual(Path(inv["cwd"]).resolve(), first_clone_dir.resolve())
 
-    def test_successful_run_clears_state_file(self) -> None:
+    def test_successful_run_preserves_state_file_until_clear(self) -> None:
         repo_dir = self.workspace / "repo"
         repo_dir.mkdir()
         (self.prompt_dir / "task.md").write_text("task\n", encoding="utf-8")
@@ -1043,7 +1043,11 @@ class PropagateResumeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
         state_file = state_file_path(config_path)
-        self.assertFalse(state_file.exists(), "State file should be deleted after successful completion")
+        self.assertTrue(state_file.exists(), "State file should be retained after successful completion")
+
+        clear_result = self.run_cli("clear", "--config", str(config_path))
+        self.assertEqual(clear_result.returncode, 0, clear_result.stderr)
+        self.assertFalse(state_file.exists(), "State file should be deleted only by clear")
 
     def test_resume_without_state_file_fails(self) -> None:
         repo_dir = self.workspace / "repo"
@@ -1177,8 +1181,8 @@ class PropagateResumeTests(unittest.TestCase):
         prompts = [inv["prompt"].strip() for inv in invocations]
         self.assertEqual(prompts, ["only-step"])
 
-        # State file should be cleared after success
-        self.assertFalse(state_file.exists())
+        # State file should still exist after resumed success
+        self.assertTrue(state_file.exists())
 
 
 if __name__ == "__main__":
