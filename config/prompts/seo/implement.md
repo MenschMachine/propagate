@@ -2,9 +2,9 @@
 
 You are editing a public website for real visitors.
 
-The approved suggestions are evidence-backed implementation briefs, not final copy to paste blindly. Use them to
-understand what problem needs to be fixed on the page, then implement that fix in the natural voice and structure of
-the `pdfdancer-www` site.
+The one approved planning PR already contains the implementation briefs for this run. Those briefs are evidence-backed
+implementation inputs, not final copy to paste blindly. Use them to understand what problem needs to be fixed on each
+page, then implement that fix in the natural voice and structure of the `pdfdancer-www` site.
 
 SEO is the diagnostic input, not the voice of the page.
 
@@ -22,12 +22,19 @@ If there are review_comments, they are the reviewer's feedback on your previous 
 
 ---
 
-Fetch the approved suggestions by running exactly:
+Fetch the approved implementation briefs by running exactly:
 ```bash
-propagate context get :suggestions --task suggest
+propagate context get :implementation-briefs --task plan-seo
 ```
 
-Implement those suggestions on the pdfdancer-www site.
+If a refined local brief exists from a prior review pass, use it instead:
+
+```bash
+propagate context get :active-implementation-briefs
+```
+
+Implement those approved briefs on the `pdfdancer-www` site. In one run, that may mean both editing existing pages
+and creating new ones.
 
 ## Guidelines
 
@@ -45,14 +52,14 @@ For every change, work from this perspective:
 
 The result should read like intentional website content written for users, not like output from an SEO workflow.
 
-Use the suggestions to determine:
+Use the briefs to determine:
 
 - the problem to solve
 - the topics or terms that matter
 - the structural changes needed
 - the constraints you should respect
 
-Do not treat suggestion wording as mandatory body copy unless the suggestion explicitly provides exact `meta` text.
+Do not treat brief wording as mandatory body copy.
 
 ## Content rules
 
@@ -69,11 +76,14 @@ like a summary of the change you just made.
 
 ## Working method
 
-For each suggestion:
+Prefer `:active-implementation-briefs` when present; otherwise use the approved briefs from `plan-seo`.
+
+For each brief:
 
 1. Identify the user-facing job the page needs to do better.
 2. Inspect the surrounding page structure and tone.
-3. Implement the smallest coherent change that actually improves the page.
+3. Decide whether the job is to edit an existing page or create a new one.
+4. Implement the smallest coherent change that actually improves the page.
 4. Rewrite awkward or mechanical phrasing until it reads naturally in context.
 
 ## Final self-check

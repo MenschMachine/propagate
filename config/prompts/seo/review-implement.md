@@ -34,29 +34,28 @@ Pay special attention to weak AI-style failure modes:
 
 ## Classification
 
-Classify each finding into one of the following categories:
+Classify each problem into one of these buckets:
 
-**BLOCKING** — issues in THIS repository that must be fixed:
-- public content that feels unnatural, misleading, or obviously machine-generated
-- headings or sections that do not make sense for real visitors
-- literalized internal reasoning showing up in public copy
-- structural changes that hurt clarity or page purpose
-- implementation that misses the real intent of the approved brief
+- **Implementation problem**: the brief was sound, but the page edits are weak or wrong.
+- **Brief problem**: the edits reveal that the brief itself is malformed, too abstract, or still strategy-shaped.
 
-**NON-BLOCKING** — improvements in THIS repository that are nice-to-have:
-- wording that works but could be sharper
-- structure that is acceptable but could be cleaner
-- links or section ordering that could be improved
-
-If there are BLOCKING issues, be specific about file names and what needs to change:
+If the problem is in implementation:
 
 ```bash
 propagate context set --stdin :review-findings <<'FINDINGS'
-<your blocking findings>
+<blocking implementation findings>
 FINDINGS
 ```
 
-If there are NON-BLOCKING suggestions:
+If the problem is in the brief:
+
+```bash
+propagate context set --stdin :review-findings-brief <<'FINDINGS'
+<blocking brief findings>
+FINDINGS
+```
+
+If there are only NON-BLOCKING suggestions:
 
 ```bash
 propagate context set --stdin :review-suggestions <<'SUGGESTIONS'

@@ -8,31 +8,25 @@ execution is the sole owner of appending new entries to the ledger — no other 
 ### 1. Read implementation details from context
 
 ```bash
-propagate context get :changed-urls-rewrites --task implement-rewrites
+propagate context get :changed-urls --task implement-seo
 ```
 
 ```bash
-propagate context get :changed-urls-new-content --task implement-new-content
+propagate context get :implementation-briefs --task plan-seo
 ```
 
-```bash
-propagate context get :rewrite-briefs --task brief-rewrites
-```
-
-```bash
-propagate context get :new-content-briefs --task brief-new-content
-```
-
-The changed URL keys are JSON arrays of production URLs. The brief keys contain the structured editorial briefs that
-drove implementation. Some runs will only have one implementation lane; treat missing keys as empty.
+The changed URL key is a JSON array of production URLs. The brief key contains the structured implementation briefs
+that drove implementation.
 
 ### 2. Match URLs to suggestions
 
-Combine both changed URL arrays into one deduplicated list and save that real result into `:changed-urls` for
-downstream indexing. Do not use placeholder example URLs.
+Save the real changed URL array back into `:changed-urls` for downstream indexing. Do not use placeholder example URLs.
 
 For each changed URL, find the corresponding brief entry to extract:
-- `suggestion_type`: meta | content-edit | new-content | technical
+- `suggestion_type`: derive this from `change_type` as:
+  - `rewrite` -> `content-edit`
+  - `new-content` -> `new-content`
+  - `technical` -> `technical`
 - `change`: a one-line summary of what was done
 
 If a URL doesn't match any brief cleanly, use `content-edit` as the default type and describe the change
@@ -99,11 +93,11 @@ entries resolve well before hitting the threshold, decrease them.
 Look for the most recent brief file:
 
 ```bash
-find reports/ -path "*/briefs/*.yaml" | sort -r | head -1
+find reports/ -name "implementation-briefs.yaml" | sort -r | head -1
 ```
 
-Use that path as `suggestion_source`. If no file matches, use `"context-only"` as a fallback — the briefs were stored
-in the context store but not written to a report file.
+Prefer `:implementation-briefs-path --task plan-seo` as `suggestion_source`. If that key is missing, use the most
+recent brief file path from `reports/` as a fallback. If no file matches, use `"context-only"`.
 
 ### 6. Write the ledger
 
@@ -128,7 +122,7 @@ Each entry must follow this exact structure:
   suggestion_type: meta
   change: "Rewrote title tag and meta description"
   date_implemented: 2026-03-17
-  suggestion_source: reports/2026-03-16/suggestions.md
+  suggestion_source: reports/2026-03-16/implementation-briefs.yaml
   min_impressions_for_eval: 650
   baseline:
     weeks:

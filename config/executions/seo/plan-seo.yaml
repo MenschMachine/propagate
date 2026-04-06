@@ -21,17 +21,21 @@ plan-seo:
         - git:branch
     - id: strategy
       before:
-        - 'propagate context delete :rewrite-targets'
-        - 'propagate context delete :new-content-targets'
-        - 'propagate context delete :has-rewrite-targets'
-        - 'propagate context delete :has-new-content-targets'
-        - 'propagate context delete :run-new-content-direct'
+        - 'propagate context delete :plan-approved'
         - 'propagate context delete :strategy-path'
+        - 'propagate context delete :implementation-briefs-path'
+        - 'propagate context delete :implementation-briefs'
+        - 'propagate context delete :implementation-targets'
+        - 'propagate context delete :has-implementation-targets'
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+        - 'propagate context delete :revision-reason'
       prompt: ./prompts/seo/plan-seo.md
       must_set:
         - ":strategy-path"
-        - ":rewrite-targets"
-        - ":new-content-targets"
+        - ":implementation-briefs-path"
+        - ":implementation-briefs"
+        - ":implementation-targets"
     - id: review-plan
       before:
         - 'propagate context delete :review-findings'
@@ -69,5 +73,4 @@ plan-seo:
           continue: true
     - id: route-after-approval
       before:
-        - 'if propagate context get :has-rewrite-targets >/dev/null 2>&1; then propagate context set :plan-approved-rewrites true; fi'
-        - 'if propagate context get :run-new-content-direct >/dev/null 2>&1; then propagate context set :plan-approved-new-content-direct true; fi'
+        - 'if propagate context get :has-implementation-targets >/dev/null 2>&1; then propagate context set :plan-approved true; fi'

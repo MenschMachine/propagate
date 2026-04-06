@@ -1,11 +1,11 @@
 # Summarize SEO Strategy PR
 
-Run `git diff main` to inspect the strategy artifact.
+Run `git diff main` to inspect the planning artifacts.
 
 Write a PR description that summarizes:
 
-- how many rewrite/technical items were approved
-- how many new-content items were approved
+- how many implementation items were approved
+- the mix of rewrite, new-content, and technical work
 - the top priorities
 - the main defer reasons
 

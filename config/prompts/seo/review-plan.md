@@ -1,6 +1,6 @@
 # Review SEO Strategy
 
-You are reviewing the run-level SEO strategy before any editorial briefs are written.
+You are reviewing the run-level SEO planning PR before implementation begins.
 
 Inspect the current diff:
 
@@ -13,11 +13,13 @@ Check:
 
 - whether the selected items are actually supported by `:findings`
 - whether the run is focused enough to implement well
-- whether page types are assigned sensibly
-- whether any item placed in rewrite/technical really belongs in new-content because it is a new destination or
-  framework-specific page build
+- whether page types and `change_type` values are assigned sensibly
 - whether deferrals make sense
 - whether the strategy over-relies on internal SEO taxonomy instead of page/job reality
+- whether the implementation briefs are actually writable
+- whether the briefs center page promise, reader questions, proof, and constraints instead of generic section templates
+- whether the planning PR would let one implementation execution carry the whole approved set without further
+  orchestration
 
 Classify findings as:
 
