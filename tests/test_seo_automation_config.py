@@ -112,8 +112,8 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "Do not split this into separate rewrite and new-content handoff files." in plan
 
     assert "whether the implementation briefs are actually writable" in review_plan
-    assert "one approved planning PR" in implement
-    assert "edit an existing page or create a new one" in implement
+    assert "approved briefs" in implement
+    assert "Decide: edit vs create" in implement
     assert "propagate context get :implementation-briefs --task plan-seo" in implement
     assert "preserve the approved targets and overall strategic intent" in revise
     assert "Implementation problem" in review_implement
