@@ -406,7 +406,7 @@ def test_activate_triggers_when_context_matches(tmp_path):
     )
     context_dir = get_execution_context_dir(get_context_root(config.config_path), "a")
     ensure_context_dir(context_dir)
-    write_context_value(context_dir, "run-full", "true")
+    write_context_value(context_dir, ":run-full", "true")
     executions: dict[str, ExecutionStatus] = {"a": ExecutionStatus(state="completed")}
     activate_matching_triggers(config, graph, "a", None, executions)
     assert "b" in executions and executions["b"].state != "inactive"

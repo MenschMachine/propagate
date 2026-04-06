@@ -237,7 +237,7 @@ def activate_matching_triggers(
 
 def _evaluate_trigger_context_gate(gate: str, context_dir: Path) -> bool:
     negated = gate.startswith("!")
-    key = gate[2:] if negated else gate[1:]
+    key = gate[1:] if negated else gate
     key_path = context_dir / key
     try:
         truthy = key_path.is_file() and key_path.read_text(encoding="utf-8") != ""
