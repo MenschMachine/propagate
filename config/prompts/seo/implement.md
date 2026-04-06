@@ -7,6 +7,29 @@ SEO is diagnostic input, not the page voice.
 
 ---
 
+## 0. Prior Review Failures (Check First)
+
+```bash
+propagate context get :revision-reason
+```
+
+If the output is `review-findings`, this is a **retry after a failed internal review**. Read the blocking findings:
+
+```bash
+propagate context get :prior-review-findings
+```
+
+**Address every finding before implementing anything else.** Each entry describes a specific, blocking problem in the previous implementation. Do not restate the fix in different words — resolve the underlying issue.
+
+Common patterns that fail review:
+- Headings that describe process or editorial state ("Why This Page Exists") — use subject-matter headings instead
+- Vague compliance language ("Privacy-first defaults", "Compliance-ready operations") — use concrete, visitor-facing language
+- Creating a new page without linking to it from the relevant hub or navigation
+
+If `:revision-reason` is empty or `check-failure`, skip this section.
+
+---
+
 ## 1. Review Feedback (Highest Priority)
 
 Run:

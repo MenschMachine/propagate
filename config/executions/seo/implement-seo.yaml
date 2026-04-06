@@ -26,6 +26,7 @@ implement-seo:
         - 'propagate context delete :active-implementation-briefs'
         - 'propagate context delete :implementation-briefs-refined'
         - 'propagate context delete :checks-passed'
+        - 'if propagate context get :review-findings >/dev/null 2>&1; then propagate context set :prior-review-findings "$(propagate context get :review-findings)"; else propagate context delete :prior-review-findings; fi'
         - 'propagate context delete :review-findings'
         - 'propagate context delete :review-suggestions'
         - 'propagate context delete :review-findings-brief'
