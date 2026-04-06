@@ -13,8 +13,10 @@ Check whether the briefs are actually writable:
 
 - do they define a clear page role?
 - do they define the intended visitor in editorial language?
-- do they specify structure and substance instead of abstract strategy?
+- do they define page substance, reader questions, and proof instead of abstract strategy?
 - do they avoid internal taxonomy and planning language?
+- do they avoid prescribing a generic section template that the implementation would merely fill in?
+- do they leave room for editorial judgment instead of naming every section for the implementer?
 - do they leave no important decisions to the implementer?
 
 If there are BLOCKING issues:

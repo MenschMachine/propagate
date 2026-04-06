@@ -21,6 +21,8 @@ Check:
 - natural public language
 - section structure quality
 - whether the page reads like website content instead of planning notes
+- whether the page still feels like a template being filled in from the brief
+- whether heading ideas and section choices feel specific to this page rather than reusable across any SDK/feature page
 
 If the problem is in implementation:
 

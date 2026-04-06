@@ -25,7 +25,8 @@ Requirements:
 
 - preserve the approved page targets and overall strategic intent
 - remove strategy/funnel language and replace it with user/page language
-- sharpen page role, section expectations, and constraints
+- replace templated section instructions with page promise, core reader questions, proof, and editorial guardrails
+- sharpen page role and constraints without turning the brief into a fill-in-the-SEO-page worksheet
 - leave no important editorial decisions open
 
 Do not edit repository files here. This is a local brief refinement for the implementation loop.

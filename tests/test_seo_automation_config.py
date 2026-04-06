@@ -107,6 +107,20 @@ class SeoAutomationConfigTests(unittest.TestCase):
         ]:
             self.assertTrue(prompt_path.exists(), prompt_path)
 
+    def test_briefing_prompts_enforce_reader_question_not_template_contract(self) -> None:
+        brief_rewrites = (REPO_ROOT / "config" / "prompts" / "seo" / "brief-rewrites.md").read_text(encoding="utf-8")
+        brief_new = (REPO_ROOT / "config" / "prompts" / "seo" / "brief-new-content.md").read_text(encoding="utf-8")
+        revise_rewrites = (REPO_ROOT / "config" / "prompts" / "seo" / "revise-briefs-rewrites.md").read_text(encoding="utf-8")
+        review_rewrites = (REPO_ROOT / "config" / "prompts" / "seo" / "review-briefs-rewrites.md").read_text(encoding="utf-8")
+
+        self.assertIn("`core_reader_questions`", brief_rewrites)
+        self.assertIn("Do not require a fixed section list.", brief_rewrites)
+        self.assertIn("Do not prescribe generic section templates", brief_rewrites)
+
+        self.assertIn("Do not solve the problem by prescribing a generic launch-page structure.", brief_new)
+        self.assertIn("replace templated section instructions with page promise, core reader questions, proof, and editorial guardrails", revise_rewrites)
+        self.assertIn("do they avoid prescribing a generic section template", review_rewrites)
+
 
 if __name__ == "__main__":
     unittest.main()

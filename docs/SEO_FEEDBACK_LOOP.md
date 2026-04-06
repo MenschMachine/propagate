@@ -23,6 +23,15 @@ No other execution writes to the ledger. `analyze` reads it (via context) to inc
 effectiveness data from `:findings` only, and the briefing lanes translate approved strategy into editorial briefs for
 implementation.
 
+Those editorial briefs are intentionally not mini page outlines. They should center:
+- page promise
+- primary audience and visitor state
+- core reader questions
+- proof and constraints
+- clear boundaries around what belongs on the page versus elsewhere
+
+They should avoid prescribing a generic section template that implementation merely fills in.
+
 Approval gates matter in the middle of the DAG:
 - `plan-seo` only hands off to a briefing lane after its strategy PR is approved
 - `brief-rewrites` only hands off to `implement-rewrites` after its brief PR is approved

@@ -20,6 +20,7 @@ Check:
 - whether it avoids duplicating nearby pages
 - whether the page type is clear
 - whether the public language is natural and specific
+- whether the page feels purpose-built instead of assembled from a generic launch-page structure
 
 If the problem is in implementation:
 

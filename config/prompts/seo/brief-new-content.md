@@ -41,8 +41,13 @@ For new-content pages, be especially clear about:
 
 - why the page deserves to exist as its own destination
 - what unique user need it serves
-- how it differs from existing nearby pages
-- If you are revising after `:review-findings`, resolve those issues directly instead of regenerating the brief blindly.
+- what story or promise this page can deliver better than nearby pages
+- what should stay out of this page because another page should own it
+
+Do not solve the problem by prescribing a generic launch-page structure. Define the page's role, promise, core reader
+questions, proof, and boundaries, then let implementation shape the actual page.
+
+If you are revising after `:review-findings`, resolve those issues directly instead of regenerating the brief blindly.
 
 ## Required context keys
 

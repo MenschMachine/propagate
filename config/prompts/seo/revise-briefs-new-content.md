@@ -25,7 +25,8 @@ Requirements:
 
 - preserve the approved target pages and page types
 - clarify why each page should exist separately
-- sharpen audience, page role, and outline expectations
+- sharpen audience, page role, core reader questions, proof, and boundaries
+- remove templated outline language unless a very specific page module is essential
 - remove strategy jargon and replace it with editorially usable direction
 
 Do not edit repository files here. This is a local brief refinement for the implementation loop.
