@@ -8,7 +8,7 @@ import zmq
 
 from .constants import LOGGER
 from .context_store import clear_all_context, get_context_root, get_execution_context_dir
-from .errors import PropagateError
+from .errors import AgentInterrupted, PropagateError
 from .execution_flow import run_configured_execution
 from .graph import build_execution_graph, build_execution_graph_adjacency
 from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionStatus, RunState, RuntimeContext, TaskStatus
@@ -138,6 +138,8 @@ def run_execution_schedule(
                 on_tasks_reset,
                 skip_task_ids=skip_tasks.get(execution.name) if skip_tasks else None,
             )
+        except AgentInterrupted:
+            raise
         except PropagateError as error:
             raise wrap_execution_runtime_error(execution, error) from error
         executions[execution.name].state = "completed"

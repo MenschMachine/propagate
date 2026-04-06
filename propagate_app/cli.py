@@ -4,7 +4,7 @@ import argparse
 import os
 import shutil
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import NoReturn
 
@@ -20,7 +20,7 @@ from .context_store import (
     resolve_context_dir_for_read,
     resolve_context_dir_for_write,
 )
-from .errors import PropagateError, build_named_error
+from .errors import AgentInterrupted, PropagateError, build_named_error
 from .models import Config, RunState, RuntimeContext
 from .repo_clone import is_propagate_clone
 from .run_state import (
@@ -247,25 +247,28 @@ def _run_resume(config: Config, resume_target: str | None = None, stop_after: st
         address = socket_address(config.config_path)
         signal_socket = bind_pull_socket(address)
         LOGGER.info("Listening for external signals on %s", address)
-        run_execution_schedule(
-            config,
-            run_state.initial_execution,
-            RuntimeContext(
-                agents=config.agent.agents,
-                default_agent=config.agent.default_agent,
-                context_sources=config.context_sources,
-                active_signal=active_signal,
-                initialized_signal_context_dirs=initialized_dirs,
-                signal_configs=config.signals,
-                config_dir=config.config_path.parent,
-            ),
-            run_state=run_state,
-            signal_socket=signal_socket,
-            stop_after=stop_after,
-            skip_executions=skip_executions,
-            skip_tasks=skip_tasks,
-        )
-        return 0
+
+        def schedule() -> None:
+            run_execution_schedule(
+                config,
+                run_state.initial_execution,
+                RuntimeContext(
+                    agents=config.agent.agents,
+                    default_agent=config.agent.default_agent,
+                    context_sources=config.context_sources,
+                    active_signal=active_signal,
+                    initialized_signal_context_dirs=initialized_dirs,
+                    signal_configs=config.signals,
+                    config_dir=config.config_path.parent,
+                ),
+                run_state=run_state,
+                signal_socket=signal_socket,
+                stop_after=stop_after,
+                skip_executions=skip_executions,
+                skip_tasks=skip_tasks,
+            )
+
+        return _run_with_interrupt_handling(config_path, run_state, schedule)
     except PropagateError as error:
         LOGGER.error("%s", error)
         _log_resume_hint(config_path)
@@ -306,25 +309,28 @@ def _run_fresh(
     try:
         signal_socket = bind_pull_socket(address)
         LOGGER.info("Listening for external signals on %s", address)
-        run_execution_schedule(
-            config,
-            initial_execution.name,
-            RuntimeContext(
-                agents=config.agent.agents,
-                default_agent=config.agent.default_agent,
-                context_sources=config.context_sources,
-                active_signal=active_signal,
-                initialized_signal_context_dirs=initialized_dirs,
-                signal_configs=config.signals,
-                config_dir=config.config_path.parent,
-            ),
-            run_state=run_state,
-            signal_socket=signal_socket,
-            stop_after=stop_after,
-            skip_executions=skip_executions,
-            skip_tasks=skip_tasks,
-        )
-        return 0
+
+        def schedule() -> None:
+            run_execution_schedule(
+                config,
+                initial_execution.name,
+                RuntimeContext(
+                    agents=config.agent.agents,
+                    default_agent=config.agent.default_agent,
+                    context_sources=config.context_sources,
+                    active_signal=active_signal,
+                    initialized_signal_context_dirs=initialized_dirs,
+                    signal_configs=config.signals,
+                    config_dir=config.config_path.parent,
+                ),
+                run_state=run_state,
+                signal_socket=signal_socket,
+                stop_after=stop_after,
+                skip_executions=skip_executions,
+                skip_tasks=skip_tasks,
+            )
+
+        return _run_with_interrupt_handling(config_path, run_state, schedule)
     except PropagateError as error:
         LOGGER.error("%s", error)
         _log_resume_hint(config_path)
@@ -445,6 +451,34 @@ def parse_and_validate_skip(
 def _validate_stop_after(stop_after: str, config: Config) -> None:
     if stop_after not in config.executions:
         raise PropagateError(f"--stop-after execution '{stop_after}' not found in config.")
+def _run_with_interrupt_handling(
+    config_path: Path,
+    run_state: RunState,
+    schedule_fn: Callable[[], None],
+) -> int:
+    """Run schedule with interrupt -> interactive session -> resume loop."""
+    from .interactive import ACTION_ABORT, ACTION_SKIP, handle_agent_interrupt
+    from .models import TaskStatus
+    from .run_state import save_run_state
+
+    while True:
+        try:
+            schedule_fn()
+            return 0
+        except AgentInterrupted as exc:
+            action = handle_agent_interrupt(exc)
+            if action == ACTION_ABORT:
+                _log_resume_hint(config_path)
+                return 130
+            if action == ACTION_SKIP:
+                es = run_state.executions.get(exc.execution_name)
+                if es is not None:
+                    ts = es.tasks.setdefault(exc.task_id, TaskStatus())
+                    ts.phases.agent_completed = True
+                    save_run_state(run_state)
+            # ACTION_RERUN: state already has agent_completed=False, just loop
+
+
 def _log_resume_hint(config_path: Path) -> None:
     if state_file_path(config_path).exists():
         LOGGER.error("Use --resume to continue from where it left off.")

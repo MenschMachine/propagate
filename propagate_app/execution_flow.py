@@ -2,7 +2,7 @@ from collections.abc import Callable
 from dataclasses import replace
 
 from .constants import LOGGER, PHASE_AFTER, PHASE_BEFORE
-from .errors import PropagateError
+from .errors import AgentInterrupted, PropagateError
 from .git_runtime import restore_git_run_state
 from .models import ExecutionConfig, ExecutionStatus, GitRunState, RuntimeContext
 from .sub_tasks import run_execution_sub_tasks, run_hook_phase
@@ -47,6 +47,8 @@ def run_configured_execution(
             run_hook_phase(context_id, "after", execution.after, ctx, execution.git)
             if on_phase_completed is not None and execution.after:
                 on_phase_completed(execution.name, "", PHASE_AFTER)
+    except AgentInterrupted:
+        raise
     except PropagateError as error:
         if not execution.on_failure:
             raise

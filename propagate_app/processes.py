@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .constants import LOGGER
-from .errors import PropagateError
+from .errors import AgentInterrupted, PropagateError
 
 
 def build_agent_command(agent_command: str, prompt_file: Path) -> str:
@@ -37,16 +37,58 @@ def run_agent_command(
         raise PropagateError(
             f"Failed to start agent command for sub-task '{task_id}': {error}"
         ) from error
-    for raw_line in process.stdout:
-        line = raw_line.decode("utf-8", errors="replace")
-        sys.stdout.write(line)
-        sys.stdout.flush()
-        LOGGER.debug("%s", line.rstrip("\n"))
+    interrupted = False
+    try:
+        for raw_line in process.stdout:
+            line = raw_line.decode("utf-8", errors="replace")
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            LOGGER.debug("%s", line.rstrip("\n"))
+    except KeyboardInterrupt:
+        interrupted = True
+        LOGGER.info("Interrupt received — terminating agent for sub-task '%s'.", task_id)
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+    if interrupted:
+        raise AgentInterrupted(
+            f"Agent interrupted during sub-task '{task_id}'.",
+            task_id=task_id,
+            working_dir=working_dir,
+        )
     returncode = process.wait()
     if returncode != 0:
         raise PropagateError(
             f"Agent command failed for sub-task '{task_id}' with exit code {returncode}."
         )
+
+
+def build_interactive_agent_command(agent_command: str) -> str:
+    """Strip the {prompt_file} placeholder to produce an interactive command."""
+    cmd = agent_command.replace("{prompt_file}", "").strip()
+    cmd = " ".join(cmd.split())
+    return cmd
+
+
+def run_interactive_agent(
+    command: str,
+    working_dir: Path,
+    extra_env: dict[str, str] | None = None,
+) -> int:
+    """Launch an interactive agent session with full TTY access."""
+    env = None
+    if extra_env:
+        env = {**os.environ, **extra_env}
+    result = subprocess.run(
+        command,
+        shell=True,
+        cwd=working_dir,
+        env=env,
+    )
+    return result.returncode
 
 
 def run_shell_command(
