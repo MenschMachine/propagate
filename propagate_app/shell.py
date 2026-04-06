@@ -151,6 +151,7 @@ def _input_loop(
     state: _ShellState,
 ) -> None:
     print("Type /help for available commands, /quit to exit.")
+    _refresh_projects(push_socket, state)
     while True:
         try:
             line = input(PROMPT)
