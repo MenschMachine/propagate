@@ -57,6 +57,9 @@ they clearly strengthen the strategy, but do not churn an otherwise sound plan j
 - If the evidence supports a technical cleanup or ownership fix rather than a public page brief, classify it that way.
   Do not force a page-rewrite or new-content target when the underlying job is redirect cleanup, internal links,
   sitemap repair, canonical cleanup, or another technical change.
+- If the right fix is to create a new destination, replace a redirect placeholder, or stand up a framework-specific or
+  otherwise net-new page, classify it as `new-content`, not rewrite. Rewrite targets are for materially improving an
+  existing destination that should continue to exist as that page.
 - Every approved item must have a `page_type`:
   - `sdk-page`
   - `feature-page`

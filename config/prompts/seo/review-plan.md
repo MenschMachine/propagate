@@ -14,6 +14,8 @@ Check:
 - whether the selected items are actually supported by `:findings`
 - whether the run is focused enough to implement well
 - whether page types are assigned sensibly
+- whether any item placed in rewrite/technical really belongs in new-content because it is a new destination or
+  framework-specific page build
 - whether deferrals make sense
 - whether the strategy over-relies on internal SEO taxonomy instead of page/job reality
 

@@ -61,6 +61,8 @@ needs, while leaving final section naming and some structural judgment to implem
 
 - Use page-editor language only.
 - Translate internal SEO reasoning into reader needs, page substance, proof, and editorial guardrails.
+- Only brief pages that are true existing-destination rewrites. If the strategy item is really a new destination,
+  redirect replacement, framework page build, or other net-new page concept, that item does not belong here.
 - Do not describe the page as funnel architecture, intent-routing, or page ownership mechanics.
 - Do not prescribe generic section templates such as "comparison block", "evaluation section", "who this is for", or
   "next steps" unless the page truly cannot work without that exact module.
@@ -84,6 +86,7 @@ Bad:
 - instructions that read like content-architecture notes
 - prescribed headings that sound generic before they are written
 - strategy labels such as owning demand, routing intent, evaluation-stage framing, or cluster repair
+- briefs for pages that should have been routed to `brief-new-content`
 
 ## Required context keys
 

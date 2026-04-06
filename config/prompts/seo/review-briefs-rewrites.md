@@ -17,6 +17,7 @@ Check whether the briefs are actually writable:
 - do they avoid internal taxonomy and planning language?
 - do they avoid prescribing a generic section template that the implementation would merely fill in?
 - do they leave room for editorial judgment instead of naming every section for the implementer?
+- do they stay within the rewrite lane rather than briefing a net-new destination or framework-page build?
 - do they leave no important decisions to the implementer?
 
 If there are BLOCKING issues:
