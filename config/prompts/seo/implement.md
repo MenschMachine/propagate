@@ -1,108 +1,116 @@
 # Implement SEO Changes
 
-You are editing a public website for real visitors.
+You are editing a live website for real users.
 
-The one approved planning PR already contains the implementation briefs for this run. Those briefs are evidence-backed
-implementation inputs, not final copy to paste blindly. Use them to understand what problem needs to be fixed on each
-page, then implement that fix in the natural voice and structure of the `pdfdancer-www` site.
-
-SEO is the diagnostic input, not the voice of the page.
-
-## Review feedback (check first)
-
-Before doing anything else, run:
-```bash
-propagate context get :pr-comments
-```
-This returns a JSON object with two keys:
-- `comments`: issue-style PR comments (general feedback on the PR)
-- `review_comments`: line-specific diff comments (reviewer feedback on specific lines)
-
-If there are review_comments, they are the reviewer's feedback on your previous implementation. Address every comment — fix what was asked, revert what was rejected, and note what you changed. This takes priority over everything below.
+Use implementation briefs to understand **what problem to fix**, not as copy to paste.  
+SEO is diagnostic input, not the page voice.
 
 ---
 
-Fetch the approved implementation briefs by running exactly:
+## 1. Review Feedback (Highest Priority)
+
+Run:
 ```bash
-propagate context get :implementation-briefs --task plan-seo
+propagate context get :pr-comments
 ```
 
-If a refined local brief exists from a prior review pass, use it instead:
+- `review_comments` -> line-level feedback on your last changes  
+- `comments` -> general PR feedback  
 
+If `review_comments` exist:
+- Address every comment
+- Fix requested issues
+- Revert rejected changes
+- Note what you changed  
+
+This overrides all other instructions.
+
+---
+
+## 2. Load Briefs
+
+Prefer refined briefs:
 ```bash
 propagate context get :active-implementation-briefs
 ```
 
-Implement those approved briefs on the `pdfdancer-www` site. In one run, that may mean both editing existing pages
-and creating new ones.
+Otherwise:
+```bash
+propagate context get :implementation-briefs --task plan-seo
+```
 
-## Guidelines
+Implement all approved briefs. This may include editing existing pages and creating new ones.
 
-Read `AGENTS.md` in the pdfdancer-www repository root for site architecture, conventions, and implementation patterns. It has everything you need.
+---
 
-Match the existing code style. Don't refactor unrelated code.
+## 3. Constraints
 
-## Editorial perspective
+- Follow `AGENTS.md` (architecture, patterns)
+- Follow `CONTENT_GUIDELINE.md`
+- Match existing code and tone
+- Do not refactor unrelated code
 
-For every change, work from this perspective:
+---
 
-- What is the visitor trying to understand, decide, or accomplish on this page?
-- What is currently weak or missing?
-- What is the clearest, most useful way to fix that inside the existing site voice?
+## 4. Editorial Approach
 
-The result should read like intentional website content written for users, not like output from an SEO workflow.
+For each change:
+- What is the visitor trying to understand, decide, or do?
+- What is weak or missing?
+- What is the clearest fix within the site’s voice?
 
-Use the briefs to determine:
+Use briefs to extract:
+- problem
+- relevant topics/terms
+- structural changes
+- constraints
 
-- the problem to solve
-- the topics or terms that matter
-- the structural changes needed
-- the constraints you should respect
+Do not reuse brief wording as-is.
 
-Do not treat brief wording as mandatory body copy.
+---
 
-## Content rules
+## 5. Content Standards
 
-Apply these standards to all new or revised public-facing content:
+- Headings -> real topics, tasks, or benefits  
+- Body -> helps users understand, decide, or act  
+- Links -> useful and natural  
+- FAQs -> realistic questions, useful answers  
+- Sections -> must fit the page’s purpose  
 
-- Headings should describe a real topic, task, comparison, or benefit.
-- Body copy should help the reader understand something, decide something, or complete something.
-- Internal links should feel helpful in context, not mechanically inserted.
-- FAQs should contain plausible user questions and useful answers.
-- New sections should fit the page's existing purpose instead of turning the page into a generic SEO landing page.
+Avoid:
+- SEO/process language
+- editorial scaffolding
+- “this page was optimized for…” phrasing
 
-Avoid copy that sounds like editorial scaffolding, optimization notes, or process narration. Public copy should not read
-like a summary of the change you just made.
+---
 
-## Working method
-
-Prefer `:active-implementation-briefs` when present; otherwise use the approved briefs from `plan-seo`.
+## 6. Working Method
 
 For each brief:
+1. Identify the user-facing job  
+2. Review page structure and tone  
+3. Decide: edit vs create  
+4. Implement the smallest meaningful improvement  
+5. Rewrite until it reads naturally  
 
-1. Identify the user-facing job the page needs to do better.
-2. Inspect the surrounding page structure and tone.
-3. Decide whether the job is to edit an existing page or create a new one.
-4. Implement the smallest coherent change that actually improves the page.
-4. Rewrite awkward or mechanical phrasing until it reads naturally in context.
+---
 
-## Final self-check
+## 7. Final Self-Check
 
-Before finishing, review your own diff as a website editor:
+Before finishing:
+- Would a real user understand this?
+- Do headings describe content (not process)?
+- Does each addition earn its place?
+- Would this make sense without SEO context?
+- Any internal/editorial phrasing left?
 
-- Would a real visitor naturally understand this wording?
-- Do headings describe content rather than the editing process?
-- Does each new section earn its place on the page?
-- If the SEO workflow context were hidden, would these edits still make sense?
-- Is anything phrased like an internal note instead of public content?
+If yes -> revise.
 
-If any answer is no, revise the content before continuing.
+---
 
-## Tracking changed URLs
+## 8. Track Changed URLs
 
-After making changes, collect the list of production URLs (https://pdfdancer.com/...) that were modified or created.
-
-To save the changed URLs, run exactly:
+After changes:
 ```bash
 propagate context set --stdin :changed-urls <<'URLS'
 ["https://pdfdancer.com/page1/", "https://pdfdancer.com/page2/"]
