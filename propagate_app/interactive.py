@@ -11,10 +11,7 @@ ACTION_SKIP = "skip"
 ACTION_ABORT = "abort"
 
 
-def handle_agent_interrupt(
-    exc: AgentInterrupted,
-    extra_env: dict[str, str] | None = None,
-) -> str:
+def handle_agent_interrupt(exc: AgentInterrupted) -> str:
     """Handle an agent interrupt: launch interactive session, return action choice."""
     print(f"\n--- Interrupted during execution '{exc.execution_name}', task '{exc.task_id}'. ---")
     print(f"Launching interactive agent session in {exc.working_dir}...\n")
@@ -22,7 +19,7 @@ def handle_agent_interrupt(
     interactive_cmd = build_interactive_agent_command(exc.agent_command)
     LOGGER.debug("Starting interactive session: %s", interactive_cmd)
 
-    run_interactive_agent(interactive_cmd, exc.working_dir, extra_env=extra_env)
+    run_interactive_agent(interactive_cmd, exc.working_dir)
 
     print("\n--- Interactive session ended. ---")
     return prompt_resume_action()

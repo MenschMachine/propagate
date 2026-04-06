@@ -182,7 +182,24 @@ def test_handle_agent_interrupt_launches_interactive_session():
             result = handle_agent_interrupt(exc)
 
     assert result == ACTION_RERUN
-    mock_run.assert_called_once_with("claude -p", Path("/repo"), extra_env=None)
+    mock_run.assert_called_once_with("claude -p", Path("/repo"))
+
+
+# --- run_interactive_agent ---
+
+
+def test_run_interactive_agent_returns_exit_code(tmp_path):
+    from propagate_app.processes import run_interactive_agent
+
+    result = run_interactive_agent("exit 0", tmp_path)
+    assert result == 0
+
+
+def test_run_interactive_agent_returns_nonzero_exit_code(tmp_path):
+    from propagate_app.processes import run_interactive_agent
+
+    result = run_interactive_agent("exit 42", tmp_path)
+    assert result == 42
 
 
 # --- _run_with_interrupt_handling ---
