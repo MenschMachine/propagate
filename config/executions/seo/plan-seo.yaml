@@ -1,0 +1,78 @@
+plan-seo:
+  repository: pdfdancer-marketing-data
+  git:
+    branch:
+      name_key: :plan-seo-branch-name
+      base: main
+    commit:
+      message_source: commit_message
+    push:
+      remote: origin
+    pr:
+      base: main
+      body_key: :plan-seo-summary
+      number_key: :plan-seo-pr-number
+  sub_tasks:
+    - id: set-branch
+      before:
+        - 'propagate context set :plan-seo-branch-name "seo/plan-$(date -u +%Y-%m-%d)"'
+    - id: create-branch
+      before:
+        - git:branch
+    - id: strategy
+      before:
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+        - 'propagate context delete :rewrite-targets'
+        - 'propagate context delete :new-content-targets'
+        - 'propagate context delete :has-rewrite-targets'
+        - 'propagate context delete :has-new-content-targets'
+        - 'propagate context delete :run-new-content-direct'
+        - 'propagate context delete :strategy-path'
+      prompt: ./prompts/seo/plan-seo.md
+      must_set:
+        - ":strategy-path"
+        - ":rewrite-targets"
+        - ":new-content-targets"
+    - id: review-plan
+      before:
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+      prompt: ./prompts/seo/review-plan.md
+    - id: reroute-on-review-findings
+      when: ":review-findings"
+      after:
+        - 'propagate context set :revision-reason review-findings'
+      goto: strategy
+      max_goto: 5
+    - id: reroute-on-suggestions
+      when: ":review-suggestions"
+      after:
+        - 'propagate context set :revision-reason review-suggestions'
+      goto: strategy
+      max_goto: 3
+      on_max_goto: continue
+    - id: summarize
+      prompt: ./prompts/seo/summarize-plan-seo.md
+      must_set:
+        - ":plan-seo-summary"
+    - id: publish
+      before:
+        - git:commit
+        - git:push
+        - git:pr
+    - id: wait-for-verdict
+      after:
+        - git:pr-comments-list :pr-comments
+      wait_for_signal: pull_request.labeled
+      routes:
+        - when:
+            label: "changes_required"
+            pr_number:
+              equals_context: ":plan-seo-pr-number"
+          goto: strategy
+        - when:
+            label: "approved"
+            pr_number:
+              equals_context: ":plan-seo-pr-number"
+          continue: true

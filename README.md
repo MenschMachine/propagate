@@ -278,10 +278,10 @@ signals:
 ./venv/bin/python -m pytest tests/ -v
 
 # Lint
-./venv/bin/ruff check propagate_app/ tests/
+./venv/bin/ruff check propagate_*/ tests/
 
 # Lint with auto-fix
-./venv/bin/ruff check --fix propagate_app/ tests/
+./venv/bin/ruff check --fix propagate_*/ tests/
 ```
 
 ## Documentation

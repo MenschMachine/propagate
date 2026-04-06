@@ -1,6 +1,6 @@
 # Track Implementations
 
-Record which suggestions were implemented so that future evaluation runs can measure before/after performance. This
+Record which approved briefs were implemented so that future evaluation runs can measure before/after performance. This
 execution is the sole owner of appending new entries to the ledger — no other execution adds entries.
 
 ## Steps
@@ -8,24 +8,34 @@ execution is the sole owner of appending new entries to the ledger — no other 
 ### 1. Read implementation details from context
 
 ```bash
-propagate context get :changed-urls --task implement
+propagate context get :changed-urls-rewrites --task implement-rewrites
 ```
 
 ```bash
-propagate context get :suggestions --task suggest
+propagate context get :changed-urls-new-content --task implement-new-content
 ```
 
-`:changed-urls` is a JSON array of production URLs. `:suggestions` is the structured suggestion list from the suggest
-step. Both are cross-execution context reads — the context store is shared across executions regardless of which
-repository they operate on.
+```bash
+propagate context get :rewrite-briefs --task brief-rewrites
+```
+
+```bash
+propagate context get :new-content-briefs --task brief-new-content
+```
+
+The changed URL keys are JSON arrays of production URLs. The brief keys contain the structured editorial briefs that
+drove implementation. Some runs will only have one implementation lane; treat missing keys as empty.
 
 ### 2. Match URLs to suggestions
 
-For each changed URL, find the corresponding suggestion to extract:
+Combine both changed URL arrays into one deduplicated list and save that real result into `:changed-urls` for
+downstream indexing. Do not use placeholder example URLs.
+
+For each changed URL, find the corresponding brief entry to extract:
 - `suggestion_type`: meta | content-edit | new-content | technical
 - `change`: a one-line summary of what was done
 
-If a URL doesn't match any suggestion cleanly, use `content-edit` as the default type and describe the change
+If a URL doesn't match any brief cleanly, use `content-edit` as the default type and describe the change
 generically.
 
 ### 3. Collect baseline metrics
@@ -86,14 +96,14 @@ entries resolve well before hitting the threshold, decrease them.
 
 ### 5. Find the suggestion source path
 
-Look for the most recent suggestions file:
+Look for the most recent brief file:
 
 ```bash
-find reports/ -name "*suggest*" | sort -r | head -1
+find reports/ -path "*/briefs/*.yaml" | sort -r | head -1
 ```
 
-Use that path as `suggestion_source`. If no file matches, use `"context-only"` as a fallback — the suggestions were
-stored in the context store but not written to a report file.
+Use that path as `suggestion_source`. If no file matches, use `"context-only"` as a fallback — the briefs were stored
+in the context store but not written to a report file.
 
 ### 6. Write the ledger
 

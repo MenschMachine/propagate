@@ -1,0 +1,96 @@
+implement-new-content:
+  repository: pdfdancer-www
+  git:
+    branch:
+      name_key: :implement-new-content-branch-name
+      base: main
+    commit:
+      message_source: commit_message
+    push:
+      remote: origin
+    pr:
+      base: main
+      body_key: :implement-new-content-summary
+      number_key: :implement-new-content-pr-number
+  sub_tasks:
+    - id: set-branch
+      before:
+        - 'propagate context set :implement-new-content-branch-name "seo/implement-new-content-$(date -u +%Y-%m-%d)"'
+    - id: create-branch
+      before:
+        - git:branch
+    - id: code
+      before:
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+        - 'propagate context delete :review-findings-brief'
+        - 'propagate context delete :needs-new-content-briefs'
+        - 'propagate context delete :new-content-briefs-refined'
+        - 'propagate context delete :checks-passed'
+      prompt: ./prompts/seo/implement-new-content.md
+      must_set:
+        - ":changed-urls-new-content"
+    - id: review
+      before:
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+        - 'propagate context delete :review-findings-brief'
+      prompt: ./prompts/seo/review-implement-new-content.md
+    - id: reroute-on-implementation-findings
+      when: ":review-findings"
+      after:
+        - 'propagate context set :revision-reason review-findings'
+      goto: code
+      max_goto: 5
+    - id: flag-brief-problem
+      when: ":review-findings-brief"
+      after:
+        - 'propagate context set :needs-new-content-briefs true'
+    - id: revise-briefs
+      when: ":needs-new-content-briefs"
+      prompt: ./prompts/seo/revise-briefs-new-content.md
+      must_set:
+        - ":active-new-content-briefs"
+        - ":new-content-briefs-refined"
+    - id: reroute-after-brief-revision
+      when: ":new-content-briefs-refined"
+      goto: code
+      max_goto: 5
+    - id: summarize
+      prompt: ./prompts/seo/summarize-implement-new-content.md
+      must_set:
+        - ":implement-new-content-summary"
+    - id: publish
+      before:
+        - 'if propagate context get :active-new-content-briefs >/dev/null 2>&1; then propagate context set :applied-new-content-briefs "$(propagate context get :active-new-content-briefs)"; else propagate context set :applied-new-content-briefs "$(propagate context get :new-content-briefs --task brief-new-content)"; fi'
+        - 'propagate context set :implement-new-content-summary "$(printf "%s\n\n---\n\n## Applied New-Content Briefs\n\n%s" "$(propagate context get :implement-new-content-summary)" "$(propagate context get :applied-new-content-briefs)")"'
+        - git:commit
+        - git:push
+        - git:pr
+    - id: wait-for-checks
+      before:
+        - git:pr-checks-wait :implement-check-results :checks-passed 10 1800
+    - id: reroute-on-check-failure
+      when: "!:checks-passed"
+      after:
+        - 'propagate context set :revision-reason check-failure'
+      goto: code
+      max_goto: 5
+    - id: wait-for-verdict
+      after:
+        - git:pr-comments-list :pr-comments
+      wait_for_signal: pull_request.labeled
+      routes:
+        - when:
+            label: "changes_required"
+            pr_number:
+              equals_context: ":implement-new-content-pr-number"
+          goto: code
+        - when:
+            label: "approved"
+            pr_number:
+              equals_context: ":implement-new-content-pr-number"
+          continue: true
+    - id: mark-ready-to-track
+      before:
+        - 'propagate context set :ready-to-track true'

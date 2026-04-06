@@ -2,7 +2,10 @@
 #
 # Main DAG (triggered by "start" signal):
 #
-#   pull-data → evaluate-implementations → intent-match → analyze → suggest → implement → track-implementations → request-index
+#   pull-data → evaluate-implementations → intent-match → analyze → plan-seo
+#             → brief-rewrites → implement-rewrites
+#             → brief-new-content → implement-new-content
+#             → track-implementations → request-index
 #
 # 1. pull-data:              Fetches GSC and PostHog data into
 #                            pdfdancer-marketing-data/data/YYYY-MM-DD/, commits to main.
@@ -21,20 +24,24 @@
 #                            Implementation Effectiveness section. Commits to main.
 #                            If enrichment data exists, signals competitor and keyword
 #                            opportunity analysis.
-# 5. suggest:                Opens a PR on pdfdancer-marketing-data with concrete SEO
-#                            recommendations. Uses effectiveness data from :findings
-#                            for cool-down and pattern matching. Waits for a label:
-#                            "approved" continues, "changes_required" loops back to revise.
-# 6. implement:              Switches to the pdfdancer-www repo.
-#                            Reads the approved suggestions from the marketing-data
-#                            context and applies them — editing page metadata, titles,
-#                            headings, internal links, or content. Opens a PR on
-#                            pdfdancer-www with the same label-based review loop.
-# 7. track-implementations:  Switches back to pdfdancer-marketing-data. Records which
+# 5. plan-seo:               Opens a PR on pdfdancer-marketing-data with a run-level
+#                            strategy: which rewrite/technical/new-content changes
+#                            should advance, what to defer, and why.
+# 6. brief-rewrites:         Converts approved rewrite/technical strategy items into
+#                            editorial briefs for existing pages. Opens a PR and waits
+#                            for approval.
+# 7. implement-rewrites:     Switches to pdfdancer-www and applies approved rewrite
+#                            briefs to existing pages. Uses an internal editorial review
+#                            loop and then opens a PR with the same label-based review loop.
+# 8. brief-new-content:      Converts approved new-content strategy items into editorial
+#                            briefs for new pages. Opens a PR and waits for approval.
+# 9. implement-new-content:  Switches to pdfdancer-www and creates approved new pages.
+#                            Uses an internal editorial review loop and then opens a PR.
+# 10. track-implementations: Switches back to pdfdancer-marketing-data. Records which
 #                            suggestions were implemented with baseline metrics into
 #                            data/feedback/implementations.yaml for future evaluation.
 #                            Sole owner of ledger append writes. Commits to main.
-# 8. request-index:          Runs in the pdfdancer-www repo after tracking completes.
+# 11. request-index:         Runs in the pdfdancer-www repo after tracking completes.
 #                            Reads the list of changed URL paths from context and
 #                            submits them to the Google Indexing API so crawlers
 #                            pick up the changes quickly.
@@ -112,8 +119,11 @@ executions:
     - executions/seo/evaluate-implementations.yaml
     - executions/seo/intent-match.yaml
     - executions/seo/analyze.yaml
-    - executions/seo/suggest.yaml
-    - executions/seo/implement.yaml
+    - executions/seo/plan-seo.yaml
+    - executions/seo/brief-rewrites.yaml
+    - executions/seo/brief-new-content.yaml
+    - executions/seo/implement-rewrites.yaml
+    - executions/seo/implement-new-content.yaml
     - executions/seo/track-implementations.yaml
     - executions/seo/request-index.yaml
 
@@ -126,10 +136,27 @@ propagation:
     - after: intent-match
       run: analyze
     - after: analyze
-      run: suggest
-    - after: suggest
-      run: implement
-    - after: implement
+      run: plan-seo
+    - after: plan-seo
+      run: brief-rewrites
+      when_context: :has-rewrite-targets
+    - after: plan-seo
+      run: brief-new-content
+      when_context: :run-new-content-direct
+    - after: brief-rewrites
+      run: implement-rewrites
+      when_context: :rewrite-briefs
+    - after: implement-rewrites
+      run: brief-new-content
+      when_context: :run-new-content-after-rewrites
+    - after: implement-rewrites
       run: track-implementations
+      when_context: :ready-to-track
+    - after: brief-new-content
+      run: implement-new-content
+      when_context: :new-content-briefs
+    - after: implement-new-content
+      run: track-implementations
+      when_context: :ready-to-track
     - after: track-implementations
       run: request-index
