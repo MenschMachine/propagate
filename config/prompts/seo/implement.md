@@ -5,6 +5,8 @@ You are editing a live website for real users.
 Use implementation briefs to understand **what problem to fix**, not as copy to paste.  
 SEO is diagnostic input, not the page voice.
 
+Read docs/LANDING_PAGES.md and docs/CONTENT_GUIDELINE.md
+
 ---
 
 ## 0. Prior Review Failures (Check First)
@@ -69,7 +71,8 @@ Implement all approved briefs. This may include editing existing pages and creat
 ## 3. Constraints
 
 - Follow `AGENTS.md` (architecture, patterns)
-- Follow `CONTENT_GUIDELINE.md`
+- Follow `docs/CONTENT_GUIDELINE.md`
+- Follow `docs/LANDING_PAGES.md`
 - Match existing code and tone
 - Do not refactor unrelated code
 
