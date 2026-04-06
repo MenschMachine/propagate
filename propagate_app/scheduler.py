@@ -14,7 +14,7 @@ from .graph import build_execution_graph, build_execution_graph_adjacency
 from .models import ActiveSignal, Config, ExecutionConfig, ExecutionGraph, ExecutionStatus, RunState, RuntimeContext, TaskStatus
 from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
-from .run_state import clear_run_state, save_run_state
+from .run_state import save_run_state
 from .signal_reconcile import reconcile_pending_signals
 from .signal_transport import publish_event_if_available, receive_signal
 from .signals import select_initial_execution, signal_payload_matches_when, validate_signal_payload
@@ -92,8 +92,6 @@ def run_execution_schedule(
             active = _active_names(executions)
             remaining = active - completed
             if not remaining or _all_blocked_by_skip(remaining, skip_executions, config):
-                if run_state is not None:
-                    clear_run_state(run_state.config_path)
                 return
             remaining_names = remaining_active_execution_names(execution_graph.execution_order, executions)
             raise PropagateError("No runnable executions remain for active run plan: " + ", ".join(remaining_names))

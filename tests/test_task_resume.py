@@ -274,6 +274,45 @@ class TaskResumeTests(unittest.TestCase):
         # exec-a skipped entirely (completed_names), exec-b skips b1 (completed_tasks), runs b2 and b3
         self.assertEqual(prompts, ["b-task-2", "b-task-3"])
 
+    def test_successful_run_preserves_state_until_clear(self) -> None:
+        repo_dir = self.workspace / "repo"
+        repo_dir.mkdir()
+        (self.prompt_dir / "done.md").write_text("done\n", encoding="utf-8")
+
+        config_path = self.write_config(
+            {
+                "version": "6",
+                "agent": {
+                    "command": self.build_python_command(
+                        self.capture_script,
+                        "{prompt_file}",
+                        str(self.invocation_log),
+                    )
+                },
+                "repositories": {
+                    "repo": {"path": "../repo"},
+                },
+                "executions": {
+                    "work": {
+                        "repository": "repo",
+                        "sub_tasks": [
+                            {"id": "done", "prompt": "./prompts/done.md"},
+                        ],
+                    },
+                },
+            }
+        )
+
+        result = self.run_cli("run", "--config", str(config_path), "--execution", "work")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        state_file = state_file_path(config_path)
+        self.assertTrue(state_file.exists(), "Successful runs should keep their state file until clear.")
+
+        clear_result = self.run_cli("clear", "--config", str(config_path))
+        self.assertEqual(clear_result.returncode, 0, clear_result.stderr)
+        self.assertFalse(state_file.exists(), "Clear should remove the saved state file.")
+
     def test_old_state_file_format_rejected(self) -> None:
         """Old state file with active_names/completed_names is rejected with clear error."""
         repo_dir = self.workspace / "repo"

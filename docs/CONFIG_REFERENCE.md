@@ -806,7 +806,8 @@ load time and cause a validation error with the cycle path.
 
 ## State and Resumption
 
-Run state is persisted to `.propagate-state-{name}.yaml` in the config file directory. Use `--resume` to continue an
+Run state is persisted to `.propagate-state-{name}.yaml` in the config file directory. The state file is retained after
+both interrupted and successful runs and is only removed by `propagate clear`. Use `--resume` to continue an
 interrupted run. Completed phases and tasks are skipped on resume.
 
 ### Forced Resume

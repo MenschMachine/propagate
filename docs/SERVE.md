@@ -112,7 +112,7 @@ This connects directly to the worker's socket (bypassing the coordinator).
 
 ## Auto-resume on startup
 
-If a state file (`.propagate-state-{name}.yaml`) exists when a worker starts, it resumes the interrupted run before entering the serve loop. This handles crash recovery — if the server was killed mid-run, restarting it picks up where it left off.
+If a state file (`.propagate-state-{name}.yaml`) exists when a worker starts, it resumes from that saved run state before entering the serve loop. This handles crash recovery — if the server was killed mid-run, restarting it picks up where it left off. State files are retained until `propagate clear`, so a fully completed run may also be loaded and immediately no-op.
 
 ---
 
