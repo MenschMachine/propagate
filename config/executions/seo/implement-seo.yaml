@@ -1,0 +1,99 @@
+implement-seo:
+  repository: pdfdancer-www
+  git:
+    branch:
+      name_key: :implement-seo-branch-name
+      base: main
+    commit:
+      message_source: commit_message
+    push:
+      remote: origin
+    pr:
+      base: main
+      body_key: :implement-seo-summary
+      number_key: :implement-seo-pr-number
+  sub_tasks:
+    - id: set-branch
+      before:
+        - 'propagate context set :implement-seo-branch-name "seo/implement-$(date -u +%Y-%m-%d)"'
+    - id: create-branch
+      before:
+        - git:branch
+    - id: code
+      before:
+        - 'propagate context delete :ready-to-track'
+        - 'propagate context delete :needs-brief-revision'
+        - 'propagate context delete :active-implementation-briefs'
+        - 'propagate context delete :implementation-briefs-refined'
+        - 'propagate context delete :checks-passed'
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+        - 'propagate context delete :review-findings-brief'
+        - 'propagate context delete :revision-reason'
+      prompt: ./prompts/seo/implement.md
+      must_set:
+        - ":changed-urls"
+    - id: review
+      before:
+        - 'propagate context delete :review-findings'
+        - 'propagate context delete :review-suggestions'
+        - 'propagate context delete :review-findings-brief'
+      prompt: ./prompts/seo/review-implement.md
+    - id: reroute-on-implementation-findings
+      when: ":review-findings"
+      after:
+        - 'propagate context set :revision-reason review-findings'
+      goto: code
+      max_goto: 5
+    - id: flag-brief-problem
+      when: ":review-findings-brief"
+      after:
+        - 'propagate context set :needs-brief-revision true'
+    - id: revise-briefs
+      when: ":needs-brief-revision"
+      prompt: ./prompts/seo/revise-briefs.md
+      must_set:
+        - ":active-implementation-briefs"
+        - ":implementation-briefs-refined"
+    - id: reroute-after-brief-revision
+      when: ":implementation-briefs-refined"
+      goto: code
+      max_goto: 5
+    - id: summarize
+      prompt: ./prompts/seo/summarize-implement.md
+      must_set:
+        - ":implement-seo-summary"
+    - id: publish
+      before:
+        - 'if propagate context get :active-implementation-briefs >/dev/null 2>&1; then propagate context set :applied-implementation-briefs "$(propagate context get :active-implementation-briefs)"; else propagate context set :applied-implementation-briefs "$(propagate context get :implementation-briefs --task plan-seo)"; fi'
+        - 'propagate context set :implement-seo-summary "$(printf "%s\n\n---\n\n## Applied Implementation Briefs\n\n%s" "$(propagate context get :implement-seo-summary)" "$(propagate context get :applied-implementation-briefs)")"'
+        - git:commit
+        - git:push
+        - git:pr
+    - id: wait-for-checks
+      before:
+        - git:pr-checks-wait :implement-check-results :checks-passed 10 1800
+    - id: reroute-on-check-failure
+      when: "!:checks-passed"
+      after:
+        - 'propagate context set :revision-reason check-failure'
+      goto: code
+      max_goto: 5
+    - id: wait-for-verdict
+      after:
+        - git:pr-comments-list :pr-comments
+      wait_for_signal: pull_request.labeled
+      routes:
+        - when:
+            label: "changes_required"
+            pr_number:
+              equals_context: ":implement-seo-pr-number"
+          goto: code
+        - when:
+            label: "approved"
+            pr_number:
+              equals_context: ":implement-seo-pr-number"
+          continue: true
+    - id: route-after-approval
+      before:
+        - 'propagate context set :ready-to-track true'
