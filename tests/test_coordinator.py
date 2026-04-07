@@ -187,7 +187,7 @@ def test_coordinator_stop_worker(tmp_path):
 
 
 def test_coordinator_handle_list(tmp_path):
-    """_handle_list publishes a coordinator_response with project info."""
+    """_handle_list publishes a command_reply envelope with project info."""
     config = _make_config(tmp_path, "alpha")
     shutdown = threading.Event()
     coordinator = Coordinator(shutdown)
@@ -208,6 +208,8 @@ def test_coordinator_handle_list(tmp_path):
 
     coordinator._pub_socket.send_json.assert_called_once()
     msg = coordinator._pub_socket.send_json.call_args[0][0]
+    assert msg["channel"] == "event"
+    assert msg["type"] == "command_reply"
     assert msg["event"] == "coordinator_response"
     assert "data" in msg
     projects = msg["data"]["projects"]
@@ -502,7 +504,7 @@ def test_coordinator_drain_stdout_logs_to_logger_without_file(tmp_path):
     fake_proc = MagicMock()
     fake_proc.stdout = iter(["only line\n"])
 
-    with patch("propagate_app.coordinator.LOGGER.info") as mock_info:
+    with patch("propagate_app.coordinator.LOGGER.debug") as mock_debug:
         coordinator._drain_stdout(fake_proc, "alpha")
 
-    mock_info.assert_called_once_with("[%s] %s", "alpha", "only line")
+    mock_debug.assert_called_once_with("[%s] %s", "alpha", "only line")

@@ -10,7 +10,7 @@ import zmq
 
 from .config_load import load_config
 from .constants import LOGGER, set_project_stem
-from .errors import PropagateError
+from .errors import AgentInterrupted, PropagateError
 from .log_buffer import ZmqLogHandler
 from .models import ActiveSignal, Config, RunState, RuntimeContext
 from .run_state import apply_forced_resume_if_targeted, load_run_state, state_file_path
@@ -125,6 +125,8 @@ def _run_worker_loop(
                 LOGGER.info("Found existing state file, resuming previous run.")
             try:
                 _resume_run(config, signal_socket, pub_socket, skip_executions=skip_executions, skip_tasks=skip_tasks)
+            except AgentInterrupted as exc:
+                _handle_agent_interrupted(exc, config, signal_socket, pub_socket, shutdown)
             except PropagateError as error:
                 LOGGER.error("Resume failed: %s", error)
         LOGGER.info("Worker entering serve loop.")
@@ -157,6 +159,21 @@ def serve_worker_command(config_value: str, resume: bool | str = False, skip: li
 
     skip_executions, skip_tasks = parse_and_validate_skip(skip or [], config)
     signal_socket, address, pub_socket, pub_address = _bind_worker_sockets(config)
+
+    def handle_interrupt(signum: int, frame: object) -> None:
+        try:
+            from .processes import request_agent_interrupt
+            LOGGER.info("Worker received SIGUSR1 interrupt.")
+            if request_agent_interrupt():
+                return
+            LOGGER.info("No agent running, publishing interrupt_failed.")
+            if pub_socket is not None:
+                publish_event(pub_socket, "interrupt_failed", {"reason": "no agent running"})
+        except Exception as e:
+            LOGGER.error("Error in interrupt handler: %s", e)
+
+    signal_module.signal(signal_module.SIGUSR1, handle_interrupt)
+
     # Tell the coordinator we are ready.
     sys.stdout.write("READY\n")
     sys.stdout.flush()
@@ -275,12 +292,69 @@ def _serve_loop(
                 _handle_command(config, name, signal_socket, pub_socket, metadata, skip_executions=skip_executions, skip_tasks=skip_tasks)
             else:
                 _handle_incoming_signal(config, name, payload, signal_socket, pub_socket, metadata, skip_executions=skip_executions, skip_tasks=skip_tasks)
+        except AgentInterrupted as exc:
+            _handle_agent_interrupted(exc, config, signal_socket, pub_socket, shutdown)
         except KeyboardInterrupt:
             LOGGER.info("Interrupted during run, exiting serve loop.")
             return
         except PropagateError as error:
             LOGGER.error("Run failed for %s '%s': %s", kind, name, error)
     LOGGER.info("Shutdown requested, exiting serve loop.")
+
+
+def _handle_agent_interrupted(
+    exc: AgentInterrupted,
+    config: Config,
+    signal_socket: zmq.Socket,
+    pub_socket: zmq.Socket | None,
+    shutdown: threading.Event,
+) -> None:
+    """Publish an interrupt event and wait for a resume action from the shell."""
+    if not exc.execution_name or not exc.task_id or not exc.working_dir:
+        LOGGER.error("Interrupted agent context is incomplete; reporting interrupt_failed.")
+        if pub_socket is not None:
+            publish_event(pub_socket, "interrupt_failed", {"reason": "missing interrupt context"})
+        return
+
+    LOGGER.info("Agent interrupted during execution '%s', task '%s'.", exc.execution_name, exc.task_id)
+    if pub_socket is not None:
+        publish_event(pub_socket, "agent_interrupted", {
+            "execution": exc.execution_name,
+            "task_id": exc.task_id,
+            "working_dir": str(exc.working_dir),
+            "agent_command": exc.agent_command,
+        })
+    # Wait for an interrupt_resume command from the shell.
+    LOGGER.info("Waiting for interrupt_resume command...")
+    waiting_seconds = 0.0
+    while not shutdown.is_set():
+        result = receive_message(signal_socket, block=True, timeout_ms=1000)
+        if result is None:
+            waiting_seconds += 1.0
+            continue
+        kind, name, payload, metadata = result
+        if kind == "command" and name == "interrupt_resume":
+            action = metadata.get("action", "abort")
+            LOGGER.info("Received interrupt_resume action: %s", action)
+            if action == "skip":
+                _mark_interrupted_task_complete(config, exc)
+            if action in ("rerun", "skip"):
+                _resume_run(config, signal_socket, pub_socket)
+            return
+        LOGGER.debug("Ignoring %s '%s' while waiting for interrupt_resume.", kind, name)
+
+
+def _mark_interrupted_task_complete(config: Config, exc: AgentInterrupted) -> None:
+    """Mark the interrupted task's agent phase as complete so resume skips it."""
+    from .models import TaskStatus
+    from .run_state import save_run_state
+
+    run_state = load_run_state(config.config_path)
+    es = run_state.executions.get(exc.execution_name)
+    if es is not None:
+        ts = es.tasks.setdefault(exc.task_id, TaskStatus())
+        ts.phases.agent_completed = True
+        save_run_state(run_state)
 
 
 def _handle_command(

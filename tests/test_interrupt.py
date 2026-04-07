@@ -85,16 +85,18 @@ def test_run_agent_command_raises_agent_interrupted_on_keyboard_interrupt():
     mock_process = MagicMock()
     mock_process.stdout = _iter_raising_keyboard_interrupt(["line1\n", "line2\n"])
     mock_process.wait.return_value = 0
+    mock_process.pid = 1234
 
     with patch("propagate_app.processes.subprocess") as mock_subprocess:
         mock_subprocess.Popen.return_value = mock_process
         mock_subprocess.TimeoutExpired = real_subprocess.TimeoutExpired
-        with pytest.raises(AgentInterrupted) as exc_info:
-            run_agent_command("echo hello", Path("/tmp"), "task-1")
+        with patch("propagate_app.processes.os.killpg"):
+            with patch("propagate_app.processes.os.getpgid", return_value=1234):
+                with pytest.raises(AgentInterrupted) as exc_info:
+                    run_agent_command("echo hello", Path("/tmp"), "task-1")
 
     assert exc_info.value.task_id == "task-1"
     assert exc_info.value.working_dir == Path("/tmp")
-    mock_process.terminate.assert_called_once()
 
 
 def _iter_raising_keyboard_interrupt(lines):
@@ -295,3 +297,225 @@ def test_run_with_interrupt_handling_abort(tmp_path):
         result = _run_with_interrupt_handling(tmp_path / "config.yaml", run_state, schedule_fn)
 
     assert result == 130
+
+
+# --- request_agent_interrupt ---
+
+
+def test_request_agent_interrupt_terminates_process():
+    import propagate_app.processes as proc
+
+    mock_process = MagicMock()
+    mock_process.pid = 1234
+    proc._interrupt_requested.clear()
+    with proc._process_lock:
+        proc._current_agent_process = mock_process
+    try:
+        with patch("propagate_app.processes.os.killpg"):
+            with patch("propagate_app.processes.os.getpgid", return_value=1234):
+                result = proc.request_agent_interrupt()
+        assert result is True
+        assert proc._interrupt_requested.is_set()
+    finally:
+        with proc._process_lock:
+            proc._current_agent_process = None
+        proc._interrupt_requested.clear()
+
+
+def test_request_agent_interrupt_no_process():
+    import propagate_app.processes as proc
+
+    proc._interrupt_requested.clear()
+    with proc._process_lock:
+        proc._current_agent_process = None
+    result = proc.request_agent_interrupt()
+    assert result is False
+    assert not proc._interrupt_requested.is_set()
+
+
+def test_run_agent_command_raises_on_interrupt_event():
+    """When _interrupt_requested is set externally (SIGUSR1), raise AgentInterrupted."""
+    import subprocess as real_subprocess
+
+    import propagate_app.processes as proc
+    from propagate_app.processes import run_agent_command
+
+    mock_process = MagicMock()
+
+    def _stdout_with_interrupt():
+        yield b"line1\n"
+        # Simulate SIGUSR1 handler firing mid-stream: sets flag and terminates process
+        proc._interrupt_requested.set()
+
+    mock_process.stdout = _stdout_with_interrupt()
+    mock_process.wait.return_value = -15
+
+    with patch("propagate_app.processes.subprocess") as mock_subprocess:
+        mock_subprocess.Popen.return_value = mock_process
+        mock_subprocess.TimeoutExpired = real_subprocess.TimeoutExpired
+        try:
+            with pytest.raises(AgentInterrupted) as exc_info:
+                run_agent_command("echo hello", Path("/tmp"), "task-1")
+            assert exc_info.value.task_id == "task-1"
+        finally:
+            proc._interrupt_requested.clear()
+
+
+# --- serve mode: _handle_agent_interrupted ---
+
+
+def test_handle_agent_interrupted_publishes_event():
+    from propagate_app.serve import _handle_agent_interrupted
+
+    exc = AgentInterrupted("interrupted", task_id="t1", working_dir=Path("/repo"))
+    exc.execution_name = "build"
+    exc.agent_command = "claude -p {prompt_file}"
+
+    mock_config = MagicMock()
+    mock_signal_socket = MagicMock()
+    mock_pub_socket = MagicMock()
+    shutdown = MagicMock()
+    shutdown.is_set.return_value = False
+
+    # Simulate receiving interrupt_resume command on first poll
+    with patch("propagate_app.serve.receive_message") as mock_recv:
+        mock_recv.return_value = ("command", "interrupt_resume", {}, {"action": "abort"})
+        with patch("propagate_app.serve.publish_event") as mock_pub:
+            _handle_agent_interrupted(exc, mock_config, mock_signal_socket, mock_pub_socket, shutdown)
+
+    mock_pub.assert_called_once_with(mock_pub_socket, "agent_interrupted", {
+        "execution": "build",
+        "task_id": "t1",
+        "working_dir": "/repo",
+        "agent_command": "claude -p {prompt_file}",
+    })
+
+
+def test_handle_agent_interrupted_skip_marks_complete(tmp_path):
+    from propagate_app.serve import _handle_agent_interrupted
+
+    exc = AgentInterrupted("interrupted", task_id="t1", working_dir=tmp_path)
+    exc.execution_name = "build"
+    exc.agent_command = "claude -p {prompt_file}"
+
+    config = MagicMock()
+    config.config_path = tmp_path / "config.yaml"
+    shutdown = MagicMock()
+    shutdown.is_set.return_value = False
+
+    with patch("propagate_app.serve.receive_message") as mock_recv:
+        mock_recv.return_value = ("command", "interrupt_resume", {}, {"action": "skip"})
+        with patch("propagate_app.serve.publish_event"):
+            with patch("propagate_app.serve._mark_interrupted_task_complete") as mock_mark:
+                with patch("propagate_app.serve._resume_run"):
+                    _handle_agent_interrupted(exc, config, MagicMock(), MagicMock(), shutdown)
+
+    mock_mark.assert_called_once_with(config, exc)
+
+
+# --- shell: _cmd_interrupt ---
+
+
+def test_cmd_interrupt_sends_command_and_handles_event():
+    from propagate_app.shell import _cmd_interrupt, _ShellState
+
+    state = _ShellState()
+    state.active_project = "myproject"
+    state.projects = {"myproject": {}}
+
+    mock_push = MagicMock()
+
+    interrupt_token = "token-123"
+
+    # Put unrelated events first, then the matching acknowledgement.
+    state.response_queue.put({
+        "event": "agent_interrupted",
+        "project": "other-project",
+        "interrupt_token": interrupt_token,
+    })
+    state.response_queue.put({
+        "event": "interrupt_failed",
+        "project": "myproject",
+        "interrupt_token": "wrong-token",
+    })
+    state.response_queue.put({
+        "event": "agent_interrupted",
+        "project": "myproject",
+        "interrupt_token": interrupt_token,
+        "execution": "build",
+        "task_id": "t1",
+        "working_dir": "/repo",
+        "agent_command": "claude -p {prompt_file}",
+    })
+
+    with patch("propagate_app.shell.send_command") as mock_send:
+        with patch("propagate_app.shell.uuid.uuid4", return_value=interrupt_token):
+            with patch("propagate_app.interactive.prompt_resume_action", return_value="rerun"):
+                _cmd_interrupt(mock_push, state)
+
+    # Should have sent interrupt + interrupt_resume
+    calls = mock_send.call_args_list
+    assert calls[0][0] == (mock_push, "interrupt")
+    assert calls[0][1]["metadata"] == {
+        "project": "myproject",
+        "interrupt_token": interrupt_token,
+    }
+    assert calls[1][0] == (mock_push, "interrupt_resume")
+    assert calls[1][1]["metadata"] == {
+        "project": "myproject",
+        "interrupt_token": interrupt_token,
+        "action": "rerun",
+    }
+
+
+def test_cmd_interrupt_uses_enriched_followup_event_for_display(capsys):
+    from propagate_app.shell import _cmd_interrupt, _ShellState
+
+    state = _ShellState()
+    state.active_project = "myproject"
+    state.projects = {"myproject": {}}
+    mock_push = MagicMock()
+    interrupt_token = "token-456"
+
+    state.response_queue.put({
+        "event": "agent_interrupted",
+        "project": "myproject",
+        "interrupt_token": interrupt_token,
+        "execution": "build",
+        "task_id": "summarize",
+        "working_dir": "/repo",
+    })
+
+    with patch("propagate_app.shell.send_command"):
+        with patch("propagate_app.shell.uuid.uuid4", return_value=interrupt_token):
+            with patch("propagate_app.interactive.prompt_resume_action", return_value="skip"):
+                _cmd_interrupt(mock_push, state)
+
+    out = capsys.readouterr().out
+    assert "Interrupted execution 'build', task 'summarize'." in out
+    assert "Working directory: /repo" in out
+
+
+def test_cmd_interrupt_falls_back_when_context_not_available(capsys):
+    from propagate_app.shell import _cmd_interrupt, _ShellState
+
+    state = _ShellState()
+    state.active_project = "myproject"
+    state.projects = {"myproject": {}}
+    mock_push = MagicMock()
+    interrupt_token = "token-789"
+
+    state.response_queue.put({
+        "event": "agent_interrupted",
+        "project": "myproject",
+        "interrupt_token": interrupt_token,
+        "acknowledged": True,
+    })
+
+    with patch("propagate_app.shell.send_command"):
+        with patch("propagate_app.shell.uuid.uuid4", return_value=interrupt_token):
+            with patch("propagate_app.interactive.prompt_resume_action", return_value="abort"):
+                _cmd_interrupt(mock_push, state)
+
+    out = capsys.readouterr().out
+    assert "Interrupt failed: worker returned an interrupt acknowledgment without required context." in out

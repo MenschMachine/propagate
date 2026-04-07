@@ -38,6 +38,7 @@ propagate shell --config config/propagate.yaml
 | `/project [name]` | Show or set the active project |
 | `/signal <type> [key:val ...]` | Send a signal (requires active project) |
 | `/resume` | Resume a failed run (requires active project) |
+| `/interrupt` | Interrupt running agent, start interactive session |
 | `/signals` | List signals for the active project |
 | `/logs [N]` | Show last N log lines (default 20) |
 | `/help` | Show available commands |
@@ -105,11 +106,35 @@ Quoted values are supported for values containing spaces:
 propagate> /signal deploy "message:hello world"
 ```
 
-## Event Streaming
+## Event Visibility Policy
 
-Events published by workers (signal received, run completed, PR created, etc.) are printed in real-time
-above the input prompt. In coordinator mode, events are prefixed with `[project-name]`. Log output is
-buffered locally and can be viewed with `/logs`.
+The shell does **not** print background worker/coordinator events while you type commands.
+
+- Logs are buffered locally and shown only when you run `/logs [N]`.
+- Lifecycle events and notifications are not auto-printed to avoid prompt corruption and random output pop-ins.
+- Command output and interactive dialog prompts remain the only shell-rendered output.
+
+## Protocol Envelope
+
+Shell/coordinator/worker communication on PUB/SUB uses a versioned envelope.
+
+- `protocol_version`: protocol version number (`2` for current format)
+- `channel`: message channel (`event`)
+- `type`: normalized event type (for example `command_reply`, `agent_interrupted`, `interrupt_failed`, `log`)
+- `event`: legacy mirror of `type` for compatibility inside the codebase
+
+The shell routes by `type` first and never renders `log` events except through `/logs`.
+
+## Interrupt Acknowledgment Matching
+
+When you run `/interrupt`, the shell creates a per-request `interrupt_token` and sends it with the active `project`.
+
+- The shell waits for a final interrupt outcome (`agent_interrupted` or `interrupt_failed`) that matches **both** `project` and `interrupt_token`.
+- `agent_interrupted` is accepted only when required context is present (`execution`, `task_id`, `working_dir`).
+- If context is missing or timeout is reached, `/interrupt` fails explicitly and does not open the resume prompt.
+- Interrupts that occur while a worker is auto-resuming on startup are finalized through the same path, so `/interrupt` receives a normal final outcome instead of timing out.
+- Unrelated interrupt events (different project or stale token) are ignored for that request.
+- Default wait is `15s`, configurable via `PROPAGATE_INTERRUPT_CONTEXT_TIMEOUT`.
 
 ## Notes
 
@@ -133,5 +158,5 @@ The shell connects directly to a single config's sockets:
 - **PUSH socket** — sends signals and commands (hash-based address)
 - **SUB socket** — receives published events (hash-based address)
 
-A background daemon thread polls the SUB socket and prints formatted events. The main thread runs the input loop with
-readline support for line editing and history.
+A background daemon thread polls the SUB socket and only enqueues protocol events / buffers logs.
+The main thread is the single renderer and runs the input loop with readline support for line editing and history.

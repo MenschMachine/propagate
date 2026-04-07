@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import signal as signal_module
 import subprocess
 import sys
 import threading
@@ -16,6 +18,7 @@ from .constants import LOGGER
 from .errors import PropagateError
 from .models import SignalConfig
 from .signal_transport import (
+    PROTOCOL_VERSION,
     COORDINATOR_ADDRESS,
     COORDINATOR_PUB_ADDRESS,
     bind_pub_socket,
@@ -70,6 +73,7 @@ class Coordinator:
         self._proxy_rebuild = threading.Event()
         self._worker_stdout_logger: logging.Logger | None = None
         self._worker_stdout_handler: logging.Handler | None = None
+        self._pending_interrupt_tokens: dict[str, str] = {}
         if worker_stdout_log_path is not None:
             worker_stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
             handler = logging.FileHandler(worker_stdout_log_path, encoding="utf-8")
@@ -254,6 +258,9 @@ class Coordinator:
             LOGGER.debug("Broadcast signal '%s' to worker '%s' (repo=%s).", signal_type, worker.name, repo)
 
     def _forward_command(self, project: str, command: str, metadata: dict) -> None:
+        if command == "interrupt":
+            self._handle_interrupt(project, metadata)
+            return
         with self._lock:
             worker = self._workers.get(project)
         if worker is None:
@@ -262,8 +269,33 @@ class Coordinator:
         send_command(worker.push_socket, command, metadata=metadata)
         LOGGER.debug("Forwarded command '%s' to worker '%s'.", command, project)
 
+    def _handle_interrupt(self, project: str, metadata: dict) -> None:
+        """Send SIGUSR1 to the worker process to interrupt the running agent."""
+        with self._lock:
+            worker = self._workers.get(project)
+        if worker is None:
+            self._send_response(metadata.get("request_id"), error=f"No such project '{project}'.")
+            return
+        if worker.process.poll() is not None:
+            self._send_response(metadata.get("request_id"), error=f"Worker '{project}' is not running.")
+            return
+        interrupt_token = metadata.get("interrupt_token")
+        if isinstance(interrupt_token, str) and interrupt_token:
+            with self._lock:
+                self._pending_interrupt_tokens[project] = interrupt_token
+        try:
+            os.kill(worker.process.pid, signal_module.SIGUSR1)
+            LOGGER.info("Sent interrupt (SIGUSR1) to worker '%s' (pid=%d).", project, worker.process.pid)
+        except OSError as exc:
+            self._send_response(metadata.get("request_id"), error=f"Failed to interrupt worker '{project}': {exc}")
+
     def _send_response(self, request_id: str | None, data: dict | None = None, error: str | None = None) -> None:
-        msg: dict = {"event": "coordinator_response"}
+        msg: dict = {
+            "protocol_version": PROTOCOL_VERSION,
+            "channel": "event",
+            "type": "command_reply",
+            "event": "coordinator_response",
+        }
         if request_id:
             msg["request_id"] = request_id
         if data is not None:
@@ -415,6 +447,17 @@ class Coordinator:
                 worker_name = socket_to_name.get(sock)
                 if worker_name:
                     event["project"] = worker_name
+                    event.setdefault("protocol_version", PROTOCOL_VERSION)
+                    event.setdefault("channel", "event")
+                    event.setdefault("type", event.get("event", "unknown"))
+                    if event.get("event") in ("agent_interrupted", "interrupt_failed") and not event.get("interrupt_token"):
+                        with self._lock:
+                            token = self._pending_interrupt_tokens.get(worker_name)
+                        if token:
+                            event["interrupt_token"] = token
+                            if event.get("event") in ("agent_interrupted", "interrupt_failed"):
+                                with self._lock:
+                                    self._pending_interrupt_tokens.pop(worker_name, None)
                 self._publish(event)
 
     def _health_check(self) -> None:
@@ -442,7 +485,7 @@ class Coordinator:
                 if self._worker_stdout_logger is not None:
                     self._worker_stdout_logger.info(message, name, text)
                 else:
-                    LOGGER.info(message, name, text)
+                    LOGGER.debug(message, name, text)
         except (OSError, ValueError):
             pass
 

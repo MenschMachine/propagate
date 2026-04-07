@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from propagate_app.errors import PropagateError
+from propagate_app.errors import AgentInterrupted, PropagateError
 from propagate_app.models import (
     AgentConfig,
     Config,
@@ -247,7 +247,7 @@ def test_serve_auto_resumes_on_startup(tmp_path):
     state_path = state_file_path(config.config_path)
     state_path.touch()
 
-    def mock_serve_loop(config, signal_socket, shutdown, pub_socket=None, skip_executions=None, skip_tasks=None):
+    def mock_serve_loop(config, signal_socket, shutdown, pub_socket=None, skip_executions=None, skip_tasks=None, interrupt_requested=None):
         pass  # Exit immediately
 
     try:
@@ -260,6 +260,50 @@ def test_serve_auto_resumes_on_startup(tmp_path):
             _run_worker_loop(config, sig_sock, addr, pub_sock, pub_addr, shutdown)
 
         assert resume_called == [True]
+    finally:
+        state_path.unlink(missing_ok=True)
+
+
+def test_serve_startup_resume_routes_agent_interrupted(tmp_path):
+    """AgentInterrupted during startup auto-resume is routed through interrupt finalization."""
+    from propagate_app.run_state import state_file_path
+    from propagate_app.serve import _bind_worker_sockets, _run_worker_loop
+
+    exec_a = make_execution(
+        "a",
+        signals=[ExecutionSignalConfig(signal_name="go")],
+    )
+    signal_cfg = SignalConfig(name="go", payload={})
+    config = make_config(tmp_path, [exec_a], signals={"go": signal_cfg})
+
+    interrupted = AgentInterrupted("interrupted", task_id="summarize-pull", working_dir=tmp_path)
+    interrupted.execution_name = "pull-data"
+    interrupted.agent_command = "agent run"
+    captured = []
+
+    state_path = state_file_path(config.config_path)
+    state_path.touch()
+
+    def mock_resume_run(config, signal_socket, pub_socket=None, metadata=None, skip_executions=None, skip_tasks=None):
+        raise interrupted
+
+    def mock_handle_agent_interrupted(exc, config, signal_socket, pub_socket, shutdown):
+        captured.append(exc)
+
+    def mock_serve_loop(config, signal_socket, shutdown, pub_socket=None, skip_executions=None, skip_tasks=None):
+        pass
+
+    try:
+        with (
+            patch("propagate_app.serve._resume_run", side_effect=mock_resume_run),
+            patch("propagate_app.serve._handle_agent_interrupted", side_effect=mock_handle_agent_interrupted),
+            patch("propagate_app.serve._serve_loop", side_effect=mock_serve_loop),
+        ):
+            shutdown = threading.Event()
+            sig_sock, addr, pub_sock, pub_addr = _bind_worker_sockets(config)
+            _run_worker_loop(config, sig_sock, addr, pub_sock, pub_addr, shutdown)
+
+        assert captured == [interrupted]
     finally:
         state_path.unlink(missing_ok=True)
 

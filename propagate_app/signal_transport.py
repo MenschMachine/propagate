@@ -9,6 +9,8 @@ import zmq
 from .constants import LOGGER
 from .models import SignalConfig, SignalFieldConfig
 
+PROTOCOL_VERSION = 2
+
 COORDINATOR_ADDRESS = "ipc:///tmp/propagate-coordinator.sock"
 COORDINATOR_PUB_ADDRESS = "ipc:///tmp/propagate-coordinator-pub.sock"
 
@@ -159,7 +161,13 @@ def publish_event_if_available(pub_socket: zmq.Socket | None, event_type: str, d
 
 
 def publish_event(socket: zmq.Socket, event_type: str, data: dict) -> None:
-    msg = {"event": event_type, **data}
+    msg = {
+        "protocol_version": PROTOCOL_VERSION,
+        "channel": "event",
+        "type": event_type,
+        "event": event_type,
+        **data,
+    }
     socket.send_json(msg)
     LOGGER.debug("Published event '%s'", event_type)
 
@@ -174,10 +182,23 @@ def receive_event(socket: zmq.Socket, timeout_ms: int = 1000) -> dict | None:
     except (ValueError, KeyError):
         LOGGER.warning("Received non-JSON event; ignoring.")
         return None
-    if not isinstance(data, dict) or "event" not in data:
+    if not isinstance(data, dict):
         LOGGER.warning("Received malformed event; ignoring.")
         return None
-    return data
+    if data.get("channel") == "event" and isinstance(data.get("type"), str):
+        if "event" not in data:
+            data["event"] = data["type"]
+        return data
+    if isinstance(data.get("event"), str):
+        if "type" not in data:
+            data["type"] = data["event"]
+        if "channel" not in data:
+            data["channel"] = "event"
+        if "protocol_version" not in data:
+            data["protocol_version"] = 1
+        return data
+    LOGGER.warning("Received malformed event; ignoring.")
+    return None
 
 
 def close_pub_socket(socket: zmq.Socket, address: str) -> None:

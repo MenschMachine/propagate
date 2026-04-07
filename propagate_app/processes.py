@@ -2,13 +2,39 @@ from __future__ import annotations
 
 import os
 import shlex
+import signal
 import subprocess
 import sys
+import threading
 from collections.abc import Sequence
 from pathlib import Path
 
 from .constants import LOGGER
 from .errors import AgentInterrupted, PropagateError
+
+_current_agent_process: subprocess.Popen | None = None
+_interrupt_requested = threading.Event()
+_process_lock = threading.Lock()
+
+
+def request_agent_interrupt() -> bool:
+    """Terminate the running agent process and flag it as an interrupt.
+
+    Safe to call from a signal handler or any thread.
+    Returns True if an agent was running and was interrupted.
+    """
+    with _process_lock:
+        if _current_agent_process is not None:
+            LOGGER.info("Agent interrupted, terminating process group of shell (pid=%d).", _current_agent_process.pid)
+            _interrupt_requested.set()
+            try:
+                # Kill the entire process group (shell + all child processes like the agent).
+                # start_new_session=True was set when creating the process.
+                os.killpg(os.getpgid(_current_agent_process.pid), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError) as e:
+                LOGGER.warn("Failed to killpg: %s", e)
+            return True
+    return False
 
 
 def build_agent_command(agent_command: str, prompt_file: Path) -> str:
@@ -16,11 +42,12 @@ def build_agent_command(agent_command: str, prompt_file: Path) -> str:
 
 
 def run_agent_command(
-    command: str,
-    working_dir: Path,
-    task_id: str,
-    extra_env: dict[str, str] | None = None,
+        command: str,
+        working_dir: Path,
+        task_id: str,
+        extra_env: dict[str, str] | None = None,
 ) -> None:
+    global _current_agent_process  # noqa: PLW0603
     env = None
     if extra_env:
         env = {**os.environ, **extra_env}
@@ -32,12 +59,16 @@ def run_agent_command(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=env,
+            start_new_session=True,  # ← create new process group so we can kill all children
         )
     except OSError as error:
         raise PropagateError(
             f"Failed to start agent command for sub-task '{task_id}': {error}"
         ) from error
-    interrupted = False
+    _interrupt_requested.clear()
+    with _process_lock:
+        _current_agent_process = process
+    keyboard_interrupted = False
     try:
         for raw_line in process.stdout:
             line = raw_line.decode("utf-8", errors="replace")
@@ -45,15 +76,26 @@ def run_agent_command(
             sys.stdout.flush()
             LOGGER.debug("%s", line.rstrip("\n"))
     except KeyboardInterrupt:
-        interrupted = True
+        keyboard_interrupted = True
         LOGGER.info("Interrupt received — terminating agent for sub-task '%s'.", task_id)
-        process.terminate()
+        try:
+            # Kill the process group to ensure all children die.
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            process.kill()
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             process.wait()
-    if interrupted:
+    finally:
+        with _process_lock:
+            _current_agent_process = None
+    if keyboard_interrupted or _interrupt_requested.is_set():
+        _interrupt_requested.clear()
         raise AgentInterrupted(
             f"Agent interrupted during sub-task '{task_id}'.",
             task_id=task_id,
@@ -74,9 +116,9 @@ def build_interactive_agent_command(agent_command: str) -> str:
 
 
 def run_interactive_agent(
-    command: str,
-    working_dir: Path,
-    extra_env: dict[str, str] | None = None,
+        command: str,
+        working_dir: Path,
+        extra_env: dict[str, str] | None = None,
 ) -> int:
     """Launch an interactive agent session with full TTY access."""
     env = None
@@ -92,14 +134,14 @@ def run_interactive_agent(
 
 
 def run_shell_command(
-    command: str,
-    working_dir: Path,
-    failure_message: str,
-    start_failure_message: str,
-    *,
-    capture_output: bool = False,
-    text: bool = False,
-    extra_env: dict[str, str] | None = None,
+        command: str,
+        working_dir: Path,
+        failure_message: str,
+        start_failure_message: str,
+        *,
+        capture_output: bool = False,
+        text: bool = False,
+        extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = None
     if extra_env:
@@ -121,13 +163,13 @@ def run_shell_command(
 
 
 def run_process_command(
-    command: Sequence[str],
-    working_dir: Path,
-    failure_message: str,
-    start_failure_message: str,
-    *,
-    capture_output: bool = False,
-    check: bool = True,
+        command: Sequence[str],
+        working_dir: Path,
+        failure_message: str,
+        start_failure_message: str,
+        *,
+        capture_output: bool = False,
+        check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
@@ -144,8 +186,8 @@ def run_process_command(
 
 
 def build_process_failure_message(
-    failure_message: str,
-    error: subprocess.CalledProcessError,
+        failure_message: str,
+        error: subprocess.CalledProcessError,
 ) -> str:
     message = failure_message.format(exit_code=error.returncode)
     stderr_excerpt = format_stderr_excerpt(error.stderr)
@@ -166,13 +208,13 @@ def format_stderr_excerpt(stderr: str | None) -> str | None:
 
 
 def run_git_command(
-    git_args: Sequence[str],
-    working_dir: Path,
-    failure_message: str,
-    start_failure_message: str,
-    *,
-    capture_output: bool = True,
-    check: bool = True,
+        git_args: Sequence[str],
+        working_dir: Path,
+        failure_message: str,
+        start_failure_message: str,
+        *,
+        capture_output: bool = True,
+        check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     return run_process_command(
         ["git", *git_args],
