@@ -18,9 +18,9 @@ from .constants import LOGGER
 from .errors import PropagateError
 from .models import SignalConfig
 from .signal_transport import (
-    PROTOCOL_VERSION,
     COORDINATOR_ADDRESS,
     COORDINATOR_PUB_ADDRESS,
+    PROTOCOL_VERSION,
     bind_pub_socket,
     bind_pull_socket,
     close_pub_socket,

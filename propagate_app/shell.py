@@ -6,16 +6,14 @@ import getpass
 import os
 import queue
 import readline
-import sys
 import threading
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import zmq
 
 from .errors import PropagateError
-from .event_format import format_event_reply
 from .message_parser import validate_and_build_payload
 from .models import SignalConfig, SignalFieldConfig
 from .signal_transport import (
@@ -477,7 +475,7 @@ def _wait_for_event(
 
 
 def _cmd_interrupt(push_socket: zmq.Socket, state: _ShellState) -> None:
-    from .interactive import ACTION_ABORT, prompt_resume_action
+    from .interactive import prompt_resume_action
 
     project_name = state.active_project
     if project_name is None:
