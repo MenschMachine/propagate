@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from propagate_app.coordinator import Coordinator, WorkerInfo
+from propagate_app.coordinator import Coordinator, InterruptSession, WorkerInfo
 from propagate_app.errors import PropagateError
 from propagate_app.models import (
     AgentConfig,
@@ -508,3 +508,52 @@ def test_coordinator_drain_stdout_logs_to_logger_without_file(tmp_path):
         coordinator._drain_stdout(fake_proc, "alpha")
 
     mock_debug.assert_called_once_with("[%s] %s", "alpha", "only line")
+
+
+def test_interrupt_resume_rejected_when_session_not_ready(tmp_path):
+    shutdown = threading.Event()
+    coordinator = Coordinator(shutdown)
+    coordinator._pub_socket = MagicMock()
+
+    fake_proc = _fake_popen()
+    worker = WorkerInfo(
+        name="alpha",
+        config_path=tmp_path / "alpha.yaml",
+        process=fake_proc,
+        push_socket=MagicMock(),
+        sub_socket=MagicMock(),
+        signals={},
+    )
+    coordinator._workers["alpha"] = worker
+    coordinator._pending_interrupts["alpha"] = InterruptSession(token="token-1", phase="waiting_interrupt_terminal")
+
+    coordinator._forward_command("alpha", "interrupt_resume", {"project": "alpha", "interrupt_token": "token-1", "action": "abort"})
+
+    worker.push_socket.send_json.assert_not_called()
+    sent = [c[0][0] for c in coordinator._pub_socket.send_json.call_args_list]
+    assert any(msg.get("event") == "interrupt_resume_failed" and msg.get("reason") == "interrupt session is not ready for resume" for msg in sent)
+
+
+def test_interrupt_resume_forwarded_when_session_ready(tmp_path):
+
+    shutdown = threading.Event()
+    coordinator = Coordinator(shutdown)
+    coordinator._pub_socket = MagicMock()
+
+    fake_proc = _fake_popen()
+    worker = WorkerInfo(
+        name="alpha",
+        config_path=tmp_path / "alpha.yaml",
+        process=fake_proc,
+        push_socket=MagicMock(),
+        sub_socket=MagicMock(),
+        signals={},
+    )
+    coordinator._workers["alpha"] = worker
+    coordinator._pending_interrupts["alpha"] = InterruptSession(token="token-1", phase="waiting_resume_action")
+
+    coordinator._forward_command("alpha", "interrupt_resume", {"project": "alpha", "interrupt_token": "token-1", "action": "abort"})
+
+    worker.push_socket.send_json.assert_called_once()
+    sent = [c[0][0] for c in coordinator._pub_socket.send_json.call_args_list]
+    assert not any(msg.get("event") == "interrupt_resume_failed" for msg in sent)

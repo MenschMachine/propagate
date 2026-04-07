@@ -148,6 +148,11 @@ After you choose `[R]erun`, `[S]kip`, or `[A]bort`, the shell sends `interrupt_r
 The shell prints success only after receiving one of the matching terminal events above (not immediately after sending).
 Default resume-ack wait is `15s`, configurable via `PROPAGATE_INTERRUPT_RESUME_TIMEOUT`.
 
+Coordinator-side strictness for this flow:
+
+- `interrupt_resume` is forwarded to worker only when there is an active interrupt session for the same `project` in `waiting_resume_action`.
+- Missing/stale/mismatched tokens are rejected as terminal `interrupt_resume_failed` events (not forwarded), so shell gets deterministic failure outcomes instead of hanging.
+
 ## Notes
 
 - The log buffer starts empty on each connect. ZMQ PUB/SUB does not replay messages sent before the subscription, so

@@ -345,7 +345,7 @@ def _handle_agent_interrupted(
                         "action": action,
                         **interrupt_context,
                     })
-                return
+                continue
             if action not in ("rerun", "skip", "abort"):
                 if pub_socket is not None:
                     publish_event(pub_socket, "interrupt_resume_failed", {
@@ -354,7 +354,7 @@ def _handle_agent_interrupted(
                         "interrupt_token": interrupt_token,
                         **interrupt_context,
                     })
-                return
+                continue
             if action == "skip":
                 try:
                     _mark_interrupted_task_complete(config, exc)
@@ -366,7 +366,7 @@ def _handle_agent_interrupted(
                             "interrupt_token": interrupt_token,
                             **interrupt_context,
                         })
-                    return
+                    continue
             if action in ("rerun", "skip"):
                 if pub_socket is not None:
                     publish_event(pub_socket, "interrupt_resumed", {

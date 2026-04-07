@@ -62,6 +62,12 @@ class WorkerInfo:
     repositories: set[str] = field(default_factory=set)
 
 
+@dataclass
+class InterruptSession:
+    token: str
+    phase: str
+
+
 class Coordinator:
     def __init__(self, shutdown: threading.Event, worker_stdout_log_path: Path | None = None) -> None:
         self._shutdown = shutdown
@@ -73,7 +79,7 @@ class Coordinator:
         self._proxy_rebuild = threading.Event()
         self._worker_stdout_logger: logging.Logger | None = None
         self._worker_stdout_handler: logging.Handler | None = None
-        self._pending_interrupt_tokens: dict[str, str] = {}
+        self._pending_interrupts: dict[str, InterruptSession] = {}
         self._interrupt_terminal_events = {
             "agent_interrupted",
             "interrupt_failed",
@@ -268,6 +274,9 @@ class Coordinator:
         if command == "interrupt":
             self._handle_interrupt(project, metadata)
             return
+        if command == "interrupt_resume":
+            self._handle_interrupt_resume(project, metadata)
+            return
         with self._lock:
             worker = self._workers.get(project)
         if worker is None:
@@ -289,12 +298,56 @@ class Coordinator:
         interrupt_token = metadata.get("interrupt_token")
         if isinstance(interrupt_token, str) and interrupt_token:
             with self._lock:
-                self._pending_interrupt_tokens[project] = interrupt_token
+                self._pending_interrupts[project] = InterruptSession(
+                    token=interrupt_token,
+                    phase="waiting_interrupt_terminal",
+                )
         try:
             os.kill(worker.process.pid, signal_module.SIGUSR1)
             LOGGER.info("Sent interrupt (SIGUSR1) to worker '%s' (pid=%d).", project, worker.process.pid)
         except OSError as exc:
             self._send_response(metadata.get("request_id"), error=f"Failed to interrupt worker '{project}': {exc}")
+
+    def _handle_interrupt_resume(self, project: str, metadata: dict) -> None:
+        with self._lock:
+            worker = self._workers.get(project)
+            session = self._pending_interrupts.get(project)
+        if worker is None:
+            self._send_response(metadata.get("request_id"), error=f"No such project '{project}'.")
+            return
+        if worker.process.poll() is not None:
+            self._send_response(metadata.get("request_id"), error=f"Worker '{project}' is not running.")
+            return
+
+        interrupt_token = metadata.get("interrupt_token")
+        if not isinstance(interrupt_token, str) or not interrupt_token:
+            self._publish_interrupt_resume_failed(project, None, "missing interrupt token")
+            return
+        if session is None:
+            self._publish_interrupt_resume_failed(project, interrupt_token, "no active interrupt session")
+            return
+        if session.phase != "waiting_resume_action":
+            self._publish_interrupt_resume_failed(project, interrupt_token, "interrupt session is not ready for resume")
+            return
+        if session.token != interrupt_token:
+            self._publish_interrupt_resume_failed(project, interrupt_token, "interrupt token does not match active session")
+            return
+
+        send_command(worker.push_socket, "interrupt_resume", metadata=metadata)
+        LOGGER.debug("Forwarded command '%s' to worker '%s'.", "interrupt_resume", project)
+
+    def _publish_interrupt_resume_failed(self, project: str, interrupt_token: str | None, reason: str) -> None:
+        event = {
+            "protocol_version": PROTOCOL_VERSION,
+            "channel": "event",
+            "type": "interrupt_resume_failed",
+            "event": "interrupt_resume_failed",
+            "project": project,
+            "reason": reason,
+        }
+        if interrupt_token:
+            event["interrupt_token"] = interrupt_token
+        self._publish(event)
 
     def _send_response(self, request_id: str | None, data: dict | None = None, error: str | None = None) -> None:
         msg: dict = {
@@ -394,6 +447,7 @@ class Coordinator:
     def _stop_worker(self, name: str) -> None:
         with self._lock:
             worker = self._workers.pop(name, None)
+            self._pending_interrupts.pop(name, None)
         if worker is None:
             return
         self._proxy_rebuild.set()
@@ -457,14 +511,20 @@ class Coordinator:
                     event.setdefault("protocol_version", PROTOCOL_VERSION)
                     event.setdefault("channel", "event")
                     event.setdefault("type", event.get("event", "unknown"))
-                    if event.get("event") in self._interrupt_terminal_events and not event.get("interrupt_token"):
+                    event_name = event.get("event")
+                    if event_name in self._interrupt_terminal_events and not event.get("interrupt_token"):
                         with self._lock:
-                            token = self._pending_interrupt_tokens.get(worker_name)
-                        if token:
-                            event["interrupt_token"] = token
-                    if event.get("event") in self._interrupt_terminal_events:
+                            session = self._pending_interrupts.get(worker_name)
+                        if session:
+                            event["interrupt_token"] = session.token
+                    if event_name == "agent_interrupted":
                         with self._lock:
-                            self._pending_interrupt_tokens.pop(worker_name, None)
+                            session = self._pending_interrupts.get(worker_name)
+                            if session:
+                                session.phase = "waiting_resume_action"
+                    if event_name in self._interrupt_terminal_events and event_name != "agent_interrupted":
+                        with self._lock:
+                            self._pending_interrupts.pop(worker_name, None)
                 self._publish(event)
 
     def _health_check(self) -> None:

@@ -401,6 +401,53 @@ def test_handle_agent_interrupted_publishes_event():
     ]
 
 
+def test_handle_agent_interrupted_ignores_invalid_resume_before_valid_one():
+    from propagate_app.serve import _handle_agent_interrupted
+
+    exc = AgentInterrupted("interrupted", task_id="t1", working_dir=Path("/repo"))
+    exc.execution_name = "build"
+    exc.agent_command = "claude -p {prompt_file}"
+
+    mock_config = MagicMock()
+    mock_signal_socket = MagicMock()
+    mock_pub_socket = MagicMock()
+    shutdown = MagicMock()
+    shutdown.is_set.return_value = False
+
+    with patch("propagate_app.serve.receive_message") as mock_recv:
+        mock_recv.side_effect = [
+            ("command", "interrupt_resume", {}, {"action": "rerun"}),
+            ("command", "interrupt_resume", {}, {"action": "abort", "interrupt_token": "token-1"}),
+        ]
+        with patch("propagate_app.serve.publish_event") as mock_pub:
+            _handle_agent_interrupted(exc, mock_config, mock_signal_socket, mock_pub_socket, shutdown)
+
+    assert mock_pub.call_args_list == [
+        call(mock_pub_socket, "agent_interrupted", {
+            "execution": "build",
+            "task_id": "t1",
+            "working_dir": "/repo",
+            "agent_command": "claude -p {prompt_file}",
+        }),
+        call(mock_pub_socket, "interrupt_resume_failed", {
+            "reason": "missing interrupt token",
+            "action": "rerun",
+            "execution": "build",
+            "task_id": "t1",
+            "working_dir": "/repo",
+            "agent_command": "claude -p {prompt_file}",
+        }),
+        call(mock_pub_socket, "interrupt_aborted", {
+            "action": "abort",
+            "interrupt_token": "token-1",
+            "execution": "build",
+            "task_id": "t1",
+            "working_dir": "/repo",
+            "agent_command": "claude -p {prompt_file}",
+        }),
+    ]
+
+
 def test_handle_agent_interrupted_skip_marks_complete(tmp_path):
     from propagate_app.serve import _handle_agent_interrupted
 

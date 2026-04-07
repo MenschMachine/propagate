@@ -565,4 +565,4 @@ def _cmd_interrupt(push_socket: zmq.Socket, state: _ShellState) -> None:
 
 
 def _has_interrupt_context(event: dict) -> bool:
-    return any(event.get(key) for key in ("execution", "task_id", "working_dir", "agent_command"))
+    return all(event.get(key) for key in ("execution", "task_id", "working_dir"))
