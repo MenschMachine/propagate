@@ -35,6 +35,7 @@ PROMPT = "propagate> "
 _HISTORY_FILE = Path.home() / ".propagate_shell_history"
 _QUIT = object()
 INTERRUPT_WAIT_SECONDS = float(os.getenv("PROPAGATE_INTERRUPT_CONTEXT_TIMEOUT", "15"))
+INTERRUPT_RESUME_WAIT_SECONDS = float(os.getenv("PROPAGATE_INTERRUPT_RESUME_TIMEOUT", "15"))
 
 
 def _load_history() -> None:
@@ -101,7 +102,16 @@ def _event_listener(
                 line = f"[{project}] {line}"
             log_buffer.append(line)
             continue
-        if event_type in ("command_reply", "coordinator_response", "agent_interrupted", "interrupt_failed", "command_failed"):
+        if event_type in (
+            "command_reply",
+            "coordinator_response",
+            "agent_interrupted",
+            "interrupt_failed",
+            "interrupt_resumed",
+            "interrupt_aborted",
+            "interrupt_resume_failed",
+            "command_failed",
+        ):
             response_queue.put(event)
 
 
@@ -527,10 +537,31 @@ def _cmd_interrupt(push_socket: zmq.Socket, state: _ShellState) -> None:
         "interrupt_token": interrupt_token,
         "action": action,
     })
-    if action == ACTION_ABORT:
-        print(f"Abort sent to '{project_name}'.")
-    else:
-        print(f"Resume ({action}) sent to '{project_name}'.")
+    resume_event = _wait_for_event(
+        state.response_queue,
+        {"interrupt_resumed", "interrupt_aborted", "interrupt_resume_failed"},
+        timeout=INTERRUPT_RESUME_WAIT_SECONDS,
+        match=lambda e: e.get("project") == project_name and e.get("interrupt_token") == interrupt_token,
+    )
+    if resume_event is None:
+        print("Interrupt resume failed: timeout waiting for worker acknowledgment.")
+        return
+
+    resume_type = resume_event.get("type") or resume_event.get("event")
+    if resume_type == "interrupt_resume_failed":
+        reason = resume_event.get("reason")
+        if reason:
+            print(f"Interrupt resume failed: {reason}.")
+        else:
+            print("Interrupt resume failed.")
+        return
+
+    if resume_type == "interrupt_aborted":
+        print(f"Abort acknowledged by '{project_name}'.")
+        return
+
+    confirmed_action = resume_event.get("action") or action
+    print(f"Resume ({confirmed_action}) acknowledged by '{project_name}'.")
 
 
 def _has_interrupt_context(event: dict) -> bool:

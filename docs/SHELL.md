@@ -136,6 +136,18 @@ When you run `/interrupt`, the shell creates a per-request `interrupt_token` and
 - Unrelated interrupt events (different project or stale token) are ignored for that request.
 - Default wait is `15s`, configurable via `PROPAGATE_INTERRUPT_CONTEXT_TIMEOUT`.
 
+## Interrupt Resume Acknowledgment Matching
+
+After you choose `[R]erun`, `[S]kip`, or `[A]bort`, the shell sends `interrupt_resume` with the same `project` and
+`interrupt_token` and then waits for one terminal correlated worker outcome:
+
+- `interrupt_resumed` (for `rerun` / `skip`) — resume action was accepted and correlated before long resume execution continues
+- `interrupt_aborted` (for `abort`) — abort action was applied
+- `interrupt_resume_failed` — action rejected/failed (invalid action, missing metadata, resume failure, etc.)
+
+The shell prints success only after receiving one of the matching terminal events above (not immediately after sending).
+Default resume-ack wait is `15s`, configurable via `PROPAGATE_INTERRUPT_RESUME_TIMEOUT`.
+
 ## Notes
 
 - The log buffer starts empty on each connect. ZMQ PUB/SUB does not replay messages sent before the subscription, so

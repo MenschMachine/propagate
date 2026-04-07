@@ -310,6 +310,12 @@ def _handle_agent_interrupted(
     shutdown: threading.Event,
 ) -> None:
     """Publish an interrupt event and wait for a resume action from the shell."""
+    interrupt_context = {
+        "execution": exc.execution_name,
+        "task_id": exc.task_id,
+        "working_dir": str(exc.working_dir),
+        "agent_command": exc.agent_command,
+    }
     if not exc.execution_name or not exc.task_id or not exc.working_dir:
         LOGGER.error("Interrupted agent context is incomplete; reporting interrupt_failed.")
         if pub_socket is not None:
@@ -318,12 +324,7 @@ def _handle_agent_interrupted(
 
     LOGGER.info("Agent interrupted during execution '%s', task '%s'.", exc.execution_name, exc.task_id)
     if pub_socket is not None:
-        publish_event(pub_socket, "agent_interrupted", {
-            "execution": exc.execution_name,
-            "task_id": exc.task_id,
-            "working_dir": str(exc.working_dir),
-            "agent_command": exc.agent_command,
-        })
+        publish_event(pub_socket, "agent_interrupted", interrupt_context)
     # Wait for an interrupt_resume command from the shell.
     LOGGER.info("Waiting for interrupt_resume command...")
     waiting_seconds = 0.0
@@ -334,12 +335,63 @@ def _handle_agent_interrupted(
             continue
         kind, name, payload, metadata = result
         if kind == "command" and name == "interrupt_resume":
+            interrupt_token = metadata.get("interrupt_token")
             action = metadata.get("action", "abort")
             LOGGER.info("Received interrupt_resume action: %s", action)
+            if not isinstance(interrupt_token, str) or not interrupt_token:
+                if pub_socket is not None:
+                    publish_event(pub_socket, "interrupt_resume_failed", {
+                        "reason": "missing interrupt token",
+                        "action": action,
+                        **interrupt_context,
+                    })
+                return
+            if action not in ("rerun", "skip", "abort"):
+                if pub_socket is not None:
+                    publish_event(pub_socket, "interrupt_resume_failed", {
+                        "reason": f"invalid action '{action}'",
+                        "action": action,
+                        "interrupt_token": interrupt_token,
+                        **interrupt_context,
+                    })
+                return
             if action == "skip":
-                _mark_interrupted_task_complete(config, exc)
+                try:
+                    _mark_interrupted_task_complete(config, exc)
+                except PropagateError as error:
+                    if pub_socket is not None:
+                        publish_event(pub_socket, "interrupt_resume_failed", {
+                            "reason": str(error),
+                            "action": action,
+                            "interrupt_token": interrupt_token,
+                            **interrupt_context,
+                        })
+                    return
             if action in ("rerun", "skip"):
-                _resume_run(config, signal_socket, pub_socket)
+                if pub_socket is not None:
+                    publish_event(pub_socket, "interrupt_resumed", {
+                        "action": action,
+                        "interrupt_token": interrupt_token,
+                        **interrupt_context,
+                    })
+                try:
+                    _resume_run(config, signal_socket, pub_socket)
+                except PropagateError as error:
+                    if pub_socket is not None:
+                        publish_event(pub_socket, "interrupt_resume_failed", {
+                            "reason": str(error),
+                            "action": action,
+                            "interrupt_token": interrupt_token,
+                            **interrupt_context,
+                        })
+                    return
+                return
+            if pub_socket is not None:
+                publish_event(pub_socket, "interrupt_aborted", {
+                    "action": action,
+                    "interrupt_token": interrupt_token,
+                    **interrupt_context,
+                })
             return
         LOGGER.debug("Ignoring %s '%s' while waiting for interrupt_resume.", kind, name)
 

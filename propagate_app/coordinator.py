@@ -74,6 +74,13 @@ class Coordinator:
         self._worker_stdout_logger: logging.Logger | None = None
         self._worker_stdout_handler: logging.Handler | None = None
         self._pending_interrupt_tokens: dict[str, str] = {}
+        self._interrupt_terminal_events = {
+            "agent_interrupted",
+            "interrupt_failed",
+            "interrupt_resumed",
+            "interrupt_aborted",
+            "interrupt_resume_failed",
+        }
         if worker_stdout_log_path is not None:
             worker_stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
             handler = logging.FileHandler(worker_stdout_log_path, encoding="utf-8")
@@ -450,14 +457,14 @@ class Coordinator:
                     event.setdefault("protocol_version", PROTOCOL_VERSION)
                     event.setdefault("channel", "event")
                     event.setdefault("type", event.get("event", "unknown"))
-                    if event.get("event") in ("agent_interrupted", "interrupt_failed") and not event.get("interrupt_token"):
+                    if event.get("event") in self._interrupt_terminal_events and not event.get("interrupt_token"):
                         with self._lock:
                             token = self._pending_interrupt_tokens.get(worker_name)
                         if token:
                             event["interrupt_token"] = token
-                            if event.get("event") in ("agent_interrupted", "interrupt_failed"):
-                                with self._lock:
-                                    self._pending_interrupt_tokens.pop(worker_name, None)
+                    if event.get("event") in self._interrupt_terminal_events:
+                        with self._lock:
+                            self._pending_interrupt_tokens.pop(worker_name, None)
                 self._publish(event)
 
     def _health_check(self) -> None:

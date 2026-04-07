@@ -42,7 +42,13 @@ In serve mode, the worker process has no TTY. Instead, use the shell to interrup
 10. On success, the shell prints interrupted execution/task/working directory and then asks rerun/skip/abort
 11. You open another terminal to interact with the agent manually
 12. When you're done, return to the shell and choose rerun/skip/abort
-13. The shell sends the chosen action back to the worker, which resumes accordingly
+13. The shell sends the chosen action back to the worker and waits for a final correlated outcome
+14. The worker publishes exactly one resume terminal outcome for the same `project + interrupt_token`:
+    - `interrupt_resumed` for `rerun` / `skip` immediately after the action is accepted and context is validated (before long resume execution)
+    - `interrupt_aborted` for `abort` after worker confirms stop/no-resume
+    - `interrupt_resume_failed` when action is invalid, metadata is incomplete, or resume fails
+15. The shell prints success only after terminal acknowledgment (default wait `15s`, configurable via
+    `PROPAGATE_INTERRUPT_RESUME_TIMEOUT`)
 
 ```
 propagate> /interrupt
@@ -56,7 +62,7 @@ You can now open another terminal to interact with the agent.
 When you're done, choose how to continue:
 
 [R]erun task / [S]kip to next / [A]bort? r
-Resume (rerun) sent to 'myproject'.
+Resume (rerun) acknowledged by 'myproject'.
 ```
 
 ## Interactive command
@@ -78,6 +84,8 @@ The interactive agent inherits the full terminal (TTY), so you get a normal inte
   `KeyboardInterrupt` exit with resume hint; in serve mode they are logged as errors
 - On_failure hooks do **not** run when an agent is interrupted — this is a user-initiated action, not a failure
 - `/interrupt` outcomes are correlated by both `project` and `interrupt_token` to avoid cross-project or stale-event races
+- `interrupt_resume` outcomes are also correlated by both `project` and `interrupt_token`; shell does not print optimistic
+  success before worker acknowledgment
 - Shell never renders placeholder interrupt context (`unknown` / `pending`); missing context is treated as `interrupt_failed`
 - Shell rendering remains dialog-only: acknowledgements are shown, but background log events are buffered for `/logs` only
 
