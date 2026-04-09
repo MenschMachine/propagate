@@ -38,9 +38,11 @@ def test_ask_human_receives_matching_clarification_response(monkeypatch):
         message = receive_message(pull, block=True, timeout_ms=2000)
         assert message is not None
         kind, name, payload, metadata = message
-        assert kind == "command"
+        assert kind == "coordinator"
         assert name == "event"
-        assert payload == {}
+        assert payload["name"] == "clarification_requested"
+        assert payload["payload"]["question"] == "Need input?"
+        assert payload["payload"]["request_id"] == metadata["request_id"]
         assert metadata["request_id"]
 
         time.sleep(0.2)

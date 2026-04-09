@@ -456,36 +456,62 @@ async def _handle_unknown_command(update, context) -> None:
 
 async def handle_text_reply(update, context) -> None:
     """Handle text replies to bot messages, such as clarification requests."""
-    if update.message is None or update.message.reply_to_message is None:
+    if update.message is None:
+        logger.info("Ignoring text update without message object.")
         return
     if not _is_allowed(update, context.bot_data["allowed_users"]):
         return
 
-    reply_to_text = update.message.reply_to_message.text or ""
-    if "Clarification requested" in reply_to_text and "(id: " in reply_to_text:
-        match = re.search(r"\(id: ([^)]+)\)", reply_to_text)
-        if not match:
+    request_id: str | None = None
+    reply_to_message = update.message.reply_to_message
+    if reply_to_message is not None:
+        reply_to_text = reply_to_message.text or reply_to_message.caption or ""
+        match = re.search(r"\(id:\s*([^)]+)\)", reply_to_text, flags=re.IGNORECASE)
+        if match:
+            request_id = match.group(1).strip()
+        else:
+            logger.info(
+                "Ignoring reply: replied message does not contain clarification request id. preview=%r",
+                reply_to_text[:120],
+            )
             return
-        request_id = match.group(1)
-        answer = update.message.text
+    else:
+        pending: dict[int, str] = context.bot_data.get("pending_clarifications", {})
+        request_id = pending.get(update.message.chat_id)
+        if request_id is None:
+            logger.info(
+                "Ignoring text message without reply_to_message from chat_id=%s (no pending clarification).",
+                update.message.chat_id,
+            )
+            return
         logger.info(
-            "Publishing clarification_response for request_id=%s from chat_id=%s.",
+            "Using pending clarification request_id=%s for non-reply text in chat_id=%s.",
             request_id,
             update.message.chat_id,
         )
 
-        push_socket = context.bot_data["push_socket"]
-        payload = {"request_id": request_id, "answer": answer}
-        metadata = {"chat_id": str(update.message.chat_id), "message_id": str(update.message.message_id)}
+    answer = update.message.text
+    logger.info(
+        "Publishing clarification_response for request_id=%s from chat_id=%s.",
+        request_id,
+        update.message.chat_id,
+    )
 
-        msg = {
-            "command": "event",
-            "name": "clarification_response",
-            "payload": payload,
-            "metadata": metadata,
-        }
-        push_socket.send_json(msg)
-        await update.message.reply_text("Sent clarification response.")
+    push_socket = context.bot_data["push_socket"]
+    payload = {"request_id": request_id, "answer": answer}
+    metadata = {"chat_id": str(update.message.chat_id), "message_id": str(update.message.message_id)}
+
+    send_coordinator_command(
+        push_socket,
+        "event",
+        metadata=metadata,
+        name="clarification_response",
+        payload=payload,
+    )
+    pending = context.bot_data.get("pending_clarifications", {})
+    if pending.get(update.message.chat_id) == request_id:
+        del pending[update.message.chat_id]
+    await update.message.reply_text("Sent clarification response.")
 
 
 async def _poll_events(application, sub_socket) -> None:
@@ -545,6 +571,9 @@ async def _poll_events(application, sub_socket) -> None:
                 if message_id is not None and origin_chat_id is not None and target_chat_id == origin_chat_id:
                     kwargs["reply_to_message_id"] = int(message_id)
                 await application.bot.send_message(**kwargs)
+                if event.get("event") == "clarification_requested" and isinstance(event.get("request_id"), str):
+                    pending: dict[int, str] = application.bot_data.setdefault("pending_clarifications", {})
+                    pending[target_chat_id] = event["request_id"]
                 logger.info(
                     "Sent event type=%s to chat_id=%s.",
                     event.get("event"),
@@ -594,6 +623,7 @@ def run_bot(
     application.bot_data["active_project"] = {}
     application.bot_data["allowed_users"] = allowed_users
     application.bot_data["notify_chats"] = notify_chats
+    application.bot_data["pending_clarifications"] = {}
     application.bot_data["response_queue"] = asyncio.Queue()
 
     application.add_handler(CommandHandler("project", handle_project))

@@ -11,6 +11,7 @@ from propagate_app.signal_transport import (
     COORDINATOR_ADDRESS,
     COORDINATOR_PUB_ADDRESS,
     connect_push_socket,
+    send_coordinator_command,
 )
 
 # Set up logging
@@ -26,13 +27,13 @@ _zmq_context = zmq.Context.instance()
 def publish_event_to_coordinator(event_type: str, payload: dict, metadata: dict) -> None:
     push_socket = connect_push_socket(COORDINATOR_ADDRESS)
     try:
-        msg = {
-            "command": "event",
-            "name": event_type,
-            "payload": payload,
-            "metadata": metadata,
-        }
-        push_socket.send_json(msg)
+        send_coordinator_command(
+            push_socket,
+            "event",
+            metadata=metadata,
+            name=event_type,
+            payload=payload,
+        )
     finally:
         push_socket.close(linger=1000)
 

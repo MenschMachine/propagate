@@ -163,6 +163,19 @@ class Coordinator:
                     self._send_response(metadata.get("request_id"), error="Missing 'project' for reload.")
                     return
                 self._handle_reload(project, metadata)
+            elif action == "event":
+                event_name = payload.get("name")
+                event_payload = payload.get("payload")
+                if not isinstance(event_name, str) or not event_name:
+                    self._send_response(metadata.get("request_id"), error="Missing or invalid event name.")
+                    return
+                if event_payload is None:
+                    event_payload = {}
+                if not isinstance(event_payload, dict):
+                    self._send_response(metadata.get("request_id"), error="Event payload must be a mapping.")
+                    return
+                from .signal_transport import publish_event_if_available
+                publish_event_if_available(self._pub_socket, event_name, {**event_payload, "metadata": metadata})
             else:
                 self._send_response(metadata.get("request_id"), error=f"Unknown coordinator action '{action}'.")
         elif kind == "signal":
@@ -172,6 +185,20 @@ class Coordinator:
             else:
                 self._broadcast_signal(name, payload, metadata)
         elif kind == "command":
+            if name == "event":
+                event_name = payload.get("name")
+                event_payload = payload.get("payload")
+                if not isinstance(event_name, str) or not event_name:
+                    self._send_response(metadata.get("request_id"), error="Missing or invalid event name.")
+                    return
+                if event_payload is None:
+                    event_payload = {}
+                if not isinstance(event_payload, dict):
+                    self._send_response(metadata.get("request_id"), error="Event payload must be a mapping.")
+                    return
+                from .signal_transport import publish_event_if_available
+                publish_event_if_available(self._pub_socket, event_name, {**event_payload, "metadata": metadata})
+                return
             project = metadata.get("project")
             if not project:
                 self._send_response(metadata.get("request_id"), error="Missing 'project' in metadata for command.")

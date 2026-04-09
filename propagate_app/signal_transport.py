@@ -119,7 +119,8 @@ def receive_message(
         payload = {k: v for k, v in data.items() if k not in ("coordinator", "metadata")}
         return "coordinator", data["coordinator"], payload, metadata
     if "command" in data and isinstance(data["command"], str):
-        return "command", data["command"], {}, metadata
+        payload = {k: v for k, v in data.items() if k not in ("command", "metadata")}
+        return "command", data["command"], payload, metadata
     if "signal_type" in data and "payload" in data:
         return "signal", data["signal_type"], data["payload"], metadata
     LOGGER.warning("Received unrecognised message; ignoring.")

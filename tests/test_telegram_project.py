@@ -382,3 +382,72 @@ async def test_no_projects_prompts_list():
 
     reply = update.message.reply_text.call_args[0][0]
     assert "No projects loaded" in reply
+
+
+@pytest.mark.anyio
+async def test_text_reply_publishes_clarification_response_event():
+    """Replying to a clarification prompt publishes a coordinator event."""
+    from propagate_telegram.bot import handle_text_reply
+
+    address = "ipc:///tmp/propagate-test-telegram-clarification.sock"
+    pull = bind_pull_socket(address)
+    push = connect_push_socket(address)
+    try:
+        update = _make_update(123, "michael", "Approved", chat_id=100)
+        update.message.reply_to_message.text = (
+            "Clarification requested in execution 'x' (id: req-123):\nNeed input?"
+        )
+        ctx = _make_context({}, push_socket=push)
+
+        await handle_text_reply(update, ctx)
+
+        from propagate_app.signal_transport import receive_message
+
+        result = receive_message(pull, block=True, timeout_ms=2000)
+        assert result is not None
+        kind, name, payload, metadata = result
+        assert kind == "coordinator"
+        assert name == "event"
+        assert payload["name"] == "clarification_response"
+        assert payload["payload"]["request_id"] == "req-123"
+        assert payload["payload"]["answer"] == "Approved"
+        assert metadata["chat_id"] == "100"
+
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Sent clarification response." in reply
+    finally:
+        close_push_socket(push)
+        close_pull_socket(pull, address)
+
+
+@pytest.mark.anyio
+async def test_text_without_reply_uses_pending_clarification():
+    """Plain text can answer the latest pending clarification in the chat."""
+    from propagate_telegram.bot import handle_text_reply
+
+    address = "ipc:///tmp/propagate-test-telegram-clarification-pending.sock"
+    pull = bind_pull_socket(address)
+    push = connect_push_socket(address)
+    try:
+        update = _make_update(123, "michael", "ok", chat_id=100)
+        update.message.reply_to_message = None
+        ctx = _make_context({}, push_socket=push)
+        ctx.bot_data["pending_clarifications"] = {100: "req-pending"}
+
+        await handle_text_reply(update, ctx)
+
+        from propagate_app.signal_transport import receive_message
+
+        result = receive_message(pull, block=True, timeout_ms=2000)
+        assert result is not None
+        kind, name, payload, metadata = result
+        assert kind == "coordinator"
+        assert name == "event"
+        assert payload["name"] == "clarification_response"
+        assert payload["payload"]["request_id"] == "req-pending"
+        assert payload["payload"]["answer"] == "ok"
+        assert metadata["chat_id"] == "100"
+        assert ctx.bot_data["pending_clarifications"] == {}
+    finally:
+        close_push_socket(push)
+        close_pull_socket(pull, address)

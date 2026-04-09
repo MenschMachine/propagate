@@ -66,6 +66,7 @@ The coordinator accepts these commands on its PULL socket (in addition to forwar
 | `load` | Load a new config as a worker subprocess |
 | `unload` | Stop and remove a project |
 | `reload` | Stop and restart a project (unload + load) |
+| `event` | Publish an integration event (for example `clarification_requested` / `clarification_response`) to coordinator PUB subscribers |
 
 Responses are published on the coordinator PUB socket as `coordinator_response` events.
 

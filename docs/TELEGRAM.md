@@ -219,8 +219,8 @@ Flow:
 1. An agent calls `ask_human(question, timeout_ms=...)` through `propagate-mcp`
 2. `propagate-mcp` publishes a `clarification_requested` event
 3. The Telegram bot sends that clarification request to the originating chat (if available) and configured notify chats
-4. A human replies to that Telegram message
-5. The bot extracts the embedded request ID and publishes `clarification_response`
+4. A human replies to that Telegram message (recommended), or sends a normal text message in the same chat
+5. The bot resolves the request ID (from the replied message, or from the latest pending clarification in that chat) and publishes `clarification_response`
 6. `ask_human(...)` returns that reply text to the agent
 
 This requires all three components to be running:

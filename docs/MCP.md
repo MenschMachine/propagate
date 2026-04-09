@@ -145,8 +145,8 @@ When `ask_human` publishes a clarification request:
 
 1. The Telegram bot receives the `clarification_requested` event
 2. It sends a message containing the question and request ID (to the originating chat when available, and to configured notify chats)
-3. The human replies to that Telegram message
-4. The bot extracts the request ID from the replied-to message
+3. The human replies to that Telegram message (recommended), or sends a plain text message in the same chat
+4. The bot resolves the request ID from the replied-to message (or from the latest pending clarification in that chat)
 5. The bot publishes `clarification_response`
 6. `ask_human` returns the answer string to the agent
 

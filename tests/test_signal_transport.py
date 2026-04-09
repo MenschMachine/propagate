@@ -5,6 +5,7 @@ from propagate_app.signal_transport import (
     close_pull_socket,
     close_push_socket,
     connect_push_socket,
+    receive_message,
     receive_signal,
     send_signal,
     socket_address,
@@ -123,4 +124,28 @@ def test_stale_socket_file_cleaned_on_bind(tmp_path):
         assert result == ("test", {})
         close_push_socket(push)
     finally:
+        close_pull_socket(pull, address)
+
+
+def test_receive_message_preserves_command_payload_fields():
+    address = "ipc:///tmp/propagate-test-command-payload.sock"
+    pull = bind_pull_socket(address)
+    push = connect_push_socket(address)
+    try:
+        push.send_json({
+            "command": "event",
+            "name": "clarification_requested",
+            "payload": {"question": "Need input"},
+            "metadata": {"chat_id": "100"},
+        })
+        result = receive_message(pull, block=True, timeout_ms=2000)
+        assert result is not None
+        kind, name, payload, metadata = result
+        assert kind == "command"
+        assert name == "event"
+        assert payload["name"] == "clarification_requested"
+        assert payload["payload"]["question"] == "Need input"
+        assert metadata["chat_id"] == "100"
+    finally:
+        close_push_socket(push)
         close_pull_socket(pull, address)

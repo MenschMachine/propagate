@@ -219,6 +219,50 @@ def test_coordinator_handle_list(tmp_path):
     assert "go" in projects[0]["signals"]
 
 
+def test_coordinator_dispatch_event_republishes_on_pub():
+    """coordinator:event should be published to listeners as an event."""
+    shutdown = threading.Event()
+    coordinator = Coordinator(shutdown)
+    coordinator._pub_socket = MagicMock()
+
+    coordinator._dispatch(
+        "coordinator",
+        "event",
+        {"name": "clarification_requested", "payload": {"question": "Need input", "request_id": "req-1"}},
+        {"chat_id": "100"},
+    )
+
+    coordinator._pub_socket.send_json.assert_called_once()
+    msg = coordinator._pub_socket.send_json.call_args[0][0]
+    assert msg["event"] == "clarification_requested"
+    assert msg["type"] == "clarification_requested"
+    assert msg["question"] == "Need input"
+    assert msg["request_id"] == "req-1"
+    assert msg["metadata"]["chat_id"] == "100"
+
+
+def test_coordinator_command_event_republishes_on_pub():
+    """Legacy command=event envelopes should still be accepted."""
+    shutdown = threading.Event()
+    coordinator = Coordinator(shutdown)
+    coordinator._pub_socket = MagicMock()
+
+    coordinator._dispatch(
+        "command",
+        "event",
+        {"name": "clarification_response", "payload": {"request_id": "req-1", "answer": "OK"}},
+        {"chat_id": "100"},
+    )
+
+    coordinator._pub_socket.send_json.assert_called_once()
+    msg = coordinator._pub_socket.send_json.call_args[0][0]
+    assert msg["event"] == "clarification_response"
+    assert msg["type"] == "clarification_response"
+    assert msg["request_id"] == "req-1"
+    assert msg["answer"] == "OK"
+    assert msg["metadata"]["chat_id"] == "100"
+
+
 def test_coordinator_forward_signal(tmp_path):
     """_forward_signal sends the signal to the worker's push socket."""
     config = _make_config(tmp_path, "alpha")
