@@ -9,7 +9,7 @@ This is separate from the Propagate YAML engine:
 
 - `propagate serve` runs workflows
 - `propagate-telegram` delivers clarification requests to a human and sends replies back
-- `propagate-mcp` exposes the MCP tool that an agent can call
+- `propagate-mcp` is the MCP server process that exposes the tool to the agent client
 
 If you are only using normal Propagate signals, hooks, `wait_for_signal`, shell, webhook, or Telegram-triggered runs,
 you do not need `propagate-mcp`.
@@ -47,20 +47,24 @@ The implementation lives in [propagate_mcp/server.py](../propagate_mcp/server.py
 
 ## Required Processes
 
-To use `ask_human` end-to-end, these processes must be running:
+To use `ask_human` end-to-end:
 
 1. `propagate serve`
 2. `propagate-telegram`
-3. `propagate-mcp`
+3. an active `propagate-mcp` server process
 
 Why:
 
 - `propagate serve` provides the coordinator sockets used by the MCP server
 - `propagate-telegram` is the currently implemented human reply path
-- `propagate-mcp` is the MCP server process the agent connects to
+- `propagate-mcp` is the MCP server process the agent client connects to
 
 There is currently no built-in shell command for answering `clarification_requested` messages. The implemented reply
 path is Telegram replies to the bot's clarification message.
+
+In a typical MCP setup, you do not start `propagate-mcp` manually. Your MCP client starts it as a subprocess using the
+configured command. The important requirement is that a `propagate-mcp` server process is running when the agent calls
+`ask_human(...)`.
 
 ---
 
@@ -74,18 +78,16 @@ Example:
 
 # Terminal 2
 ./venv/bin/propagate-telegram --token-env TELEGRAM_BOT_TOKEN --allowed-users 123456
-
-# Terminal 3
-./venv/bin/propagate-mcp
 ```
 
-The MCP server is a separate process because your agent client launches or connects to it as an MCP tool server.
+In a normal MCP client setup, you do not start `propagate-mcp` in a separate terminal. The client launches it when it
+connects to the MCP server entry you configured.
 
 ---
 
 ## Configuring the Agent Client
 
-You do not configure `ask_human` in `propagate.yaml`. You configure your MCP-capable agent client to launch the
+You do not configure `ask_human` in `propagate.yaml`. You configure your MCP-capable agent client to spawn the
 `propagate-mcp` server.
 
 Typical MCP client configuration:
@@ -113,7 +115,7 @@ If you prefer an explicit Python entrypoint:
 }
 ```
 
-The exact file location for MCP config depends on the client you use. The important part is that the client launches
+The exact file location for MCP config depends on the client you use. The important part is that the client spawns
 `propagate-mcp` as an MCP server subprocess.
 
 After adding the server entry, restart the client so it discovers the `ask_human` tool.

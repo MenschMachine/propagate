@@ -27,23 +27,25 @@ Do not start implementation until those questions are resolved.
 ## 1. Prior Review Failures (Check First)
 
 ```bash
-propagate context get :revision-reason
+propagate context get :revision-reason || true
 ```
 
-If the output is `review-findings`, this is a **retry after a failed internal review**. Read the blocking findings:
+Then check whether prior blocking findings were preserved:
 
 ```bash
-propagate context get :prior-review-findings
+propagate context get :prior-review-findings || true
 ```
 
-**Address every finding before implementing anything else.** Each entry describes a specific, blocking problem in the previous implementation. Do not restate the fix in different words — resolve the underlying issue.
+If `:prior-review-findings` exists, this is a retry after a failed internal review even if `:revision-reason` is unset.
+
+**Address every finding before implementing anything else.** Each entry describes a specific, blocking problem in the previous implementation. Do not restate the fix in different words — resolve the underlying issue. Make the smallest change that removes the blocker before expanding scope.
 
 Common patterns that fail review:
 - Headings that describe process or editorial state ("Why This Page Exists") — use subject-matter headings instead
 - Vague compliance language ("Privacy-first defaults", "Compliance-ready operations") — use concrete, visitor-facing language
 - Creating a new page without linking to it from the relevant hub or navigation
 
-If `:revision-reason` is empty or `check-failure`, skip this section.
+If both `:revision-reason` and `:prior-review-findings` are empty, skip this section.
 
 ---
 
