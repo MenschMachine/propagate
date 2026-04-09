@@ -17,9 +17,9 @@ from propagate_app.models import (
     ExecutionStatus,
     PropagationTriggerConfig,
     RepositoryConfig,
+    ScopedContextKey,
     SignalConfig,
     SignalFieldConfig,
-    ScopedContextKey,
     SubTaskConfig,
 )
 from propagate_app.scheduler import activate_matching_triggers, has_pending_signal_triggers

@@ -5,10 +5,18 @@ from typing import Any
 
 from .config_git import parse_git_config
 from .config_includes import resolve_mapping_includes
-from .context_refs import parse_context_condition, parse_scoped_context_key
 from .constants import LOGGER
+from .context_refs import parse_context_condition, parse_scoped_context_key
 from .errors import PropagateError
-from .models import ContextCondition, ExecutionConfig, ExecutionSignalConfig, ScopedContextKey, SignalConfig, SubTaskConfig, SubTaskRouteConfig
+from .models import (
+    ContextCondition,
+    ExecutionConfig,
+    ExecutionSignalConfig,
+    ScopedContextKey,
+    SignalConfig,
+    SubTaskConfig,
+    SubTaskRouteConfig,
+)
 from .signals import validate_signal_when_clause
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
 from .validation_hooks import validate_hook_action

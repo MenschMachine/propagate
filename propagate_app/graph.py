@@ -1,7 +1,7 @@
 from typing import Any
 
-from .context_refs import parse_context_condition
 from .constants import LOGGER
+from .context_refs import parse_context_condition
 from .errors import PropagateError
 from .models import Config, ExecutionConfig, ExecutionGraph, PropagationTriggerConfig, SignalConfig
 from .signals import validate_signal_when_clause
