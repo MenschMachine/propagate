@@ -226,7 +226,10 @@ This requires all three components to be running:
 
 - `propagate serve`
 - `propagate-telegram`
-- `propagate-mcp`
+- a `propagate-mcp` server process
+
+In the usual MCP setup, the agent client spawns `propagate-mcp` from its MCP server configuration rather than you
+starting it manually in a separate terminal.
 
 There is currently no equivalent shell command for answering clarification requests.
 

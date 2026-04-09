@@ -30,7 +30,6 @@ implement-seo:
         - 'propagate context delete :review-findings'
         - 'propagate context delete :review-suggestions'
         - 'propagate context delete :review-findings-brief'
-        - 'propagate context delete :revision-reason'
       prompt: ./prompts/seo/implement.md
       must_set:
         - key: ":changed-urls"

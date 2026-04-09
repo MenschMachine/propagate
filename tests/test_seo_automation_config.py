@@ -77,7 +77,7 @@ def test_config_loads_with_single_plan_and_single_implementation_lane() -> None:
     assert "propagate context delete :review-findings" in implement.sub_tasks[2].before
     assert "propagate context delete :review-suggestions" in implement.sub_tasks[2].before
     assert "propagate context delete :review-findings-brief" in implement.sub_tasks[2].before
-    assert "propagate context delete :revision-reason" in implement.sub_tasks[2].before
+    assert "propagate context delete :revision-reason" not in implement.sub_tasks[2].before
     assert implement.sub_tasks[2].after == []
     assert implement.sub_tasks[4].goto == "code"
     assert implement.sub_tasks[4].max_goto == 5
@@ -162,6 +162,9 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "If anything material is ambiguous" in implement
     assert "Decide: edit vs create from `page.change_type`" in implement
     assert "propagate context get --global :implementation-briefs" in implement
+    assert "propagate context get :prior-review-findings || true" in implement
+    assert "If `:prior-review-findings` exists, this is a retry after a failed internal review" in implement
+    assert "Make the smallest change that removes the blocker before expanding scope." in implement
     assert "`page.path` -> exact page to edit or create" in implement
     assert "preserve the approved `page.path` targets and overall strategic intent" in revise
     assert "keep the typed `page.change_type` for each item" in revise
@@ -212,7 +215,8 @@ def test_seo_prompts_use_global_scope_for_shared_data_handoff_keys() -> None:
     assert "propagate context get --global :strategy-path" in review_plan
     assert "propagate context get --global :implementation-briefs-path" in review_plan
 
-    assert "propagate context get :revision-reason" in implement
+    assert "propagate context get :revision-reason || true" in implement
+    assert "propagate context get :prior-review-findings || true" in implement
     assert "propagate context get :pr-comments" in implement
     assert "propagate context set --stdin --global :changed-urls" in implement
 
