@@ -330,6 +330,47 @@ async def test_event_reply_no_prefix_when_no_project():
 
 
 @pytest.mark.anyio
+async def test_clarification_requested_routes_to_notify_chats_without_origin_chat():
+    """Clarification requests without chat metadata still go to notify chats."""
+    import asyncio
+
+    from propagate_telegram.bot import _poll_events
+
+    fake_event = {
+        "event": "clarification_requested",
+        "question": "Need a decision",
+        "request_id": "req-1",
+        "metadata": {},
+    }
+    call_count = 0
+
+    def fake_receive(sub_socket, timeout_ms=1000):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return fake_event
+        raise asyncio.CancelledError
+
+    app = MagicMock()
+    app.bot.send_message = AsyncMock()
+    app.bot_data = {
+        "response_queue": asyncio.Queue(),
+        "notify_chats": {100},
+    }
+
+    with patch("propagate_telegram.bot.receive_event", side_effect=fake_receive):
+        try:
+            await _poll_events(app, MagicMock())
+        except asyncio.CancelledError:
+            pass
+
+    app.bot.send_message.assert_called_once()
+    assert app.bot.send_message.call_args[1]["chat_id"] == 100
+    text = app.bot.send_message.call_args[1]["text"]
+    assert "Clarification requested" in text
+
+
+@pytest.mark.anyio
 async def test_no_projects_prompts_list():
     """With empty projects, /signal says 'No projects loaded'."""
     from propagate_telegram.bot import handle_signal

@@ -142,7 +142,7 @@ The default timeout is 1 hour.
 When `ask_human` publishes a clarification request:
 
 1. The Telegram bot receives the `clarification_requested` event
-2. It sends a message containing the question and request ID
+2. It sends a message containing the question and request ID (to the originating chat when available, and to configured notify chats)
 3. The human replies to that Telegram message
 4. The bot extracts the request ID from the replied-to message
 5. The bot publishes `clarification_response`

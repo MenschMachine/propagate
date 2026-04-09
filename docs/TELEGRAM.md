@@ -189,6 +189,7 @@ The Telegram bot forwards certain event types to fixed chats configured via `--n
 - **`pr_created`** — when propagate opens a new pull request
 - **`pr_updated`** — when propagate pushes more changes to a branch that already has an open PR
 - **`run_failed`** — when a run fails with an error
+- **`clarification_requested`** — when `ask_human(...)` requests a human reply
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456:ABCDEF
@@ -217,7 +218,7 @@ Flow:
 
 1. An agent calls `ask_human(question, timeout_ms=...)` through `propagate-mcp`
 2. `propagate-mcp` publishes a `clarification_requested` event
-3. The Telegram bot sends that clarification request to the originating chat
+3. The Telegram bot sends that clarification request to the originating chat (if available) and configured notify chats
 4. A human replies to that Telegram message
 5. The bot extracts the embedded request ID and publishes `clarification_response`
 6. `ask_human(...)` returns that reply text to the agent

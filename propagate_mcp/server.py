@@ -69,7 +69,9 @@ def ask_human(question: str, timeout_ms: int = 3600000) -> str:
     # Listen for the response
     sub_socket = _zmq_context.socket(zmq.SUB)
     sub_socket.connect(COORDINATOR_PUB_ADDRESS)
-    sub_socket.setsockopt_string(zmq.SUBSCRIBE, "clarification_response")
+    # Coordinator PUB emits single-frame JSON events, not topic-prefixed multipart
+    # messages, so subscribe to all frames and filter after decoding.
+    sub_socket.setsockopt(zmq.SUBSCRIBE, b"")
     time.sleep(0.1)  # Allow time for SUB socket to connect before publishing
 
     poller = zmq.Poller()
@@ -100,4 +102,3 @@ def ask_human(question: str, timeout_ms: int = 3600000) -> str:
                     pass
     finally:
         sub_socket.close()
-

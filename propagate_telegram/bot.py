@@ -24,7 +24,7 @@ from propagate_app.signal_transport import (
 from .message_parser import parse_signal_message
 
 logger = logging.getLogger("propagate.telegram")
-_TELEGRAM_NOTIFY_EVENTS = {"pr_created", "pr_updated", "run_failed"}
+_TELEGRAM_NOTIFY_EVENTS = {"pr_created", "pr_updated", "run_failed", "clarification_requested"}
 
 
 @dataclass
@@ -468,6 +468,11 @@ async def handle_text_reply(update, context) -> None:
             return
         request_id = match.group(1)
         answer = update.message.text
+        logger.info(
+            "Publishing clarification_response for request_id=%s from chat_id=%s.",
+            request_id,
+            update.message.chat_id,
+        )
 
         push_socket = context.bot_data["push_socket"]
         payload = {"request_id": request_id, "answer": answer}
@@ -501,11 +506,20 @@ async def _poll_events(application, sub_socket) -> None:
         if event.get("event") == "coordinator_response":
             await response_queue.put(event)
             continue
+        logger.info(
+            "Received event type=%s project=%s metadata_keys=%s",
+            event.get("event"),
+            event.get("project"),
+            sorted((event.get("metadata") or {}).keys()),
+        )
         metadata = event.get("metadata") or {}
         chat_id = metadata.get("chat_id")
         origin_chat_id = int(chat_id) if chat_id is not None else None
         if chat_id is None and not (event.get("event") in _TELEGRAM_NOTIFY_EVENTS and notify_chats):
-            logger.debug("Received event without chat_id metadata; skipping reply.")
+            logger.info(
+                "Skipping event type=%s: no chat_id and no notify-chat route configured.",
+                event.get("event"),
+            )
             continue
         message_id = metadata.get("message_id")
         text = format_event_reply(event)
@@ -519,6 +533,11 @@ async def _poll_events(application, sub_socket) -> None:
             for notify_chat_id in sorted(notify_chats):
                 if notify_chat_id not in target_chats:
                     target_chats.append(notify_chat_id)
+        logger.info(
+            "Routing event type=%s to chats=%s.",
+            event.get("event"),
+            target_chats,
+        )
 
         for target_chat_id in target_chats:
             try:
@@ -526,7 +545,11 @@ async def _poll_events(application, sub_socket) -> None:
                 if message_id is not None and origin_chat_id is not None and target_chat_id == origin_chat_id:
                     kwargs["reply_to_message_id"] = int(message_id)
                 await application.bot.send_message(**kwargs)
-                logger.debug("Sent event reply to chat %s.", target_chat_id)
+                logger.info(
+                    "Sent event type=%s to chat_id=%s.",
+                    event.get("event"),
+                    target_chat_id,
+                )
             except Exception:
                 logger.exception("Failed to send event reply to chat %s.", target_chat_id)
 
