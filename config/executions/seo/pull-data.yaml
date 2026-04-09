@@ -20,7 +20,9 @@ pull-data:
     - id: fetch-data
       before:
         - :gsc-data-path
+        - propagate context set --global :gsc-data-path "$(propagate context get :gsc-data-path)"
         - :posthog-data-path
+        - propagate context set --global :posthog-data-path "$(propagate context get :posthog-data-path)"
         - python scripts/fetch_page_content.py
     - id: summarize-pull
       prompt: ./prompts/seo/pull-data-summary.md

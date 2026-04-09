@@ -2,9 +2,9 @@
 
 Look at the data files that were just pulled into the `data/` directory (today's date folder).
 
-Read the GSC data (path in `:gsc-data-path`).
+Read the GSC data (path in global `:gsc-data-path`).
 
-Also read PostHog analytics data if available (path in `:posthog-data-path`).
+Also read PostHog analytics data if available (path in global `:posthog-data-path`).
 
 Write a brief summary noting:
 - Total queries and pages in GSC data
@@ -15,13 +15,13 @@ Write a brief summary noting:
 - Low-bounce candidates (pages with bounce rate < 40% that may be underperforming in search)
 - Tracking gaps (GSC pages missing from PostHog or vice versa)
 
-To read the data paths, run exactly:
+These shared run-level data-path keys are stored in global context. To read them, run exactly:
 ```bash
-propagate context get :gsc-data-path
+propagate context get --global :gsc-data-path
 ```
 
 ```bash
-propagate context get :posthog-data-path
+propagate context get --global :posthog-data-path
 ```
 
 If `:posthog-data-path` is empty or the file doesn't exist, skip the PostHog-related summary bullets.

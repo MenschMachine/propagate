@@ -1,8 +1,8 @@
 # Analyze SEO Data
 
-Read the data files referenced in `:gsc-data-path`. Analyze the GSC performance data to identify actionable opportunities.
+Read the data files referenced in global `:gsc-data-path`. Analyze the GSC performance data to identify actionable opportunities.
 
-Also read PostHog analytics data if available (path in `:posthog-data-path`). This provides per-page engagement metrics (bounce rate, session duration) that complement GSC's search performance data.
+Also read PostHog analytics data if available (path in global `:posthog-data-path`). This provides per-page engagement metrics (bounce rate, session duration) that complement GSC's search performance data.
 
 ## What to analyze
 
@@ -56,10 +56,10 @@ Prioritize multi-week declines over single-week dips. A page that dropped once m
 
 ## Implementation effectiveness (read-only)
 
-The `evaluate-implementations` step has already evaluated the ledger and saved results to context. Read them:
+The `evaluate-implementations` step has already evaluated the ledger and saved results to global context. Read them:
 
 ```bash
-propagate context get :evaluation-results --task evaluate-implementations/evaluate
+propagate context get --global :evaluation-results
 ```
 
 If evaluation results exist, include an **Implementation Effectiveness** section at the top of the report, before
@@ -85,13 +85,13 @@ Write a structured report to `reports/YYYY-MM-DD/report.md` (use today's date). 
 
 The findings should be a concise, actionable list that the suggest execution can turn into specific changes.
 
-To read the data paths, run exactly:
+These shared run-level data keys are stored in global context. To read them, run exactly:
 ```bash
-propagate context get :gsc-data-path
+propagate context get --global :gsc-data-path
 ```
 
 ```bash
-propagate context get :posthog-data-path
+propagate context get --global :posthog-data-path
 ```
 
 If `:posthog-data-path` is empty or the file doesn't exist, skip all engagement quality analysis — same pattern as enrichment data.
