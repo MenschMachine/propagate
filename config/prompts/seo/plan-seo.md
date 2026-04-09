@@ -88,6 +88,19 @@ diagnosis, and the reason this item should advance now. Do not paste the whole a
 If `:review-findings` exists, you are revising a previously rejected planning PR. Address those findings first and make
 the smallest coherent changes needed to resolve them.
 
+In revision mode, make an explicit pass over every blocking finding before you finalize the new plan.
+
+For each blocking finding, either:
+
+- change the strategy or briefs so the finding is no longer true, or
+- remove the affected item from the approved set and defer it with a concrete reason in `strategy.md`
+
+Do not keep an approved item in the run if its brief still depends on vague proof language, unsupported claims,
+subjective success criteria, or any other condition the reviewer said makes it non-writable.
+
+When a prior finding says the briefs are too abstract or not safely writable, prefer narrowing the approved set and
+tightening the brief over producing another broad rewrite of the same idea.
+
 If `:review-suggestions` exists without blocking findings, treat them as optional improvements. Incorporate them when
 they clearly strengthen the strategy, but do not churn an otherwise sound plan just to satisfy every non-blocking note.
 

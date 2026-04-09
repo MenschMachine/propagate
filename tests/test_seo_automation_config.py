@@ -147,7 +147,12 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "whether the implementation briefs are actually writable" in review_plan
     assert "whether `page.path` and `page.change_type` are assigned sensibly" in review_plan
     assert "propagate context get --global :findings" in review_plan
+    assert "propagate context get --global :strategy-path" in review_plan
+    assert "propagate context get --global :implementation-briefs-path" in review_plan
+    assert "Treat `git diff main` as optional supporting context only." in review_plan
     assert "Do not write vague review comments." in review_plan
+    assert "make an explicit pass over every blocking finding" in plan
+    assert "For each blocking finding, either:" in plan
     assert "approved briefs" in implement
     assert "Decide: edit vs create from `page.change_type`" in implement
     assert "propagate context get --global :implementation-briefs" in implement
@@ -198,6 +203,8 @@ def test_seo_prompts_use_global_scope_for_shared_data_handoff_keys() -> None:
 
     assert "propagate context set --stdin :review-findings" in review_plan
     assert "propagate context set --stdin :review-suggestions" in review_plan
+    assert "propagate context get --global :strategy-path" in review_plan
+    assert "propagate context get --global :implementation-briefs-path" in review_plan
 
     assert "propagate context get :revision-reason" in implement
     assert "propagate context get :pr-comments" in implement

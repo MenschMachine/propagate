@@ -279,6 +279,7 @@ implementation PR merged → GitHub push webhook → wait-for-deploy unblocks �
 - **plan-seo**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
   matching (what works), and deprioritization (insufficient_volume). Chooses which rewrite, refresh, expand, trim, and
   new-page opportunities should advance this run, then writes typed implementation briefs for the approved items in the
-  same PR.
+  same PR. Its internal `review-plan` loop reviews the generated `strategy.md` and `implementation-briefs.yaml`
+  artifacts directly before publish rather than requiring a committed diff to exist first.
 - **implement-seo**: reads the approved implementation briefs from `plan-seo`, decides per item whether to edit an
   existing page or create a new one, and uses an internal review loop to keep public copy from literalizing the plan.

@@ -2,7 +2,19 @@
 
 You are reviewing the run-level SEO planning PR before implementation begins.
 
-Inspect the current diff:
+Read the generated planning artifacts directly:
+
+```bash
+STRATEGY_PATH="$(propagate context get --global :strategy-path)"
+BRIEFS_PATH="$(propagate context get --global :implementation-briefs-path)"
+sed -n '1,220p' "$STRATEGY_PATH"
+sed -n '1,260p' "$BRIEFS_PATH"
+```
+
+Treat `git diff main` as optional supporting context only. Use it if it is helpful, but do not raise a blocking finding
+just because the planning artifacts are not committed yet in this pre-publish review stage.
+
+Optional supporting context:
 
 ```bash
 git diff main --stat
@@ -61,6 +73,9 @@ Prefer blocking findings when a brief:
 - uses `must_change` or `must_keep` language that is too vague to act on
 - leaves claim safety ambiguous between `approved_claims` and `claims_to_avoid_or_verify`
 - sets success criteria that are not observable in final copy
+
+Do not write a blocking finding that can only be resolved after `publish`. Keep blocking findings limited to problems the
+`strategy` rerun can actually fix before the plan is committed and opened for approval.
 
 If there are BLOCKING issues:
 
