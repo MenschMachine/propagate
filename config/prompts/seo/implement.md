@@ -86,10 +86,11 @@ For each change:
 - What is the clearest fix within the site’s voice?
 
 Use briefs to extract:
-- problem
-- relevant topics/terms
-- structural changes
-- constraints
+- exact path and change type
+- page objective, audience, and intent
+- messaging priorities
+- approved claims versus risky claims
+- must-change boundaries and must-keep constraints
 
 Do not reuse brief wording as-is.
 
@@ -115,9 +116,20 @@ Avoid:
 For each brief:
 1. Identify the user-facing job  
 2. Review page structure and tone  
-3. Decide: edit vs create  
+3. Decide: edit vs create from `page.change_type`  
 4. Implement the smallest meaningful improvement  
 5. Rewrite until it reads naturally  
+
+Interpret the brief fields this way:
+- `page.path` -> exact page to edit or create
+- `page.change_type` -> level of change; `new-page` means create, all others mean edit
+- `goal` -> what the page should help the reader do
+- `message` -> what to emphasize more and what to reduce or remove
+- `product_truth` -> what claims are safe to say and what must be avoided or verified
+- `implementation.must_change` / `can_change` / `must_keep` -> hard requirements, allowed discretion, and boundaries
+- `success_criteria` -> what the final page copy should make visibly true
+- `out_of_scope` -> changes you should not expand into
+- `source_of_truth` -> tie-breakers when the current page conflicts with approved product truth
 
 ---
 

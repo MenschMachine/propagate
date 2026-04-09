@@ -23,12 +23,15 @@ Rewrite the briefs into a more implementation-ready form for the current run onl
 
 Requirements:
 
-- preserve the approved targets and overall strategic intent
-- keep the typed `change_type` for each item
+- preserve the approved `page.path` targets and overall strategic intent
+- keep the typed `page.change_type` for each item
 - remove strategy/funnel language and replace it with user/page language
-- sharpen the page promise, core reader questions, proof, constraints, and boundaries
+- sharpen the goal, page promise, message priorities, approved claims, and implementation boundaries
 - leave enough editorial judgment for implementation to choose the exact section structure
-- do not split the briefs back into rewrite and new-content artifacts
+- keep `must_change`, `can_change`, and `must_keep` clearly separated
+- keep `success_criteria` observable in the final page copy
+- include `source_of_truth` only when it resolves a real claim or guidance conflict
+- do not split the briefs back into rewrite and new-page artifacts
 
 Do not edit repository files here. This is a local brief refinement for the implementation loop.
 

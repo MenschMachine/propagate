@@ -43,23 +43,37 @@ Produce two artifacts:
 
 `implementation-briefs.yaml` should contain the typed implementation briefs for every approved item in this run.
 This is the only handoff artifact that `implement-seo` should need.
-Do not split this into separate rewrite and new-content handoff files.
+Do not split this into separate rewrite and new-page handoff files.
 
 Each brief entry should at minimum include:
 
-- `target`
-- `change_type`
-- `page_type`
-- `priority`
-- `primary_audience`
-- `visitor_state`
-- `page_role`
-- `page_promise`
-- `core_reader_questions`
-- `proof_points`
-- `constraints`
+- `page.path`
+- `page.change_type`
+- `goal.primary_objective`
+- `goal.target_audience`
+- `goal.target_intent`
+- `message.page_promise`
+- `message.key_points_to_emphasize`
+- `message.key_points_to_de_emphasize_or_remove`
+- `product_truth.approved_claims`
+- `product_truth.claims_to_avoid_or_verify`
+- `implementation.must_change`
+- `implementation.can_change`
+- `implementation.must_keep`
+- `success_criteria`
 - `out_of_scope`
-- `acceptance_criteria`
+
+You may also include:
+
+- `source_of_truth`
+
+Use these `page.change_type` values only:
+
+- `rewrite`
+- `refresh`
+- `expand`
+- `trim`
+- `new-page`
 
 ## Revision mode
 
@@ -72,24 +86,18 @@ they clearly strengthen the strategy, but do not churn an otherwise sound plan j
 ## Selection rules
 
 - Select the strongest opportunities that can plausibly be implemented well in one run.
-- Select at most **4 substantial items total** across rewrites, new pages, and technical changes.
+- Select at most **4 substantial items total** across rewrites, refreshes, expansions, trims, and new pages.
 - Prefer coherent sets of pages over scattered low-leverage work.
 - If a page is still in cool-down or lacks enough support in `:findings`, defer it.
-- If the evidence supports a technical cleanup or ownership fix rather than a public page brief, classify it that way.
-  Do not force a page-rewrite or new-content target when the underlying job is redirect cleanup, internal links,
-  sitemap repair, canonical cleanup, or another technical change.
-- If the right fix is to create a new destination, replace a redirect placeholder, or stand up a framework-specific or
-  otherwise net-new page, classify it as `new-content`. If the right fix is to materially improve an existing
-  destination, classify it as `rewrite`. Keep that distinction inside the brief `change_type`, but do not split this
-  into separate rewrite and new-content handoff files.
-- Every approved item must have a `page_type`:
-  - `sdk-page`
-  - `feature-page`
-  - `industry-page`
-  - `howto-page`
-  - `hub-page`
-  - `comparison-page`
-  - `framework-page`
+- Only approve public page work. If the evidence points to redirect cleanup, internal-link cleanup, sitemap repair,
+  canonical cleanup, or another technical fix with no page brief to hand off, defer it instead of forcing it into this
+  run.
+- Use `new-page` when the right fix is to create a net-new destination. Use one of `rewrite`, `refresh`, `expand`, or
+  `trim` when the job is to materially improve an existing page.
+- Every approved item must point to one exact site path in `page.path`.
+- Keep the brief practical and writable. Prioritize page intent, message direction, approved claims, change boundaries,
+  and observable success criteria over internal SEO taxonomy or generic section templates.
+- Include `source_of_truth` only when a link, doc, or internal note should resolve a likely claim conflict.
 
 ## Required context keys
 
@@ -119,23 +127,36 @@ Save the brief artifact content too:
 
 ```bash
 propagate context set --stdin --global :implementation-briefs <<'YAML'
-- target: /path-one/
-  change_type: rewrite
-  page_type: sdk-page
-  priority: high
-  primary_audience: ...
-  visitor_state: ...
-  page_role: ...
-  page_promise: ...
-  core_reader_questions:
-    - ...
-  proof_points:
-    - ...
-  constraints:
-    - ...
+- page:
+    path: /path-one/
+    change_type: rewrite
+  goal:
+    primary_objective: ...
+    target_audience: ...
+    target_intent: ...
+  message:
+    page_promise: ...
+    key_points_to_emphasize:
+      - ...
+    key_points_to_de_emphasize_or_remove:
+      - ...
+  product_truth:
+    approved_claims:
+      - ...
+    claims_to_avoid_or_verify:
+      - ...
+  implementation:
+    must_change:
+      - ...
+    can_change:
+      - ...
+    must_keep:
+      - ...
   out_of_scope:
     - ...
-  acceptance_criteria:
+  success_criteria:
+    - ...
+  source_of_truth:
     - ...
 YAML
 ```

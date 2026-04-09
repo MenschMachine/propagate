@@ -23,11 +23,11 @@ effectiveness data from `:findings` only, and writes both the internal strategy 
 that `implement-seo` consumes.
 
 Those editorial briefs are intentionally not mini page outlines. They should center:
-- page promise
-- primary audience and visitor state
-- core reader questions
-- proof and constraints
-- clear boundaries around what belongs on the page versus elsewhere
+- exact page path and change scope
+- primary objective, target audience, and target intent
+- page promise plus message emphasis and de-emphasis
+- approved product claims versus claims that need verification
+- clear boundaries around what must change, can change, and must stay intact
 
 They should avoid prescribing a generic section template that implementation merely fills in.
 
@@ -277,7 +277,8 @@ implementation PR merged → GitHub push webhook → wait-for-deploy unblocks �
   `content-delivers` (< 40%), with a `low-confidence` flag for pages under 5 pageviews. Passes effectiveness data,
   page content diagnosis, and engagement quality signal through to `:findings`.
 - **plan-seo**: reads `:findings` from analyze. Uses the effectiveness data for cool-down (pending URLs), pattern
-  matching (what works), and deprioritization (insufficient_volume). Chooses which rewrite, technical, and new-content
-  opportunities should advance this run, then writes typed implementation briefs for the approved items in the same PR.
+  matching (what works), and deprioritization (insufficient_volume). Chooses which rewrite, refresh, expand, trim, and
+  new-page opportunities should advance this run, then writes typed implementation briefs for the approved items in the
+  same PR.
 - **implement-seo**: reads the approved implementation briefs from `plan-seo`, decides per item whether to edit an
   existing page or create a new one, and uses an internal review loop to keep public copy from literalizing the plan.

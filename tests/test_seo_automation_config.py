@@ -132,19 +132,29 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
 
     assert "Produce two artifacts" in plan
     assert "`implementation-briefs.yaml`" in plan
-    assert "`change_type`" in plan
-    assert "`core_reader_questions`" in plan
-    assert "Do not split this into separate rewrite and new-content handoff files." in plan
+    assert "`page.path`" in plan
+    assert "`page.change_type`" in plan
+    assert "`goal.primary_objective`" in plan
+    assert "`product_truth.approved_claims`" in plan
+    assert "`implementation.must_change`" in plan
+    assert "`success_criteria`" in plan
+    assert "`source_of_truth`" in plan
+    assert "Do not split this into separate rewrite and new-page handoff files." in plan
 
     assert "whether the implementation briefs are actually writable" in review_plan
+    assert "whether `page.path` and `page.change_type` are assigned sensibly" in review_plan
     assert "approved briefs" in implement
-    assert "Decide: edit vs create" in implement
+    assert "Decide: edit vs create from `page.change_type`" in implement
     assert "propagate context get --global :implementation-briefs" in implement
-    assert "preserve the approved targets and overall strategic intent" in revise
+    assert "`page.path` -> exact page to edit or create" in implement
+    assert "preserve the approved `page.path` targets and overall strategic intent" in revise
+    assert "keep the typed `page.change_type` for each item" in revise
     assert "Implementation problem" in review_implement
     assert "Brief problem" in review_implement
     assert "propagate context get --global :changed-urls" in track
     assert "propagate context get --global :implementation-briefs" in track
+    assert "matching the URL path to `page.path`" in track
+    assert "`new-page` -> `new-content`" in track
     assert 'find reports/ -name "implementation-briefs.yaml"' in track
 
 

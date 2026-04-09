@@ -22,11 +22,13 @@ that drove implementation.
 
 Save the real changed URL array back into `:changed-urls` for downstream indexing. Do not use placeholder example URLs.
 
-For each changed URL, find the corresponding brief entry to extract:
-- `suggestion_type`: derive this from `change_type` as:
+For each changed URL, find the corresponding brief entry by matching the URL path to `page.path`, then extract:
+- `suggestion_type`: derive this from `page.change_type` as:
   - `rewrite` -> `content-edit`
-  - `new-content` -> `new-content`
-  - `technical` -> `technical`
+  - `refresh` -> `content-edit`
+  - `expand` -> `content-edit`
+  - `trim` -> `content-edit`
+  - `new-page` -> `new-content`
 - `change`: a one-line summary of what was done
 
 If a URL doesn't match any brief cleanly, use `content-edit` as the default type and describe the change

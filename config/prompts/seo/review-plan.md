@@ -13,11 +13,14 @@ Check:
 
 - whether the selected items are actually supported by `:findings`
 - whether the run is focused enough to implement well
-- whether page types and `change_type` values are assigned sensibly
+- whether `page.path` and `page.change_type` are assigned sensibly
 - whether deferrals make sense
 - whether the strategy over-relies on internal SEO taxonomy instead of page/job reality
 - whether the implementation briefs are actually writable
-- whether the briefs center page promise, reader questions, proof, and constraints instead of generic section templates
+- whether the briefs separate approved claims from claims to avoid or verify
+- whether `must_change`, `can_change`, and `must_keep` create clear editing boundaries
+- whether the success criteria are concrete and observable in final page copy
+- whether the briefs center page promise, audience, intent, and message priorities instead of generic section templates
 - whether the planning PR would let one implementation execution carry the whole approved set without further
   orchestration
 
