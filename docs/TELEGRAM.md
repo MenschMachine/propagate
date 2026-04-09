@@ -208,6 +208,30 @@ Notes:
 
 ---
 
+## Clarification Replies for `ask_human`
+
+When using the MCP integration documented in [MCP.md](./MCP.md), Telegram is also the currently implemented human reply
+path for the `ask_human(...)` tool.
+
+Flow:
+
+1. An agent calls `ask_human(question, timeout_ms=...)` through `propagate-mcp`
+2. `propagate-mcp` publishes a `clarification_requested` event
+3. The Telegram bot sends that clarification request to the originating chat
+4. A human replies to that Telegram message
+5. The bot extracts the embedded request ID and publishes `clarification_response`
+6. `ask_human(...)` returns that reply text to the agent
+
+This requires all three components to be running:
+
+- `propagate serve`
+- `propagate-telegram`
+- `propagate-mcp`
+
+There is currently no equivalent shell command for answering clarification requests.
+
+---
+
 ## Config Example
 
 Define a signal with an `instructions` payload field, then reference it in an execution:
