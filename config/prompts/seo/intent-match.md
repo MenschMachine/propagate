@@ -1,16 +1,16 @@
 # Intent-Match Analysis
 
-Read GSC data from `:gsc-data-path` and classify the search intent behind each page's query traffic. This step produces an intent-match table that the analyze step uses to diagnose mismatches between what searchers want and what the page delivers.
+Read GSC data from global `:gsc-data-path` and classify the search intent behind each page's query traffic. This step produces an intent-match table that the analyze step uses to diagnose mismatches between what searchers want and what the page delivers.
 
 ## Data sources
 
-To read the data paths, run exactly:
+These shared run-level data-path keys are stored in global context. To read them, run exactly:
 ```bash
-propagate context get :gsc-data-path
+propagate context get --global :gsc-data-path
 ```
 
 ```bash
-propagate context get :posthog-data-path
+propagate context get --global :posthog-data-path
 ```
 
 Check if page content data exists:

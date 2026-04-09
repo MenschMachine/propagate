@@ -234,7 +234,7 @@ source. The script:
 2. For each `pending` entry, checks evaluation gates (14-day floor, volume gate, 90-day ceiling)
 3. Scores mature entries using std dev noise threshold
 4. Writes evaluated results back to the ledger
-5. Prints a JSON summary to stdout (captured as `:evaluation-results` context)
+5. Prints a JSON summary to stdout (captured as `:evaluation-results` context and mirrored to global scope for downstream reads)
 6. The execution's after hooks commit and push to main
 
 **Standalone testing**: `python config/scripts/evaluate_implementations.py` from the marketing-data repo root.
@@ -255,13 +255,13 @@ implementation PR merged → GitHub push webhook → wait-for-deploy unblocks �
 
 ## Data flow to downstream steps
 
-- **intent-match**: reads GSC data (via `:gsc-data-path`), page content from `data/*/pages/*.json`, and PostHog bounce
-  rates (via `:posthog-data-path`). Classifies query intent per page (Learning/Evaluating/Solving/Navigating),
+- **intent-match**: reads GSC data (via global `:gsc-data-path`), page content from `data/*/pages/*.json`, and PostHog bounce
+  rates (via global `:posthog-data-path`). Classifies query intent per page (Learning/Evaluating/Solving/Navigating),
   determines page stance, assesses match quality (match/partial/mismatch), and flags split-intent pages. Saves
   `:intent-match` context with a markdown table and mismatch summary.
-- **analyze**: reads `:intent-match` from intent-match context and `:evaluation-results` from evaluate-implementations context. Includes an Implementation
+- **analyze**: reads `:intent-match` from intent-match context and global `:evaluation-results`. Includes an Implementation
   Effectiveness section in the report. When page content data exists, performs title/query alignment, thin content
-  detection, and implementation mismatch checks. When PostHog data exists (via `:posthog-data-path`), classifies each
+  detection, and implementation mismatch checks. When PostHog data exists (via global `:posthog-data-path`), classifies each
   flagged page's engagement quality as `content-problem` (bounce > 70%), `content-weak` (50–70%), or
   `content-delivers` (< 40%), with a `low-confidence` flag for pages under 5 pageviews. Passes effectiveness data,
   page content diagnosis, and engagement quality signal through to `:findings`.

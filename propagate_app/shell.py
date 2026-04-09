@@ -3,17 +3,17 @@ from __future__ import annotations
 import atexit
 import collections
 import getpass
+import os
 import queue
 import readline
-import sys
 import threading
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 import zmq
 
 from .errors import PropagateError
-from .event_format import format_event_reply
 from .message_parser import validate_and_build_payload
 from .models import SignalConfig, SignalFieldConfig
 from .signal_transport import (
@@ -31,8 +31,9 @@ from .signal_transport import (
 
 PROMPT = "propagate> "
 _HISTORY_FILE = Path.home() / ".propagate_shell_history"
-_print_lock = threading.Lock()
 _QUIT = object()
+INTERRUPT_WAIT_SECONDS = float(os.getenv("PROPAGATE_INTERRUPT_CONTEXT_TIMEOUT", "15"))
+INTERRUPT_RESUME_WAIT_SECONDS = float(os.getenv("PROPAGATE_INTERRUPT_RESUME_TIMEOUT", "15"))
 
 
 def _load_history() -> None:
@@ -91,30 +92,25 @@ def _event_listener(
         event = receive_event(sub_socket, timeout_ms=500)
         if event is None:
             continue
-        if event.get("event") == "log":
+        event_type = event.get("type") or event.get("event")
+        if event_type == "log":
             line = event.get("line", "")
             project = event.get("project")
             if project:
                 line = f"[{project}] {line}"
             log_buffer.append(line)
             continue
-        if event.get("event") == "coordinator_response":
+        if event_type in (
+            "command_reply",
+            "coordinator_response",
+            "agent_interrupted",
+            "interrupt_failed",
+            "interrupt_resumed",
+            "interrupt_aborted",
+            "interrupt_resume_failed",
+            "command_failed",
+        ):
             response_queue.put(event)
-            continue
-        project = event.get("project")
-        text = format_event_reply(event)
-        if project:
-            text = f"[{project}] {text}"
-        _print_event(text)
-
-
-def _print_event(text: str) -> None:
-    """Print an event above the current input prompt without corrupting it."""
-    with _print_lock:
-        buf = readline.get_line_buffer()
-        sys.stdout.write(f"\r\033[K{text}\n{PROMPT}{buf}")
-        sys.stdout.flush()
-        readline.redisplay()
 
 
 def _wait_for_response(response_queue: queue.Queue[dict], request_id: str, timeout: float = 10.0) -> dict | None:
@@ -202,6 +198,8 @@ def _dispatch(
         _cmd_signal(rest, push_socket, state)
     elif cmd == "/resume":
         _cmd_resume(push_socket, state)
+    elif cmd == "/interrupt":
+        _cmd_interrupt(push_socket, state)
     elif cmd == "/logs":
         _cmd_logs(rest, log_buffer)
     else:
@@ -219,6 +217,7 @@ def _cmd_help() -> None:
         "  /project [name]                 — show or set active project\n"
         "  /signal <signal> [key:val ...]  — send a signal (requires active project)\n"
         "  /resume                         — resume a failed run (requires active project)\n"
+        "  /interrupt                      — interrupt running agent, start interactive session\n"
         "  /signals                        — list available signals\n"
         "  /logs [N]                       — show last N log lines (default 20)\n"
         "  /help                           — show this message\n"
@@ -444,3 +443,124 @@ def _update_cached_projects(state: _ShellState, projects: list[dict]) -> None:
     state.projects = {p["name"]: p for p in projects}
     if state.active_project and state.active_project not in state.projects:
         state.active_project = None
+
+
+def _wait_for_event(
+    response_queue: queue.Queue[dict],
+    event_types: set[str],
+    timeout: float = 10.0,
+    match: Callable[[dict], bool] | None = None,
+) -> dict | None:
+    """Wait for an event matching any of the given types from the response queue."""
+    import time
+    deadline = time.monotonic() + timeout
+    stashed: list[dict] = []
+    try:
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                event = response_queue.get(timeout=min(remaining, 0.5))
+            except queue.Empty:
+                continue
+            event_type = event.get("type") or event.get("event")
+            if event_type in event_types and (match is None or match(event)):
+                return event
+            stashed.append(event)
+        return None
+    finally:
+        for item in stashed:
+            response_queue.put(item)
+
+
+def _cmd_interrupt(push_socket: zmq.Socket, state: _ShellState) -> None:
+    from .interactive import prompt_resume_action
+
+    project_name = state.active_project
+    if project_name is None:
+        if len(state.projects) == 1:
+            project_name = next(iter(state.projects))
+        else:
+            print("No active project. Use /project <name> to select one first.")
+            return
+
+    interrupt_token = str(uuid.uuid4())
+    send_command(push_socket, "interrupt", metadata={
+        "project": project_name,
+        "interrupt_token": interrupt_token,
+    })
+    print(f"Interrupt sent to '{project_name}'. Waiting for agent to stop...")
+
+    event = _wait_for_event(
+        state.response_queue,
+        {"agent_interrupted", "interrupt_failed"},
+        timeout=INTERRUPT_WAIT_SECONDS,
+        match=lambda e: e.get("project") == project_name and e.get("interrupt_token") == interrupt_token,
+    )
+
+    if event is None:
+        print("Interrupt failed: timeout waiting for interrupt context from worker.")
+        return
+    event_type = event.get("type") or event.get("event")
+    if event_type == "interrupt_failed":
+        reason = event.get("reason")
+        if reason == "no agent running":
+            print("Interrupt failed: no agent is currently running.")
+        elif reason:
+            print(f"Interrupt failed: {reason}.")
+        else:
+            print("Interrupt failed.")
+        return
+
+    if not _has_interrupt_context(event):
+        print("Interrupt failed: worker returned an interrupt acknowledgment without required context.")
+        return
+
+    execution = event.get("execution")
+    task_id = event.get("task_id")
+    working_dir = event.get("working_dir")
+    agent_command = event.get("agent_command", "")
+
+    print(f"\n--- Interrupted execution '{execution}', task '{task_id}'. ---")
+    print(f"  Working directory: {working_dir}")
+    if agent_command:
+        print(f"  Agent command:     {agent_command}")
+    print("\nYou can now open another terminal to interact with the agent.")
+    print("When you're done, choose how to continue:\n")
+
+    action = prompt_resume_action()
+    send_command(push_socket, "interrupt_resume", metadata={
+        "project": project_name,
+        "interrupt_token": interrupt_token,
+        "action": action,
+    })
+    resume_event = _wait_for_event(
+        state.response_queue,
+        {"interrupt_resumed", "interrupt_aborted", "interrupt_resume_failed"},
+        timeout=INTERRUPT_RESUME_WAIT_SECONDS,
+        match=lambda e: e.get("project") == project_name and e.get("interrupt_token") == interrupt_token,
+    )
+    if resume_event is None:
+        print("Interrupt resume failed: timeout waiting for worker acknowledgment.")
+        return
+
+    resume_type = resume_event.get("type") or resume_event.get("event")
+    if resume_type == "interrupt_resume_failed":
+        reason = resume_event.get("reason")
+        if reason:
+            print(f"Interrupt resume failed: {reason}.")
+        else:
+            print("Interrupt resume failed.")
+        return
+
+    if resume_type == "interrupt_aborted":
+        print(f"Abort acknowledged by '{project_name}'.")
+        return
+
+    confirmed_action = resume_event.get("action") or action
+    print(f"Resume ({confirmed_action}) acknowledged by '{project_name}'.")
+
+
+def _has_interrupt_context(event: dict) -> bool:
+    return all(event.get(key) for key in ("execution", "task_id", "working_dir"))

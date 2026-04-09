@@ -5,17 +5,7 @@ import queue
 from unittest.mock import MagicMock, patch
 
 from propagate_app.models import SignalConfig, SignalFieldConfig
-from propagate_app.shell import (
-    _QUIT,
-    _cmd_help,
-    _cmd_logs,
-    _cmd_resume,
-    _cmd_signal,
-    _cmd_signals,
-    _dispatch,
-    _event_listener,
-    _ShellState,
-)
+from propagate_app.shell import _QUIT, _cmd_help, _cmd_logs, _cmd_resume, _cmd_signal, _cmd_signals, _dispatch, _event_listener, _ShellState
 
 
 def _make_state(signals=None):
@@ -208,7 +198,7 @@ def test_event_listener_log_buffered():
     assert "hello" in list(log_buffer)
 
 
-def test_event_listener_formatted():
+def test_event_listener_non_protocol_event_ignored():
     log_buffer = collections.deque(maxlen=500)
     stop = MagicMock()
     stop.is_set = MagicMock(side_effect=[False, True])
@@ -216,13 +206,10 @@ def test_event_listener_formatted():
 
     event = {"event": "run_completed", "signal_type": "deploy"}
 
-    with (
-        patch("propagate_app.shell.receive_event", return_value=event),
-        patch("propagate_app.shell._print_event") as mock_print,
-    ):
+    with patch("propagate_app.shell.receive_event", return_value=event):
         _event_listener(MagicMock(), log_buffer, stop, response_queue)
-        mock_print.assert_called_once()
-        assert "Run completed" in mock_print.call_args[0][0]
+
+    assert response_queue.empty()
 
 
 def test_event_listener_coordinator_response_queued():
@@ -231,7 +218,14 @@ def test_event_listener_coordinator_response_queued():
     stop.is_set = MagicMock(side_effect=[False, True])
     response_queue = queue.Queue()
 
-    event = {"event": "coordinator_response", "request_id": "r1", "data": {}}
+    event = {
+        "protocol_version": 2,
+        "channel": "event",
+        "type": "command_reply",
+        "event": "coordinator_response",
+        "request_id": "r1",
+        "data": {},
+    }
 
     with patch("propagate_app.shell.receive_event", return_value=event):
         _event_listener(MagicMock(), log_buffer, stop, response_queue)

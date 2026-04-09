@@ -6,7 +6,14 @@ def format_event_reply(event: dict) -> str:
 
     Shared by the Telegram bot and the interactive shell.
     """
-    event_type = event.get("event", "unknown")
+    event_type = event.get("type") or event.get("event", "unknown")
+    if event_type == "command_reply":
+        if event.get("error"):
+            return f"Command failed: {event.get('error')}"
+        data = event.get("data")
+        if data is None:
+            return "Command completed."
+        return f"Command completed: {data}"
     if event_type == "command_failed":
         command = event.get("command", "unknown")
         message = event.get("message", "Command failed.")

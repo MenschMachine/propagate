@@ -8,7 +8,7 @@ from typing import NoReturn
 from .constants import ENV_CONFIG_DIR, ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
 from .context_sources import run_context_source
 from .context_store import ensure_context_dir, get_global_context_dir, read_optional_context_value, resolve_execution_context_dir
-from .errors import PropagateError
+from .errors import AgentInterrupted, PropagateError
 from .git_runtime import (
     git_do_branch,
     git_do_commit,
@@ -323,6 +323,10 @@ def run_sub_task_agent(sub_task: SubTaskConfig, temp_prompt_path: Path, runtime_
     extra_env = build_context_env(runtime_context)
     try:
         run_agent_command(command, runtime_context.working_dir, sub_task.task_id, extra_env=extra_env)
+    except AgentInterrupted as exc:
+        exc.execution_name = runtime_context.execution_name
+        exc.agent_command = agent_command
+        raise
     except PropagateError as error:
         handle_sub_task_failure(sub_task, runtime_context, error)
 

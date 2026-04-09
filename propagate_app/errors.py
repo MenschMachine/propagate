@@ -1,5 +1,21 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
 class PropagateError(Exception):
     """Raised when the CLI encounters a user-facing error."""
+
+
+class AgentInterrupted(PropagateError):
+    """Raised when the user interrupts a running agent subprocess."""
+
+    def __init__(self, message: str, *, task_id: str, working_dir: Path):
+        super().__init__(message)
+        self.execution_name: str = ""
+        self.task_id = task_id
+        self.working_dir = working_dir
+        self.agent_command: str = ""
 
 
 class UnableToImplementError(PropagateError):
@@ -16,6 +32,8 @@ def build_named_error(kind: str, message: str) -> PropagateError:
 
 
 def wrap_error_with_message(err: PropagateError, message: str) -> PropagateError:
+    if isinstance(err, AgentInterrupted):
+        return err
     if isinstance(err, UnableToImplementError):
         exc = UnableToImplementError(message)
     else:

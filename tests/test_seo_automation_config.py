@@ -96,6 +96,14 @@ def test_config_loads_with_single_plan_and_single_implementation_lane() -> None:
     ]:
         assert prompt_path.exists(), prompt_path
 
+    pull_data = config.executions["pull-data"]
+    fetch_data = pull_data.sub_tasks[1]
+    assert "propagate context set --global :gsc-data-path \"$(propagate context get :gsc-data-path)\"" in fetch_data.before
+    assert "propagate context set --global :posthog-data-path \"$(propagate context get :posthog-data-path)\"" in fetch_data.before
+
+    evaluate = config.executions["evaluate-implementations"].sub_tasks[0]
+    assert "propagate context set --global :evaluation-results \"$(propagate context get :evaluation-results)\"" in evaluate.before
+
 
 def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -> None:
     plan = (REPO_ROOT / "config" / "prompts" / "seo" / "plan-seo.md").read_text(encoding="utf-8")
@@ -121,3 +129,19 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "propagate context get :changed-urls --task implement-seo" in track
     assert "propagate context get :implementation-briefs --task plan-seo" in track
     assert 'find reports/ -name "implementation-briefs.yaml"' in track
+
+
+def test_seo_prompts_use_global_scope_for_shared_data_handoff_keys() -> None:
+    pull_summary = (REPO_ROOT / "config" / "prompts" / "seo" / "pull-data-summary.md").read_text(encoding="utf-8")
+    analyze = (REPO_ROOT / "config" / "prompts" / "seo" / "analyze.md").read_text(encoding="utf-8")
+    intent_match = (REPO_ROOT / "config" / "prompts" / "seo" / "intent-match.md").read_text(encoding="utf-8")
+
+    assert "propagate context get --global :gsc-data-path" in pull_summary
+    assert "propagate context get --global :posthog-data-path" in pull_summary
+
+    assert "propagate context get --global :gsc-data-path" in analyze
+    assert "propagate context get --global :posthog-data-path" in analyze
+    assert "propagate context get --global :evaluation-results" in analyze
+
+    assert "propagate context get --global :gsc-data-path" in intent_match
+    assert "propagate context get --global :posthog-data-path" in intent_match
