@@ -31,6 +31,9 @@ For each changed URL, find the corresponding brief entry by matching the URL pat
   - `new-page` -> `new-content`
 - `change`: a one-line summary of what was done
 
+If the brief clearly focused on title and meta description work, you may classify the entry as `meta` instead of
+`content-edit`. Otherwise keep the default mapping above.
+
 If a URL doesn't match any brief cleanly, use `content-edit` as the default type and describe the change
 generically.
 
@@ -68,7 +71,8 @@ indexed_at_implementation:
 
 This gives the evaluate step a concrete "before" snapshot to compare against when checking whether changes have been picked up by search engines.
 
-If no page content data exists for a URL, or the suggestion type is not `meta`, omit the `indexed_at_implementation` field entirely. Deployment detection only applies to meta changes (title/description).
+If no page content data exists for a URL, or the suggestion type is not `meta`, omit the `indexed_at_implementation`
+field entirely. Do not snapshot indexed content for generic `content-edit` or `new-content` entries.
 
 ### 4. Calculate `min_impressions_for_eval`
 

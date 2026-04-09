@@ -4,7 +4,13 @@ Read the data files referenced in global `:gsc-data-path`. Analyze the GSC perfo
 
 Also read PostHog analytics data if available (path in global `:posthog-data-path`). This provides per-page engagement metrics (bounce rate, session duration) that complement GSC's search performance data.
 
+Your job is to produce a small set of concrete findings that `plan-seo` can either approve or defer without having to
+re-analyze the source data.
+
 ## What to analyze
+
+Keep the output focused. Do not write a broad SEO narrative. Surface only items with enough evidence to justify action
+this run.
 
 ### Performance issues
 - Pages with high impressions but low CTR (< 3%) — likely need better meta titles/descriptions
@@ -28,9 +34,12 @@ Flag pages with fewer than 5 pageviews as **low-confidence** — the bounce rate
 - URL patterns that suggest indexing issues
 
 ## Significance thresholds
+
 Only flag items with meaningful impact potential:
 - Minimum 50 impressions for CTR analysis
 - Position changes only matter if the page had > 20 impressions
+- Prefer pages and queries that can plausibly lead to a concrete page brief in `plan-seo`
+- If the evidence is weak, note it in the report but do not turn it into a top finding
 
 ## Trend analysis
 
@@ -64,7 +73,7 @@ propagate context get --global :evaluation-results
 
 If evaluation results exist, include an **Implementation Effectiveness** section at the top of the report, before
 per-category findings. Reproduce the evaluation summary (newly evaluated entries, pending progress, pattern summary)
-and incorporate it into `:findings` so the suggest step has:
+and incorporate it into `:findings` so the plan-seo step has:
 - Which URLs are in cool-down (`pending`)
 - Which suggestion types are working or failing (`improved` / `declined`)
 - Which URLs to deprioritize (`inconclusive` with `insufficient_volume`)
@@ -75,15 +84,50 @@ and incorporate it into `:findings` so the suggest step has:
 cat data/feedback/implementations.yaml 2>/dev/null
 ```
 
-If the ledger exists and contains entries, extract all URLs with `status: pending` and include them in `:findings` as cool-down entries. The suggest step must know about these URLs even if the evaluate step did not run. Do not attempt to evaluate entries (that is the evaluate step's job) — just pass through the pending URLs, their `date_implemented`, and their `suggestion_type` so the suggest step can skip them.
+If the ledger exists and contains entries, extract all URLs with `status: pending` and include them in `:findings` as cool-down entries. The plan-seo step must know about these URLs even if the evaluate step did not run. Do not attempt to evaluate entries (that is the evaluate step's job) — just pass through the pending URLs, their `date_implemented`, and their `suggestion_type` so the planning step can skip them.
 
 Do **not** modify `data/feedback/implementations.yaml` — the evaluate-implementations execution owns all ledger writes.
 
 ## Output
 
-Write a structured report to `reports/YYYY-MM-DD/report.md` (use today's date). The report should have sections for each category above with specific pages/queries and data points.
+Write a structured report to `reports/YYYY-MM-DD/report.md` (use today's date).
 
-The findings should be a concise, actionable list that the suggest execution can turn into specific changes.
+Use this exact high-level structure:
+- `# SEO Analysis`
+- `## Implementation Effectiveness` if evaluation data exists
+- `## Top Findings`
+- `## Deferred Or Low-Confidence Items`
+- optional supporting sections for intent, content diagnosis, or enrichment only when they add evidence to the top findings
+
+In `## Top Findings`, include at most 8 items total. Each finding must use this format:
+
+```markdown
+### <short finding title>
+- Page: `/path/` or `n/a`
+- Primary query or query set: `...`
+- Diagnosis: `meta`, `intent-mismatch`, `content-depth`, `content-quality`, `structure`, `new-page-opportunity`, or `technical`
+- Why it matters now: `<one sentence with the decision signal>`
+- Evidence:
+  - `impressions: ...`
+  - `clicks: ...`
+  - `ctr: ...`
+  - `position: ...`
+  - `trend: Declining|Stable|Improving|New`
+  - `engagement: content-problem|content-weak|content-delivers|low-confidence|n/a`
+- Recommended action class: `rewrite`, `refresh`, `expand`, `trim`, `new-page`, or `defer`
+- Notes for planning: `<brief page-facing recommendation, not implementation copy>`
+```
+
+Rules for findings:
+- Every top finding must end in exactly one recommended action class.
+- If the action class is `defer`, explain why the item should not be approved this run.
+- Do not promote a finding to `rewrite` or `refresh` if intent data shows the real problem is mismatch.
+- Do not promote a finding to `new-page` unless the current landing page is clearly the wrong destination or missing.
+- Include current indexed title and description when the diagnosis is `meta`.
+- Include cool-down URLs and insufficient-volume URLs in `## Deferred Or Low-Confidence Items`, not `## Top Findings`, unless they block another recommended action.
+
+The `:findings` payload should be a compact planning input, not a prose essay. Preserve the same decision content from
+the report but compress it into a concise list of findings and deferrals using the same field names.
 
 These shared run-level data keys are stored in global context. To read them, run exactly:
 ```bash
@@ -110,7 +154,8 @@ Read intent-match data from the previous step:
 propagate context get --global :intent-match
 ```
 
-If available, include the intent-match table and mismatch summary in `:findings`.
+If available, include the intent-match table and mismatch summary in the report, and carry only the useful mismatch
+diagnosis into `:findings`.
 
 Cross-reference: when a page appears in both intent-match and other sections (CTR issues, content diagnosis), let the intent data inform the diagnosis. A low-CTR page with an intent mismatch is a mismatch problem, not a meta problem. A high-bounce page with a clear intent mismatch should be flagged as intent-driven rather than content-quality-driven.
 
@@ -135,7 +180,7 @@ For each flagged page, check whether the indexed `title` and `meta_description` 
 - Current title: `<title value from page JSON>`
 - Current description: `<meta_description value from page JSON>`
 
-Do not write "not provided" or omit the current values — if the page JSON exists, extract and report them. These values are needed by the suggest step to generate concrete meta suggestions.
+Do not write "not provided" or omit the current values — if the page JSON exists, extract and report them. These values are needed by the planning step to generate concrete meta suggestions.
 
 ### b) Thin content detection
 
@@ -152,7 +197,7 @@ already compared `indexed_at_implementation` snapshots against current page cont
 - Entries with `"status": "confirmed_indexed"` → note as deployed, no action needed
 - Entries with `"status": "unknown"` → skip
 
-Include the diagnosis type per page (title-alignment, description, content-depth, structural, mismatch) and the engagement quality signal (`content-problem`, `content-weak`, `content-delivers`, or `low-confidence`) in `:findings` so the suggest step can use both.
+Include the diagnosis type per page (title-alignment, description, content-depth, structural, mismatch) and the engagement quality signal (`content-problem`, `content-weak`, `content-delivers`, or `low-confidence`) in `:findings` so the planning step can use both.
 
 If no `pages/` directory exists, skip this section entirely.
 

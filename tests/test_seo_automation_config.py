@@ -143,6 +143,8 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
 
     assert "whether the implementation briefs are actually writable" in review_plan
     assert "whether `page.path` and `page.change_type` are assigned sensibly" in review_plan
+    assert "propagate context get --global :findings" in review_plan
+    assert "Do not write vague review comments." in review_plan
     assert "approved briefs" in implement
     assert "Decide: edit vs create from `page.change_type`" in implement
     assert "propagate context get --global :implementation-briefs" in implement
@@ -155,6 +157,7 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "propagate context get --global :implementation-briefs" in track
     assert "matching the URL path to `page.path`" in track
     assert "`new-page` -> `new-content`" in track
+    assert "`meta` instead of" in track
     assert 'find reports/ -name "implementation-briefs.yaml"' in track
 
 
@@ -178,6 +181,8 @@ def test_seo_prompts_use_global_scope_for_shared_data_handoff_keys() -> None:
     assert "propagate context get --global :evaluation-results" in analyze
     assert "propagate context get --global :intent-match" in analyze
     assert "propagate context set --stdin --global :findings" in analyze
+    assert "## Top Findings" in analyze
+    assert "Recommended action class" in analyze
 
     assert "propagate context get --global :gsc-data-path" in intent_match
     assert "propagate context get --global :posthog-data-path" in intent_match

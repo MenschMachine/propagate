@@ -9,6 +9,12 @@ git diff main --stat
 git diff main
 ```
 
+Read the current findings before judging the strategy:
+
+```bash
+propagate context get --global :findings
+```
+
 Check:
 
 - whether the selected items are actually supported by `:findings`
@@ -24,10 +30,37 @@ Check:
 - whether the planning PR would let one implementation execution carry the whole approved set without further
   orchestration
 
+Do not write vague review comments. Every finding must point to a concrete problem in the current plan and explain what
+must change.
+
 Classify findings as:
 
 - **BLOCKING**: strategy must change before briefing
 - **NON-BLOCKING**: sensible tweaks, ordering, or prioritization improvements
+
+Use this format for each BLOCKING finding:
+
+```markdown
+- Brief field or section: `<path, heading, or YAML field>`
+  Problem: `<what is wrong or too abstract>`
+  Why this blocks implementation: `<why implement-seo could not act on it reliably>`
+  Required fix: `<specific change needed>`
+```
+
+Use this format for each NON-BLOCKING suggestion:
+
+```markdown
+- Brief field or section: `<path, heading, or YAML field>`
+  Suggestion: `<specific improvement>`
+  Why it helps: `<one sentence>`
+```
+
+Prefer blocking findings when a brief:
+- cannot be tied back to a supported finding in `:findings`
+- asks for a page change without a clear `page.path`
+- uses `must_change` or `must_keep` language that is too vague to act on
+- leaves claim safety ambiguous between `approved_claims` and `claims_to_avoid_or_verify`
+- sets success criteria that are not observable in final copy
 
 If there are BLOCKING issues:
 
