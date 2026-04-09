@@ -40,15 +40,20 @@ Produce two artifacts:
 - explicit deferrals with reasons
 - the run-level implementation order
 - internal planning rationale
+- the exact finding reference or evidence summary behind each approved item
 
 `implementation-briefs.yaml` should contain the typed implementation briefs for every approved item in this run.
 This is the only handoff artifact that `implement-seo` should need.
 Do not split this into separate rewrite and new-page handoff files.
 
+The plan step must make the approval logic auditable. For every approved item, show exactly which finding from
+`:findings` supports it. Do not approve an item on general SEO intuition alone.
+
 Each brief entry should at minimum include:
 
 - `page.path`
 - `page.change_type`
+- `evidence.summary`
 - `goal.primary_objective`
 - `goal.target_audience`
 - `goal.target_intent`
@@ -75,6 +80,9 @@ Use these `page.change_type` values only:
 - `trim`
 - `new-page`
 
+`evidence.summary` must be a short, concrete restatement of the supporting finding. Include the page or query, the core
+diagnosis, and the reason this item should advance now. Do not paste the whole analysis report.
+
 ## Revision mode
 
 If `:review-findings` exists, you are revising a previously rejected planning PR. Address those findings first and make
@@ -95,9 +103,23 @@ they clearly strengthen the strategy, but do not churn an otherwise sound plan j
 - Use `new-page` when the right fix is to create a net-new destination. Use one of `rewrite`, `refresh`, `expand`, or
   `trim` when the job is to materially improve an existing page.
 - Every approved item must point to one exact site path in `page.path`.
+- Every approved item must cite one concrete supporting finding in `evidence.summary`.
+- If you cannot point to a specific finding with enough evidence, defer the item instead of inventing a brief.
 - Keep the brief practical and writable. Prioritize page intent, message direction, approved claims, change boundaries,
   and observable success criteria over internal SEO taxonomy or generic section templates.
 - Include `source_of_truth` only when a link, doc, or internal note should resolve a likely claim conflict.
+
+## Working method
+
+Work in this order:
+
+1. Read `:findings` and list the candidate items that are actually supportable.
+2. Defer anything blocked by weak evidence, cool-down status, or lack of a clear public page action.
+3. Pick the strongest coherent set for this run.
+4. For each approved item, write `evidence.summary` before you write the rest of the brief.
+5. Write the brief only after the evidence, path, and change type are clear.
+
+Do not let the brief become the reasoning. The finding comes first; the brief is the handoff built from it.
 
 ## Required context keys
 
@@ -130,6 +152,8 @@ propagate context set --stdin --global :implementation-briefs <<'YAML'
 - page:
     path: /path-one/
     change_type: rewrite
+  evidence:
+    summary: Page `/path-one/` has high impressions, low CTR, and a multi-week decline against the target query set.
   goal:
     primary_objective: ...
     target_audience: ...

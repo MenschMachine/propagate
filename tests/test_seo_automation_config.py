@@ -134,12 +134,15 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "`implementation-briefs.yaml`" in plan
     assert "`page.path`" in plan
     assert "`page.change_type`" in plan
+    assert "`evidence.summary`" in plan
     assert "`goal.primary_objective`" in plan
     assert "`product_truth.approved_claims`" in plan
     assert "`implementation.must_change`" in plan
     assert "`success_criteria`" in plan
     assert "`source_of_truth`" in plan
     assert "Do not split this into separate rewrite and new-page handoff files." in plan
+    assert "Do not approve an item on general SEO intuition alone." in plan
+    assert "Do not let the brief become the reasoning." in plan
 
     assert "whether the implementation briefs are actually writable" in review_plan
     assert "whether `page.path` and `page.change_type` are assigned sensibly" in review_plan
