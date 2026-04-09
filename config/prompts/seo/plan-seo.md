@@ -68,10 +68,6 @@ Each brief entry should at minimum include:
 - `success_criteria`
 - `out_of_scope`
 
-You may also include:
-
-- `source_of_truth`
-
 Use these `page.change_type` values only:
 
 - `rewrite`
@@ -120,7 +116,6 @@ they clearly strengthen the strategy, but do not churn an otherwise sound plan j
 - If you cannot point to a specific finding with enough evidence, defer the item instead of inventing a brief.
 - Keep the brief practical and writable. Prioritize page intent, message direction, approved claims, change boundaries,
   and observable success criteria over internal SEO taxonomy or generic section templates.
-- Include `source_of_truth` only when a link, doc, or internal note should resolve a likely claim conflict.
 
 ## Working method
 
@@ -192,8 +187,6 @@ propagate context set --stdin --global :implementation-briefs <<'YAML'
   out_of_scope:
     - ...
   success_criteria:
-    - ...
-  source_of_truth:
     - ...
 YAML
 ```

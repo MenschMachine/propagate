@@ -2,7 +2,8 @@
 
 `propagate-mcp` exposes Propagate-specific MCP tools to an MCP-capable agent client. Today the main tool is
 `ask_human(question, timeout_ms=...)`, which lets an agent pause for clarification from a human and continue once a
-reply arrives.
+reply arrives. Some agent clients may present the same capability to the model as `ask_user`; in this repository and
+server code, the tool is named `ask_human`.
 
 This is separate from the Propagate YAML engine:
 

@@ -9,7 +9,22 @@ Read docs/LANDING_PAGES.md and docs/CONTENT_GUIDELINE.md
 
 ---
 
-## 0. Prior Review Failures (Check First)
+## 0. Clarify Before Implementing
+
+Use the Propagate MCP clarification tool before you implement. If anything material is ambiguous, ask first.
+Use `ask_human`. If your client exposes the same tool as `ask_user`, use that alias.
+
+Ask before making changes when you are missing information that could change:
+- what page or URL to edit
+- whether a brief implies edit vs create
+- a product claim, constraint, or source of truth
+- whether a requested content direction conflicts with the site voice or docs
+
+Do not start implementation until those questions are resolved.
+
+---
+
+## 1. Prior Review Failures (Check First)
 
 ```bash
 propagate context get :revision-reason
@@ -32,7 +47,7 @@ If `:revision-reason` is empty or `check-failure`, skip this section.
 
 ---
 
-## 1. Review Feedback (Highest Priority)
+## 2. Review Feedback (Highest Priority)
 
 Run:
 ```bash
@@ -52,7 +67,7 @@ This overrides all other instructions.
 
 ---
 
-## 2. Load Briefs
+## 3. Load Briefs
 
 Prefer refined briefs:
 ```bash
@@ -68,7 +83,7 @@ Implement all approved briefs. This may include editing existing pages and creat
 
 ---
 
-## 3. Constraints
+## 4. Constraints
 
 - Follow `AGENTS.md` (architecture, patterns)
 - Follow `docs/CONTENT_GUIDELINE.md`
@@ -78,7 +93,7 @@ Implement all approved briefs. This may include editing existing pages and creat
 
 ---
 
-## 4. Editorial Approach
+## 5. Editorial Approach
 
 For each change:
 - What is the visitor trying to understand, decide, or do?
@@ -96,7 +111,7 @@ Do not reuse brief wording as-is.
 
 ---
 
-## 5. Content Standards
+## 6. Content Standards
 
 - Headings -> real topics, tasks, or benefits  
 - Body -> helps users understand, decide, or act  
@@ -111,7 +126,7 @@ Avoid:
 
 ---
 
-## 6. Working Method
+## 7. Working Method
 
 For each brief:
 1. Identify the user-facing job  
@@ -129,11 +144,10 @@ Interpret the brief fields this way:
 - `implementation.must_change` / `can_change` / `must_keep` -> hard requirements, allowed discretion, and boundaries
 - `success_criteria` -> what the final page copy should make visibly true
 - `out_of_scope` -> changes you should not expand into
-- `source_of_truth` -> tie-breakers when the current page conflicts with approved product truth
 
 ---
 
-## 7. Final Self-Check
+## 8. Final Self-Check
 
 Before finishing:
 - Would a real user understand this?
@@ -146,7 +160,7 @@ If yes -> revise.
 
 ---
 
-## 8. Track Changed URLs
+## 9. Track Changed URLs
 
 After changes:
 ```bash

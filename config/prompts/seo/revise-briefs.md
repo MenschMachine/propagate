@@ -30,7 +30,6 @@ Requirements:
 - leave enough editorial judgment for implementation to choose the exact section structure
 - keep `must_change`, `can_change`, and `must_keep` clearly separated
 - keep `success_criteria` observable in the final page copy
-- include `source_of_truth` only when it resolves a real claim or guidance conflict
 - do not split the briefs back into rewrite and new-page artifacts
 
 Do not edit repository files here. This is a local brief refinement for the implementation loop.

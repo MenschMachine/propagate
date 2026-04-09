@@ -139,7 +139,6 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "`product_truth.approved_claims`" in plan
     assert "`implementation.must_change`" in plan
     assert "`success_criteria`" in plan
-    assert "`source_of_truth`" in plan
     assert "Do not split this into separate rewrite and new-page handoff files." in plan
     assert "Do not approve an item on general SEO intuition alone." in plan
     assert "Do not let the brief become the reasoning." in plan
@@ -154,6 +153,10 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "make an explicit pass over every blocking finding" in plan
     assert "For each blocking finding, either:" in plan
     assert "approved briefs" in implement
+    assert "Use the Propagate MCP clarification tool before you implement" in implement
+    assert "`ask_human`" in implement
+    assert "`ask_user`" in implement
+    assert "If anything material is ambiguous" in implement
     assert "Decide: edit vs create from `page.change_type`" in implement
     assert "propagate context get --global :implementation-briefs" in implement
     assert "`page.path` -> exact page to edit or create" in implement
