@@ -68,6 +68,25 @@ Each brief entry should at minimum include:
 - `success_criteria`
 - `out_of_scope`
 
+Interpret the fields this way:
+
+- `page.path` — exact site path to change, for example `/sdk/java/`
+- `page.change_type` — one of `rewrite`, `refresh`, `expand`, `trim`, `new-page`; this tells implementation how invasive the change should be
+- `evidence.summary` — short restatement of the supporting finding: page or query, diagnosis, and why this should advance now
+- `goal.primary_objective` — the main outcome the page should drive, such as improving evaluator clarity, increasing docs clicks, or improving conversion quality
+- `goal.target_audience` — the specific reader, not a broad market label
+- `goal.target_intent` — the visitor mindset to write for, such as evaluating, comparing, solving, or ready-to-buy
+- `message.page_promise` — the single core promise the page should leave the reader with
+- `message.key_points_to_emphasize` — 3 to 5 messaging priorities the page should lean into more strongly
+- `message.key_points_to_de_emphasize_or_remove` — claims, themes, or repeated ideas that should be reduced, deleted, or moved out of the spotlight
+- `product_truth.approved_claims` — claims that can be stated confidently in public copy without another approval step
+- `product_truth.claims_to_avoid_or_verify` — risky, unapproved, too-strong, or unverified claims that should not appear without validation
+- `implementation.must_change` — specific things that need to change in the page itself
+- `implementation.can_change` — things implementation is allowed to change if that improves the page
+- `implementation.must_keep` — things that must remain intact, such as page path, required sections, component structure, or required links
+- `success_criteria` — concrete outcomes that should be observable in the final page copy
+- `out_of_scope` — explicitly excluded work so implementation does not expand into adjacent pages, technical docs, or broader content strategy
+
 Use these `page.change_type` values only:
 
 - `rewrite`
@@ -158,36 +177,36 @@ Save the brief artifact content too:
 ```bash
 propagate context set --stdin --global :implementation-briefs <<'YAML'
 - page:
-    path: /path-one/
-    change_type: rewrite
+    path: /path-one/ # Exact site path to change, for example /sdk/java/
+    change_type: rewrite # One of: rewrite, refresh, expand, trim, new-page. Tells implementation how invasive the change should be.
   evidence:
-    summary: Page `/path-one/` has high impressions, low CTR, and a multi-week decline against the target query set.
+    summary: Page `/path-one/` has high impressions, low CTR, and a multi-week decline against the target query set. # Short restatement of the supporting finding: page or query, diagnosis, and why this should advance now.
   goal:
-    primary_objective: ...
-    target_audience: ...
-    target_intent: ...
+    primary_objective: ... # The main outcome the page should drive, such as improve evaluator clarity, increase docs clicks, or improve conversion quality.
+    target_audience: ... # The specific reader, not a broad market label.
+    target_intent: ... # The visitor mindset to write for, such as evaluating, comparing, solving, or ready-to-buy.
   message:
-    page_promise: ...
+    page_promise: ... # The single core promise the page should leave the reader with. One sentence is best.
     key_points_to_emphasize:
-      - ...
+      - ... # 3-5 points the page should lean into more strongly. These should be messaging priorities, not random features.
     key_points_to_de_emphasize_or_remove:
-      - ...
+      - ... # Claims, themes, or repeated ideas that should be reduced, deleted, or moved out of the spotlight.
   product_truth:
     approved_claims:
-      - ...
+      - ... # Claims that can be stated confidently in public copy without asking again. Keep these concrete and product-specific.
     claims_to_avoid_or_verify:
-      - ...
+      - ... # Claims that are risky, unapproved, too strong, or need validation before they appear on the page.
   implementation:
     must_change:
-      - ...
+      - ... # Specific things that need to change in the page itself.
     can_change:
-      - ...
+      - ... # Things implementation is allowed to change if that improves the page.
     must_keep:
-      - ...
+      - ... # Things that must remain intact, such as page path, component structure, certain sections, or required links.
   out_of_scope:
-    - ...
+    - ... # Explicitly excluded work so implementation does not expand the task into adjacent pages, technical docs, or broader content strategy.
   success_criteria:
-    - ...
+    - ... # Concrete outcomes that define a good result. These should be observable in the final page copy.
 YAML
 ```
 

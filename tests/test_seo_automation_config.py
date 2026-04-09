@@ -142,6 +142,9 @@ def test_plan_and_implementation_prompts_enforce_simple_typed_brief_contract() -
     assert "Do not split this into separate rewrite and new-page handoff files." in plan
     assert "Do not approve an item on general SEO intuition alone." in plan
     assert "Do not let the brief become the reasoning." in plan
+    assert "exact site path to change, for example" in plan
+    assert "The single core promise the page should leave the reader with" in plan
+    assert "Claims that are risky, unapproved, too strong, or need validation" in plan
 
     assert "whether the implementation briefs are actually writable" in review_plan
     assert "whether `page.path` and `page.change_type` are assigned sensibly" in review_plan
