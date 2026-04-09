@@ -8,7 +8,7 @@ strategy-shaped, or otherwise not directly writable.
 Read the approved briefs:
 
 ```bash
-propagate context get :implementation-briefs --task plan-seo
+propagate context get --global :implementation-briefs
 ```
 
 Read the blocking brief findings from the latest review pass:

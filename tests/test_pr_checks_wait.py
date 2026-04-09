@@ -13,6 +13,7 @@ from propagate_app.context_store import ensure_context_dir, resolve_execution_co
 from propagate_app.errors import PropagateError
 from propagate_app.git_publish import poll_pr_action_checks
 from propagate_app.git_runtime import git_do_pr_checks_wait
+from propagate_app.models import ContextCondition, ScopedContextKey
 from propagate_app.sub_tasks import evaluate_when_condition
 
 # ---------------------------------------------------------------------------
@@ -87,11 +88,16 @@ def test_pr_checks_wait_too_many_args_raises() -> None:
 
 
 def test_parse_when_valid_key() -> None:
-    assert parse_when_condition(":checks-passed", "Test") == ":checks-passed"
+    assert parse_when_condition(":checks-passed", "Test") == ContextCondition(
+        ref=ScopedContextKey(key=":checks-passed"),
+    )
 
 
 def test_parse_when_negated_key() -> None:
-    assert parse_when_condition("!:checks-passed", "Test") == "!:checks-passed"
+    assert parse_when_condition("!:checks-passed", "Test") == ContextCondition(
+        ref=ScopedContextKey(key=":checks-passed"),
+        negate=True,
+    )
 
 
 def test_parse_when_none() -> None:
@@ -120,12 +126,12 @@ def test_parse_when_just_bang_raises() -> None:
 
 def test_sub_task_with_when_field() -> None:
     sub_task = parse_sub_task("exec", 1, {"id": "t1", "when": ":checks-ok"}, Path("/tmp"), set())
-    assert sub_task.when == ":checks-ok"
+    assert sub_task.when == ContextCondition(ref=ScopedContextKey(key=":checks-ok"))
 
 
 def test_sub_task_with_negated_when() -> None:
     sub_task = parse_sub_task("exec", 1, {"id": "t1", "when": "!:checks-ok"}, Path("/tmp"), set())
-    assert sub_task.when == "!:checks-ok"
+    assert sub_task.when == ContextCondition(ref=ScopedContextKey(key=":checks-ok"), negate=True)
 
 
 def test_sub_task_without_when() -> None:

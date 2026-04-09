@@ -7,7 +7,7 @@ import pytest
 from propagate_app.config_executions import parse_must_set, parse_sub_task
 from propagate_app.context_store import ensure_context_dir, write_context_value
 from propagate_app.errors import PropagateError
-from propagate_app.models import GitRunState, RuntimeContext, SubTaskConfig
+from propagate_app.models import GitRunState, RuntimeContext, ScopedContextKey, SubTaskConfig
 from propagate_app.prompts import append_must_set_notice, build_sub_task_prompt
 from propagate_app.sub_tasks import validate_must_set_keys
 
@@ -22,7 +22,7 @@ def test_parse_must_set_none():
 
 def test_parse_must_set_valid():
     result = parse_must_set([":foo", ":bar-baz"], "loc")
-    assert result == [":foo", ":bar-baz"]
+    assert result == [ScopedContextKey(key=":foo"), ScopedContextKey(key=":bar-baz")]
 
 
 def test_parse_must_set_empty_list():
@@ -36,12 +36,12 @@ def test_parse_must_set_invalid_key():
 
 
 def test_parse_must_set_non_string_entry():
-    with pytest.raises(PropagateError, match="non-empty string"):
+    with pytest.raises(PropagateError, match="':key' string or a mapping"):
         parse_must_set([123], "loc")
 
 
 def test_parse_must_set_empty_string_entry():
-    with pytest.raises(PropagateError, match="non-empty string"):
+    with pytest.raises(PropagateError, match="Invalid context key"):
         parse_must_set([""], "loc")
 
 
@@ -64,7 +64,7 @@ def test_parse_sub_task_with_must_set(tmp_path):
         "must_set": [":pr-body"],
     }
     result = parse_sub_task("ex", 1, data, tmp_path, set())
-    assert result.must_set == [":pr-body"]
+    assert result.must_set == [ScopedContextKey(key=":pr-body")]
 
 
 def test_parse_sub_task_must_set_with_wait_for_signal(tmp_path):
@@ -105,7 +105,7 @@ def _make_runtime_context(context_root: Path, execution_name: str = "my-exec") -
     )
 
 
-def _make_sub_task(must_set: list[str]) -> SubTaskConfig:
+def _make_sub_task(must_set: list[ScopedContextKey]) -> SubTaskConfig:
     return SubTaskConfig(
         task_id="summarize",
         prompt_path=None,
@@ -121,7 +121,7 @@ def test_validate_must_set_passes(tmp_path):
     context_dir = tmp_path / "my-exec"
     ensure_context_dir(context_dir)
     write_context_value(context_dir, ":pr-body", "some body")
-    sub_task = _make_sub_task([":pr-body"])
+    sub_task = _make_sub_task([ScopedContextKey(key=":pr-body")])
     validate_must_set_keys(sub_task, rc)
 
 
@@ -129,7 +129,7 @@ def test_validate_must_set_missing_key(tmp_path):
     rc = _make_runtime_context(tmp_path)
     context_dir = tmp_path / "my-exec"
     ensure_context_dir(context_dir)
-    sub_task = _make_sub_task([":pr-body"])
+    sub_task = _make_sub_task([ScopedContextKey(key=":pr-body")])
     with pytest.raises(PropagateError, match=":pr-body"):
         validate_must_set_keys(sub_task, rc)
 
@@ -139,7 +139,7 @@ def test_validate_must_set_empty_value(tmp_path):
     context_dir = tmp_path / "my-exec"
     ensure_context_dir(context_dir)
     write_context_value(context_dir, ":pr-body", "")
-    sub_task = _make_sub_task([":pr-body"])
+    sub_task = _make_sub_task([ScopedContextKey(key=":pr-body")])
     with pytest.raises(PropagateError, match=":pr-body"):
         validate_must_set_keys(sub_task, rc)
 
@@ -149,7 +149,7 @@ def test_validate_must_set_partial_missing(tmp_path):
     context_dir = tmp_path / "my-exec"
     ensure_context_dir(context_dir)
     write_context_value(context_dir, ":key-a", "value")
-    sub_task = _make_sub_task([":key-a", ":key-b"])
+    sub_task = _make_sub_task([ScopedContextKey(key=":key-a"), ScopedContextKey(key=":key-b")])
     with pytest.raises(PropagateError, match=":key-b"):
         validate_must_set_keys(sub_task, rc)
 
@@ -164,7 +164,13 @@ def test_append_must_set_notice():
     assert "## Required Context Keys" in result
     assert "- `:pr-body`" in result
     assert "- `:pr-title`" in result
-    assert "propagate context set" in result
+    assert '`propagate context set :pr-body "<value>"`' in result
+
+
+def test_append_must_set_notice_with_global_scope():
+    result = append_must_set_notice("prompt text\n", [ScopedContextKey(key=":changed-urls", scope="global")])
+    assert "- `:changed-urls`" in result
+    assert '`propagate context set --global :changed-urls "<value>"`' in result
 
 
 def test_build_sub_task_prompt_no_must_set_section_when_none(tmp_path):
@@ -183,6 +189,20 @@ def test_build_sub_task_prompt_with_must_set(tmp_path):
     result = build_sub_task_prompt(prompt_path, "summarize", rc, must_set=[":pr-body"])
     assert "## Required Context Keys" in result
     assert ":pr-body" in result
+
+
+def test_build_sub_task_prompt_with_scoped_must_set(tmp_path):
+    prompt_path = tmp_path / "prompt.md"
+    prompt_path.write_text("do stuff\n", encoding="utf-8")
+    rc = _make_runtime_context(tmp_path)
+    result = build_sub_task_prompt(
+        prompt_path,
+        "summarize",
+        rc,
+        must_set=[ScopedContextKey(key=":changed-urls", scope="global")],
+    )
+    assert "ScopedContextKey" not in result
+    assert '`propagate context set --global :changed-urls "<value>"`' in result
 
 
 def test_build_sub_task_prompt_without_must_set(tmp_path):

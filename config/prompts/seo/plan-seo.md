@@ -10,7 +10,7 @@ to brief the approved items well enough for one implementation execution to carr
 Read the findings from analyze:
 
 ```bash
-propagate context get :findings --task analyze
+propagate context get --global :findings
 ```
 
 Read prior review feedback if present:
@@ -96,15 +96,15 @@ they clearly strengthen the strategy, but do not churn an otherwise sound plan j
 Set these keys:
 
 ```bash
-propagate context set :strategy-path "reports/YYYY-MM-DD/strategy.md"
+propagate context set --global :strategy-path "reports/YYYY-MM-DD/strategy.md"
 ```
 
 ```bash
-propagate context set :implementation-briefs-path "reports/YYYY-MM-DD/implementation-briefs.yaml"
+propagate context set --global :implementation-briefs-path "reports/YYYY-MM-DD/implementation-briefs.yaml"
 ```
 
 ```bash
-propagate context set --stdin :implementation-targets <<'JSON'
+propagate context set --stdin --global :implementation-targets <<'JSON'
 ["/path-one/", "/path-two/", "/path-three/"]
 JSON
 ```
@@ -112,13 +112,13 @@ JSON
 If there are any approved implementation items, also set:
 
 ```bash
-propagate context set :has-implementation-targets true
+propagate context set --global :has-implementation-targets true
 ```
 
 Save the brief artifact content too:
 
 ```bash
-propagate context set --stdin :implementation-briefs <<'YAML'
+propagate context set --stdin --global :implementation-briefs <<'YAML'
 - target: /path-one/
   change_type: rewrite
   page_type: sdk-page

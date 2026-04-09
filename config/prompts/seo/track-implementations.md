@@ -8,11 +8,11 @@ execution is the sole owner of appending new entries to the ledger — no other 
 ### 1. Read implementation details from context
 
 ```bash
-propagate context get :changed-urls --task implement-seo
+propagate context get --global :changed-urls
 ```
 
 ```bash
-propagate context get :implementation-briefs --task plan-seo
+propagate context get --global :implementation-briefs
 ```
 
 The changed URL key is a JSON array of production URLs. The brief key contains the structured implementation briefs
@@ -96,7 +96,7 @@ Look for the most recent brief file:
 find reports/ -name "implementation-briefs.yaml" | sort -r | head -1
 ```
 
-Prefer `:implementation-briefs-path --task plan-seo` as `suggestion_source`. If that key is missing, use the most
+Prefer global `:implementation-briefs-path` as `suggestion_source`. If that key is missing, use the most
 recent brief file path from `reports/` as a fallback. If no file matches, use `"context-only"`.
 
 ### 6. Write the ledger

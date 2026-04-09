@@ -99,13 +99,13 @@ git:
     base: main                # optional override for PR base branch
                               # defaults to: pr.base → branch.base → starting branch
     draft: false              # default: false
-    title_key: :pr-title      # optional ':'-prefixed context key for PR title
+    title_key: :pr-title      # optional context key reference for PR title
     # OR
     title_template: "PR #{signal[pr_number]}"
-    body_key: :pr-body        # optional ':'-prefixed context key for PR body
+    body_key: :pr-body        # optional context key reference for PR body
     # OR
     body_template: "Implements PR #{signal[pr_number]}"
-    number_key: :pr-number    # optional ':'-prefixed context key; PR number extracted from URL and stored here
+    number_key: :pr-number    # optional context key reference; PR number extracted from URL and stored here
 ```
 
 ### Constraints
@@ -118,6 +118,17 @@ git:
 - `git.pr.number_key` must use a `:` prefix (reserved context key).
 - `title_key` / `title_template` and `body_key` / `body_template` are mutually exclusive pairs.
 
+Key reference fields also accept an explicit scoped mapping:
+
+```yaml
+pr:
+  body_key:
+    key: :plan-summary
+    scope: global
+```
+
+Bare string keys remain execution-scoped for backward compatibility.
+
 ## Commit message
 
 - `message_source` — runs the named `context_source` shell command and uses its stdout.
@@ -128,15 +139,17 @@ By default the message is split on the first line: line 1 becomes the PR title, 
 
 ### PR title and body overrides
 
-Set `title_key` and/or `body_key` in the `pr:` block to read title/body from the execution context store instead:
+Set `title_key` and/or `body_key` in the `pr:` block to read title/body from context instead:
 
 ```yaml
 pr:
   title_key: :pr-title   # reads PR title from the execution context store
-  body_key: :pr-body     # reads PR body from the execution context store
+  body_key:
+    key: :pr-body
+    scope: global        # reads PR body from global context instead
 ```
 
-Both are optional `:` -prefixed context keys. When omitted the commit-message split applies as before.
+Both are optional `:`-prefixed context key references. When omitted the commit-message split applies as before.
 
 You can also use `title_template` and `body_template` for simple declarative strings.
 

@@ -35,6 +35,17 @@ Approval gates matter in the middle of the DAG:
 - `plan-seo` only hands off to `implement-seo` after its planning PR is approved
 - `implement-seo` only hands off to `track-implementations` after its implementation PR is approved
 
+## Context scope
+
+SEO handoff keys use **global context** as the source of truth across executions. That includes fetched data paths,
+evaluation results, intent-match output, analyze findings, implementation briefs, changed URLs, and indexing results.
+
+Execution-local context is reserved for loop-control state such as review findings, brief revision flags, approval
+gates, and check status.
+
+The remaining local-to-global copy hooks exist only where a context-source shorthand still writes to execution scope
+first. Treat those copies as producer-side compatibility shims, not the canonical handoff contract.
+
 ## Implementation Ledger
 
 **File**: `data/feedback/implementations.yaml` in pdfdancer-marketing-data, committed to main.

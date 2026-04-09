@@ -24,7 +24,7 @@ Only analyze pages with **50+ impressions** in the GSC `pages` section. Skip eve
 
 If no pages meet the 50-impression threshold, save an explicit empty marker and skip the report:
 ```bash
-propagate context set :intent-match "No pages qualified (all below 50 impressions)"
+propagate context set --global :intent-match "No pages qualified (all below 50 impressions)"
 ```
 Do not write a report file. Stop here.
 
@@ -84,7 +84,7 @@ Below the table, add a **Mismatch Summary** section with a one-line explanation 
 
 To save the output, run exactly:
 ```bash
-propagate context set --stdin :intent-match <<'BODY'
+propagate context set --stdin --global :intent-match <<'BODY'
 <table and mismatch summary>
 BODY
 ```

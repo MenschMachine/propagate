@@ -18,6 +18,7 @@ from propagate_app.models import (
     GitRunState,
     PreparedGitExecution,
     RuntimeContext,
+    ScopedContextKey,
 )
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ from propagate_app.models import (
 
 def test_parse_name_key_valid():
     result = parse_git_branch_config("ex", {"name_key": ":branch-name"})
-    assert result.name_key == ":branch-name"
+    assert result.name_key == ScopedContextKey(key=":branch-name")
     assert result.name is None
 
 
@@ -50,7 +51,7 @@ def test_parse_name_template_valid():
 
 def test_parse_name_key_with_base():
     result = parse_git_branch_config("ex", {"name_key": ":branch-name", "base": "main"})
-    assert result.name_key == ":branch-name"
+    assert result.name_key == ScopedContextKey(key=":branch-name")
     assert result.base == "main"
 
 
@@ -82,7 +83,7 @@ def _make_runtime_context(context_root: Path) -> RuntimeContext:
         working_dir=Path("."),
         context_root=context_root,
         execution_name="my-exec",
-        task_id="",
+        task_id="task-1",
         git_state=GitRunState(),
     )
 

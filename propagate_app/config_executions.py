@@ -5,9 +5,10 @@ from typing import Any
 
 from .config_git import parse_git_config
 from .config_includes import resolve_mapping_includes
+from .context_refs import parse_context_condition, parse_scoped_context_key
 from .constants import LOGGER
 from .errors import PropagateError
-from .models import ExecutionConfig, ExecutionSignalConfig, SignalConfig, SubTaskConfig, SubTaskRouteConfig
+from .models import ContextCondition, ExecutionConfig, ExecutionSignalConfig, ScopedContextKey, SignalConfig, SubTaskConfig, SubTaskRouteConfig
 from .signals import validate_signal_when_clause
 from .validation import validate_allowed_keys, validate_context_key, validate_context_source_name
 from .validation_hooks import validate_hook_action
@@ -258,17 +259,14 @@ def parse_sub_task(
     )
 
 
-def parse_must_set(must_set_data: Any, location: str) -> list[str]:
+def parse_must_set(must_set_data: Any, location: str) -> list[ScopedContextKey]:
     if must_set_data is None:
         return []
     if not isinstance(must_set_data, list) or not must_set_data:
         raise PropagateError(f"{location} 'must_set' must be a non-empty list when provided.")
-    keys: list[str] = []
+    keys: list[ScopedContextKey] = []
     for i, entry in enumerate(must_set_data, start=1):
-        if not isinstance(entry, str) or not entry.strip():
-            raise PropagateError(f"{location} 'must_set' entry #{i} must be a non-empty string.")
-        validate_context_key(entry)
-        keys.append(entry)
+        keys.append(parse_scoped_context_key(entry, f"{location} 'must_set' entry #{i}"))
     return keys
 
 
@@ -378,20 +376,8 @@ def parse_hook_actions(hook_data: Any, location: str, phase: str, context_source
     return actions
 
 
-def parse_when_condition(when_value: Any, location: str) -> str | None:
-    if when_value is None:
-        return None
-    if not isinstance(when_value, str) or not when_value.strip():
-        raise PropagateError(f"{location} 'when' must be a non-empty string when provided.")
-    stripped = when_value.strip()
-    if stripped.startswith("!:"):
-        key_part = stripped[1:]
-    elif stripped.startswith(":"):
-        key_part = stripped
-    else:
-        raise PropagateError(f"{location} 'when' must be a ':key' or '!:key' context reference.")
-    validate_context_key(key_part)
-    return stripped
+def parse_when_condition(when_value: Any, location: str) -> ContextCondition | None:
+    return parse_context_condition(when_value, location)
 
 
 def resolve_prompt_path(prompt_value: str, config_dir: Path) -> Path:

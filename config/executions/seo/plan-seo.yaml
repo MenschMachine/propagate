@@ -22,27 +22,33 @@ plan-seo:
     - id: strategy
       before:
         - 'propagate context delete :plan-approved'
-        - 'propagate context delete :strategy-path'
-        - 'propagate context delete :implementation-briefs-path'
-        - 'propagate context delete :implementation-briefs'
-        - 'propagate context delete :implementation-targets'
-        - 'propagate context delete :has-implementation-targets'
+        - 'propagate context delete --global :strategy-path'
+        - 'propagate context delete --global :implementation-briefs-path'
+        - 'propagate context delete --global :implementation-briefs'
+        - 'propagate context delete --global :implementation-targets'
+        - 'propagate context delete --global :has-implementation-targets'
         - 'propagate context delete :review-findings'
         - 'propagate context delete :review-suggestions'
         - 'propagate context delete :revision-reason'
       prompt: ./prompts/seo/plan-seo.md
       must_set:
-        - ":strategy-path"
-        - ":implementation-briefs-path"
-        - ":implementation-briefs"
-        - ":implementation-targets"
+        - key: ":strategy-path"
+          scope: global
+        - key: ":implementation-briefs-path"
+          scope: global
+        - key: ":implementation-briefs"
+          scope: global
+        - key: ":implementation-targets"
+          scope: global
     - id: review-plan
       before:
         - 'propagate context delete :review-findings'
         - 'propagate context delete :review-suggestions'
       prompt: ./prompts/seo/review-plan.md
     - id: reroute-on-review-findings
-      when: ":review-findings"
+      when:
+        key: ":review-findings"
+        scope: execution
       after:
         - 'propagate context set :revision-reason review-findings'
       goto: strategy
@@ -73,4 +79,4 @@ plan-seo:
           continue: true
     - id: route-after-approval
       before:
-        - 'if propagate context get :has-implementation-targets >/dev/null 2>&1; then propagate context set :plan-approved true; fi'
+        - 'if propagate context get --global :has-implementation-targets >/dev/null 2>&1; then propagate context set :plan-approved true; fi'

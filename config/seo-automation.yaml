@@ -80,7 +80,7 @@ context_sources:
   posthog-data-path:
     command: "python scripts/fetch_posthog.py"
   indexing-results:
-    command: 'propagate context get :changed-urls | python scripts/request_indexing.py'
+    command: 'propagate context get --global :changed-urls | python scripts/request_indexing.py'
   dataforseo-enrichment-path:
     command: "python scripts/fetch_dataforseo.py"
   seo-enrichment-commit:

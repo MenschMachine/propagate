@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from propagate import load_config
+from propagate_app.models import ContextCondition, ScopedContextKey
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -86,7 +87,7 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
         api = config.executions["implement-pdfdancer-api"]
         self.assertEqual(api.repository, "pdfdancer-api")
         self.assertEqual(api.git.branch.name_template, "api/backend-pr-{context[triage-backend-pr][:source-backend-pr-number]}")
-        self.assertEqual(api.git.pr.number_key, ":api-pr-number")
+        self.assertEqual(api.git.pr.number_key, ScopedContextKey(key=":api-pr-number"))
         self.assertEqual(
             [task.task_id for task in api.sub_tasks],
             ["validate-context", "implement", "clear-findings-on-wontfix", "review", "fail-on-upstream-bug", "reroute-on-review-findings", "reroute-on-suggestions", "summarize", "publish", "post-wontfix-comment", "wait-for-checks", "reroute-on-check-failure", "wait-for-verdict"],
@@ -101,18 +102,18 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
         self.assertEqual(api.sub_tasks[12].routes[0].when["pr_number"], {"equals_context": ":api-pr-number"})
 
         ts_sdk = config.executions["implement-client-typescript"]
-        self.assertEqual(ts_sdk.git.pr.number_key, ":client-typescript-pr-number")
+        self.assertEqual(ts_sdk.git.pr.number_key, ScopedContextKey(key=":client-typescript-pr-number"))
         self.assertEqual(ts_sdk.git.branch.name_template, "client-typescript/source-pr-{context[global][:source-pr-number]}")
         self.assertEqual(ts_sdk.after[1], ":mark-all-sdks-approved")
 
         ts_examples = config.executions["implement-client-typescript-examples"]
-        self.assertEqual(ts_examples.git.pr.number_key, ":client-typescript-examples-pr-number")
+        self.assertEqual(ts_examples.git.pr.number_key, ScopedContextKey(key=":client-typescript-examples-pr-number"))
         self.assertEqual(ts_examples.after[1], ":mark-all-examples-approved")
 
         api_docs = config.executions["implement-pdfdancer-api-docs"]
-        self.assertEqual(api_docs.git.pr.number_key, ":api-docs-pr-number")
+        self.assertEqual(api_docs.git.pr.number_key, ScopedContextKey(key=":api-docs-pr-number"))
         website = config.executions["implement-pdfdancer-www"]
-        self.assertEqual(website.git.pr.number_key, ":website-pr-number")
+        self.assertEqual(website.git.pr.number_key, ScopedContextKey(key=":website-pr-number"))
 
         self.assertEqual(len(config.propagation_triggers), 24)
         triage_to_assess_backend = next(t for t in config.propagation_triggers if t.after == "triage-backend-pr" and t.run == "assess-complexity-backend")
@@ -132,13 +133,13 @@ class PdfdancerCompleteWorkflowConfigTests(unittest.TestCase):
             t for t in config.propagation_triggers
             if t.after == "implement-client-java" and t.run == "implement-client-python-examples"
         )
-        self.assertEqual(example_trigger.when_context, ":all-sdks-approved")
+        self.assertEqual(example_trigger.when_context, ContextCondition(ref=ScopedContextKey(key=":all-sdks-approved")))
 
         docs_trigger = next(
             t for t in config.propagation_triggers
             if t.after == "implement-client-java-examples" and t.run == "implement-pdfdancer-api-docs"
         )
-        self.assertEqual(docs_trigger.when_context, ":all-examples-approved")
+        self.assertEqual(docs_trigger.when_context, ContextCondition(ref=ScopedContextKey(key=":all-examples-approved")))
 
         for prompt_path in [
             REPO_ROOT / "config" / "prompts" / "pdfdancer" / "decide-backend-pipeline.md",

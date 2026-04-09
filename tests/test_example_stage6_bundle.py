@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 from propagate import load_config
+from propagate_app.models import ScopedContextKey
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,7 +51,7 @@ class Stage6ExampleBundleTests(unittest.TestCase):
 
         archive_git = config.executions["archive-review"].git
         self.assertIsNotNone(archive_git)
-        self.assertEqual(archive_git.commit.message_key, ":archive-commit-message")
+        self.assertEqual(archive_git.commit.message_key, ScopedContextKey(key=":archive-commit-message"))
 
         publish_git = config.executions["publish-docs"].git
         self.assertIsNotNone(publish_git)

@@ -18,6 +18,7 @@ from propagate_app.models import (
     GitRunState,
     PreparedGitExecution,
     RuntimeContext,
+    ScopedContextKey,
 )
 
 # ---------------------------------------------------------------------------
@@ -28,7 +29,7 @@ from propagate_app.models import (
 def test_parse_number_key_valid():
     result = parse_git_pr_config("ex", {"number_key": ":pr-number"})
     assert result is not None
-    assert result.number_key == ":pr-number"
+    assert result.number_key == ScopedContextKey(key=":pr-number")
 
 
 def test_parse_number_key_missing_colon():
@@ -39,8 +40,8 @@ def test_parse_number_key_missing_colon():
 def test_parse_number_key_with_other_keys():
     result = parse_git_pr_config("ex", {"body_key": ":body", "number_key": ":pr-number"})
     assert result is not None
-    assert result.body_key == ":body"
-    assert result.number_key == ":pr-number"
+    assert result.body_key == ScopedContextKey(key=":body")
+    assert result.number_key == ScopedContextKey(key=":pr-number")
 
 
 def test_parse_no_number_key_defaults_none():
@@ -64,7 +65,7 @@ def _make_runtime_context(context_root: Path) -> RuntimeContext:
         working_dir=Path("."),
         context_root=context_root,
         execution_name="my-exec",
-        task_id="",
+        task_id="task-1",
         git_state=GitRunState(),
     )
 

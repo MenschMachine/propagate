@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from .constants import ENV_CONFIG_DIR, ENV_CONTEXT_ROOT, ENV_EXECUTION, ENV_TASK, LOGGER, PHASE_AFTER, PHASE_AGENT, PHASE_BEFORE
+from .context_refs import coerce_scoped_context_key, evaluate_context_condition, resolve_context_ref_dir
 from .context_sources import run_context_source
 from .context_store import ensure_context_dir, get_global_context_dir, read_optional_context_value, resolve_execution_context_dir
 from .errors import AgentInterrupted, PropagateError
@@ -22,7 +23,7 @@ from .git_runtime import (
     git_do_publish,
     git_do_push,
 )
-from .models import ActiveSignal, ExecutionConfig, ExecutionStatus, GitConfig, RuntimeContext, SubTaskConfig, TaskStatus
+from .models import ActiveSignal, ContextCondition, ExecutionConfig, ExecutionStatus, GitConfig, RuntimeContext, SubTaskConfig, TaskStatus
 from .processes import build_agent_command, run_agent_command, run_shell_command
 from .prompts import build_sub_task_prompt
 from .signal_context import store_active_signal_context
@@ -125,13 +126,8 @@ def run_execution_sub_tasks(
     return current_runtime_context
 
 
-def evaluate_when_condition(when: str, runtime_context: RuntimeContext) -> bool:
-    negated = when.startswith("!")
-    key = when[1:] if negated else when
-    context_dir = resolve_execution_context_dir(runtime_context)
-    key_path = context_dir / key
-    truthy = key_path.is_file() and key_path.read_text(encoding="utf-8") != ""
-    return not truthy if negated else truthy
+def evaluate_when_condition(when: ContextCondition, runtime_context: RuntimeContext) -> bool:
+    return evaluate_context_condition(runtime_context, when)
 
 
 def _handle_wait_for_signal(
@@ -332,9 +328,16 @@ def run_sub_task_agent(sub_task: SubTaskConfig, temp_prompt_path: Path, runtime_
 
 
 def validate_must_set_keys(sub_task: SubTaskConfig, runtime_context: RuntimeContext) -> None:
-    context_dir = resolve_execution_context_dir(runtime_context)
     missing = []
-    for key in sub_task.must_set:
+    for ref in sub_task.must_set:
+        ref = coerce_scoped_context_key(ref)
+        context_dir = resolve_context_ref_dir(
+            runtime_context.context_root,
+            runtime_context.execution_name,
+            runtime_context.task_id,
+            ref,
+        )
+        key = ref.key
         key_path = context_dir / key
         if not key_path.is_file() or key_path.read_text(encoding="utf-8") == "":
             missing.append(key)

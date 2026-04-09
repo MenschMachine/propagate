@@ -1,16 +1,17 @@
 from pathlib import Path
 
 from .constants import LOGGER
+from .context_refs import coerce_scoped_context_key
 from .context_store import append_context_to_prompt, load_merged_context
 from .errors import PropagateError
-from .models import RuntimeContext
+from .models import RuntimeContext, ScopedContextKey
 
 
 def build_sub_task_prompt(
     prompt_path: Path,
     task_id: str,
     runtime_context: RuntimeContext,
-    must_set: list[str] | None = None,
+    must_set: list[ScopedContextKey | str] | None = None,
 ) -> str:
     prompt_text = read_prompt(prompt_path)
     LOGGER.info(
@@ -26,16 +27,31 @@ def build_sub_task_prompt(
     return result
 
 
-def append_must_set_notice(prompt_text: str, must_set: list[str]) -> str:
+def _format_context_set_command(ref: ScopedContextKey | str) -> tuple[str, str]:
+    scoped_ref = coerce_scoped_context_key(ref)
+    if scoped_ref.scope == "global":
+        return scoped_ref.key, f'propagate context set --global {scoped_ref.key} "<value>"'
+    if scoped_ref.scope == "task":
+        task = scoped_ref.task or "<execution>/<task>"
+        return scoped_ref.key, f'propagate context set --task {task} {scoped_ref.key} "<value>"'
+    return scoped_ref.key, f'propagate context set {scoped_ref.key} "<value>"'
+
+
+def append_must_set_notice(prompt_text: str, must_set: list[ScopedContextKey | str]) -> str:
     lines = [
         "## Required Context Keys",
         "",
         "You MUST set the following context keys before completing this task:",
     ]
-    for key in must_set:
+    commands: list[str] = []
+    for ref in must_set:
+        key, command = _format_context_set_command(ref)
         lines.append(f"- `{key}`")
+        commands.append(command)
     lines.append("")
-    lines.append('Use `propagate context set <key> "<value>"` to set each key.')
+    lines.append("Use these commands to set them:")
+    for command in commands:
+        lines.append(f"- `{command}`")
     section = "\n".join(lines) + "\n"
     if prompt_text.endswith("\n\n"):
         return prompt_text + section

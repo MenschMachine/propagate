@@ -1,6 +1,6 @@
 from typing import Any
 
-from .config_executions import parse_when_condition
+from .context_refs import parse_context_condition
 from .constants import LOGGER
 from .errors import PropagateError
 from .models import Config, ExecutionConfig, ExecutionGraph, PropagationTriggerConfig, SignalConfig
@@ -54,7 +54,7 @@ def parse_propagation_trigger(
         if on_signal not in signal_configs:
             raise PropagateError(f"{location}.on_signal references unknown signal '{on_signal}'.")
     when = trigger_data.get("when")
-    when_context = parse_when_condition(trigger_data.get("when_context"), f"{location}.when_context")
+    when_context = parse_context_condition(trigger_data.get("when_context"), f"{location}.when_context")
     if when is not None:
         if not isinstance(when, dict):
             raise PropagateError(f"{location}.when must be a mapping when provided.")

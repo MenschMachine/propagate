@@ -10,6 +10,7 @@ from propagate_app.models import (
     ActiveSignal,
     AgentConfig,
     Config,
+    ContextCondition,
     ExecutionConfig,
     ExecutionGraph,
     ExecutionSignalConfig,
@@ -18,6 +19,7 @@ from propagate_app.models import (
     RepositoryConfig,
     SignalConfig,
     SignalFieldConfig,
+    ScopedContextKey,
     SubTaskConfig,
 )
 from propagate_app.scheduler import activate_matching_triggers, has_pending_signal_triggers
@@ -299,7 +301,7 @@ def test_propagation_trigger_when_context():
         {"a", "b"},
         {},
     )
-    assert trigger.when_context == ":run-full"
+    assert trigger.when_context == ContextCondition(ref=ScopedContextKey(key=":run-full"))
 
 
 # --- activate_matching_triggers with when ---
@@ -398,7 +400,12 @@ def test_activate_triggers_when_none_still_fires(tmp_path):
 
 
 def test_activate_triggers_when_context_matches(tmp_path):
-    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context=":run-full")
+    trigger = PropagationTriggerConfig(
+        after="a",
+        run="b",
+        on_signal=None,
+        when_context=ContextCondition(ref=ScopedContextKey(key=":run-full")),
+    )
     config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
     graph = ExecutionGraph(
         execution_order=("a", "b"),
@@ -413,7 +420,12 @@ def test_activate_triggers_when_context_matches(tmp_path):
 
 
 def test_activate_triggers_when_context_mismatch(tmp_path):
-    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context=":run-full")
+    trigger = PropagationTriggerConfig(
+        after="a",
+        run="b",
+        on_signal=None,
+        when_context=ContextCondition(ref=ScopedContextKey(key=":run-full")),
+    )
     config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
     graph = ExecutionGraph(
         execution_order=("a", "b"),
@@ -425,7 +437,12 @@ def test_activate_triggers_when_context_mismatch(tmp_path):
 
 
 def test_activate_triggers_when_context_negated_missing_matches(tmp_path):
-    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context="!:run-full")
+    trigger = PropagationTriggerConfig(
+        after="a",
+        run="b",
+        on_signal=None,
+        when_context=ContextCondition(ref=ScopedContextKey(key=":run-full"), negate=True),
+    )
     config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
     graph = ExecutionGraph(
         execution_order=("a", "b"),
@@ -437,7 +454,12 @@ def test_activate_triggers_when_context_negated_missing_matches(tmp_path):
 
 
 def test_activate_triggers_when_context_missing_is_falsy(tmp_path):
-    trigger = PropagationTriggerConfig(after="a", run="b", on_signal=None, when_context=":run-full")
+    trigger = PropagationTriggerConfig(
+        after="a",
+        run="b",
+        on_signal=None,
+        when_context=ContextCondition(ref=ScopedContextKey(key=":run-full")),
+    )
     config = _make_config(tmp_path, [_make_execution("a"), _make_execution("b")], [trigger], signals={})
     graph = ExecutionGraph(
         execution_order=("a", "b"),

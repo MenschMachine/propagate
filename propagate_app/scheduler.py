@@ -7,6 +7,7 @@ from typing import Any
 import zmq
 
 from .constants import LOGGER
+from .context_refs import coerce_context_condition, resolve_context_ref_dir
 from .context_store import clear_all_context, get_context_root, get_execution_context_dir
 from .errors import AgentInterrupted, PropagateError
 from .execution_flow import run_configured_execution
@@ -237,10 +238,15 @@ def activate_matching_triggers(
         activated_triggers.add(trigger_key)
 
 
-def _evaluate_trigger_context_gate(gate: str, context_dir: Path) -> bool:
-    negated = gate.startswith("!")
-    key = gate[1:] if negated else gate
-    key_path = context_dir / key
+def _evaluate_trigger_context_gate(gate, context_dir: Path) -> bool:
+    gate = coerce_context_condition(gate)
+    ref_dir = resolve_context_ref_dir(
+        context_dir.parent,
+        context_dir.name,
+        "",
+        gate.ref,
+    )
+    key_path = ref_dir / gate.ref.key
     try:
         truthy = key_path.is_file() and key_path.read_text(encoding="utf-8") != ""
     except OSError as error:
@@ -249,7 +255,7 @@ def _evaluate_trigger_context_gate(gate: str, context_dir: Path) -> bool:
     except UnicodeDecodeError as error:
         LOGGER.debug("Failed to decode trigger context gate '%s' from %s as UTF-8: %s", gate, key_path, error)
         truthy = False
-    return not truthy if negated else truthy
+    return not truthy if gate.negate else truthy
 
 
 def activate_execution_with_dependencies(

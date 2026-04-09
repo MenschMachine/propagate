@@ -61,7 +61,7 @@ propagate context get :active-implementation-briefs
 
 Otherwise:
 ```bash
-propagate context get :implementation-briefs --task plan-seo
+propagate context get --global :implementation-briefs
 ```
 
 Implement all approved briefs. This may include editing existing pages and creating new ones.
@@ -138,7 +138,7 @@ If yes -> revise.
 
 After changes:
 ```bash
-propagate context set --stdin :changed-urls <<'URLS'
+propagate context set --stdin --global :changed-urls <<'URLS'
 ["https://pdfdancer.com/page1/", "https://pdfdancer.com/page2/"]
 URLS
 ```

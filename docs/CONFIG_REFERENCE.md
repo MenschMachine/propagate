@@ -424,7 +424,7 @@ sub_tasks:
 |-------|------|----------|---------|-------------|
 | `id` | string | Yes | — | Unique identifier within the execution. |
 | `prompt` | string | No | `null` | Path to a prompt file. Relative paths resolve from the config file directory. If omitted, no agent is invoked but hooks still run. |
-| `when` | string | No | `null` | Conditional execution. `:key` runs if context key exists and is non-empty. `!:key` runs if the key does not exist or is empty. |
+| `when` | string or mapping | No | `null` | Conditional execution. `:key` runs if an execution-scoped context key exists and is non-empty. `!:key` runs if the key does not exist or is empty. Mapping form can declare an explicit scope. |
 | `before` | list of strings | No | `[]` | Hook actions run before the agent. |
 | `after` | list of strings | No | `[]` | Hook actions run after the agent succeeds. |
 | `on_failure` | list of strings | No | `[]` | Hook actions run if the task fails. |
@@ -433,9 +433,28 @@ sub_tasks:
 | `on_max_goto` | string | No | `"fail"` | What happens when `max_goto` is exceeded. `"fail"` raises an error (default). `"continue"` logs a warning and proceeds to the next sub-task. Requires `goto`. |
 | `wait_for_signal` | string | No | `null` | Signal name to wait for. Requires `routes`. Must not have `prompt` or `on_failure`. |
 | `routes` | list | No | `[]` | Route definitions for signal-gated sub-tasks. Requires `wait_for_signal`. |
-| `must_set` | list of strings | No | `[]` | Context keys the agent must set during this task. Validated after the agent phase; raises an error if any key is missing or empty. Keys are injected into the agent prompt as a notice. Must not be used with `wait_for_signal`. |
+| `must_set` | list of strings or mappings | No | `[]` | Context keys the agent must set during this task. Validated after the agent phase; raises an error if any key is missing or empty. Keys are injected into the agent prompt as a notice, including the correct scoped `propagate context set` command. Must not be used with `wait_for_signal`. |
 
 Task IDs must be unique within an execution.
+
+Scoped context references use this mapping form:
+
+```yaml
+when:
+  key: :review-findings
+  scope: execution
+
+must_set:
+  - key: :implementation-briefs
+    scope: global
+```
+
+Supported scopes:
+- `execution`: current execution context
+- `global`: global context root
+- `task`: a specific execution or execution/task path, supplied via `task`
+
+Legacy bare string references remain execution-scoped for backward compatibility.
 
 #### Signal-gated sub-tasks (`wait_for_signal` + `routes`)
 
@@ -612,11 +631,11 @@ Creates a pull request. Optional. **Requires `push` to be configured.**
 |-------|------|----------|---------|-------------|
 | `base` | string | No | `git.branch.base` or starting branch | Target branch for the PR. |
 | `draft` | boolean | No | `false` | Create the PR as a draft. |
-| `title_key` | string | No | First line of commit message | Context key (must start with `:`) for the PR title. Mutually exclusive with `title_template`. |
+| `title_key` | string or mapping | No | First line of commit message | Context key reference for the PR title. Bare strings remain execution-scoped; mapping form can declare `scope` and optional `task`. Mutually exclusive with `title_template`. |
 | `title_template` | string | No | First line of commit message | Template rendered at runtime for the PR title. Mutually exclusive with `title_key`. |
-| `body_key` | string | No | Remaining commit message lines | Context key (must start with `:`) for the PR body. Mutually exclusive with `body_template`. |
+| `body_key` | string or mapping | No | Remaining commit message lines | Context key reference for the PR body. Bare strings remain execution-scoped; mapping form can declare `scope` and optional `task`. Mutually exclusive with `body_template`. |
 | `body_template` | string | No | Remaining commit message lines | Template rendered at runtime for the PR body. Mutually exclusive with `body_key`. |
-| `number_key` | string | No | — | Context key (must start with `:`) where the PR number is stored after creation. |
+| `number_key` | string or mapping | No | — | Context key reference where the PR number is stored after creation. Bare strings remain execution-scoped; mapping form can declare `scope` and optional `task`. |
 
 PRs are created via `gh pr create`.
 

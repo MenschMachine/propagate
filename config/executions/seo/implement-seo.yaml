@@ -33,7 +33,8 @@ implement-seo:
         - 'propagate context delete :revision-reason'
       prompt: ./prompts/seo/implement.md
       must_set:
-        - ":changed-urls"
+        - key: ":changed-urls"
+          scope: global
     - id: review
       before:
         - 'propagate context delete :review-findings'
@@ -41,23 +42,31 @@ implement-seo:
         - 'propagate context delete :review-findings-brief'
       prompt: ./prompts/seo/review-implement.md
     - id: reroute-on-implementation-findings
-      when: ":review-findings"
+      when:
+        key: ":review-findings"
+        scope: execution
       after:
         - 'propagate context set :revision-reason review-findings'
       goto: code
       max_goto: 5
     - id: flag-brief-problem
-      when: ":review-findings-brief"
+      when:
+        key: ":review-findings-brief"
+        scope: execution
       after:
         - 'propagate context set :needs-brief-revision true'
     - id: revise-briefs
-      when: ":needs-brief-revision"
+      when:
+        key: ":needs-brief-revision"
+        scope: execution
       prompt: ./prompts/seo/revise-briefs.md
       must_set:
         - ":active-implementation-briefs"
         - ":implementation-briefs-refined"
     - id: reroute-after-brief-revision
-      when: ":implementation-briefs-refined"
+      when:
+        key: ":implementation-briefs-refined"
+        scope: execution
       goto: code
       max_goto: 5
     - id: summarize
@@ -66,7 +75,7 @@ implement-seo:
         - ":implement-seo-summary"
     - id: publish
       before:
-        - 'if propagate context get :active-implementation-briefs >/dev/null 2>&1; then propagate context set :applied-implementation-briefs "$(propagate context get :active-implementation-briefs)"; else propagate context set :applied-implementation-briefs "$(propagate context get :implementation-briefs --task plan-seo)"; fi'
+        - 'if propagate context get :active-implementation-briefs >/dev/null 2>&1; then propagate context set :applied-implementation-briefs "$(propagate context get :active-implementation-briefs)"; else propagate context set :applied-implementation-briefs "$(propagate context get --global :implementation-briefs)"; fi'
         - 'propagate context set :implement-seo-summary "$(printf "%s\n\n---\n\n## Applied Implementation Briefs\n\n%s" "$(propagate context get :implement-seo-summary)" "$(propagate context get :applied-implementation-briefs)")"'
         - git:commit
         - git:push
@@ -75,7 +84,10 @@ implement-seo:
       before:
         - git:pr-checks-wait :implement-check-results :checks-passed 10 1800
     - id: reroute-on-check-failure
-      when: "!:checks-passed"
+      when:
+        key: ":checks-passed"
+        scope: execution
+        negate: true
       after:
         - 'propagate context set :revision-reason check-failure'
       goto: code

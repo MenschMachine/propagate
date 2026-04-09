@@ -1,11 +1,11 @@
 from typing import Any
 
+from .context_refs import parse_scoped_context_key
 from .errors import PropagateError
 from .models import GitBranchConfig, GitCommitConfig, GitConfig, GitPrConfig, GitPushConfig
 from .validation import (
     optional_non_empty_string,
     validate_allowed_keys,
-    validate_context_key,
     validate_context_source_name,
 )
 
@@ -36,10 +36,7 @@ def parse_git_branch_config(execution_name: str, branch_data: Any) -> GitBranchC
     name = optional_non_empty_string(branch_data.get("name"), f"{location}.name")
     name_key = None
     if "name_key" in branch_data:
-        validated = validate_context_key(branch_data["name_key"])
-        if not validated.startswith(":"):
-            raise PropagateError(f"{location}.name_key must use a reserved ':'-prefixed context key.")
-        name_key = validated
+        name_key = parse_scoped_context_key(branch_data["name_key"], f"{location}.name_key")
     name_template = optional_non_empty_string(branch_data.get("name_template"), f"{location}.name_template")
     if sum(value is not None for value in (name, name_key, name_template)) > 1:
         raise PropagateError(f"{location} must define at most one of 'name', 'name_key', or 'name_template'.")
@@ -75,10 +72,11 @@ def parse_git_commit_config(
         return GitCommitConfig(message_source=source_name, message_key=None, message_template=None)
     if message_template is not None:
         return GitCommitConfig(message_source=None, message_key=None, message_template=message_template)
-    validated_key = validate_context_key(message_key)
-    if not validated_key.startswith(":"):
-        raise PropagateError(f"{location}.message_key must use a reserved ':'-prefixed context key.")
-    return GitCommitConfig(message_source=None, message_key=validated_key, message_template=None)
+    return GitCommitConfig(
+        message_source=None,
+        message_key=parse_scoped_context_key(message_key, f"{location}.message_key"),
+        message_template=None,
+    )
 
 
 def parse_git_push_config(execution_name: str, push_data: Any) -> GitPushConfig | None:
@@ -106,16 +104,10 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
         raise PropagateError(f"{location}.draft must be a boolean when provided.")
     title_key = None
     if "title_key" in pr_data:
-        validated = validate_context_key(pr_data["title_key"])
-        if not validated.startswith(":"):
-            raise PropagateError(f"{location}.title_key must use a reserved ':'-prefixed context key.")
-        title_key = validated
+        title_key = parse_scoped_context_key(pr_data["title_key"], f"{location}.title_key")
     body_key = None
     if "body_key" in pr_data:
-        validated = validate_context_key(pr_data["body_key"])
-        if not validated.startswith(":"):
-            raise PropagateError(f"{location}.body_key must use a reserved ':'-prefixed context key.")
-        body_key = validated
+        body_key = parse_scoped_context_key(pr_data["body_key"], f"{location}.body_key")
     title_template = optional_non_empty_string(pr_data.get("title_template"), f"{location}.title_template")
     body_template = optional_non_empty_string(pr_data.get("body_template"), f"{location}.body_template")
     if title_key is not None and title_template is not None:
@@ -124,10 +116,7 @@ def parse_git_pr_config(execution_name: str, pr_data: Any) -> GitPrConfig | None
         raise PropagateError(f"{location} must define at most one of 'body_key' or 'body_template'.")
     number_key = None
     if "number_key" in pr_data:
-        validated = validate_context_key(pr_data["number_key"])
-        if not validated.startswith(":"):
-            raise PropagateError(f"{location}.number_key must use a reserved ':'-prefixed context key.")
-        number_key = validated
+        number_key = parse_scoped_context_key(pr_data["number_key"], f"{location}.number_key")
     return GitPrConfig(
         base=optional_non_empty_string(pr_data.get("base"), f"{location}.base"),
         draft=draft,

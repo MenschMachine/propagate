@@ -9,6 +9,19 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class ScopedContextKey:
+    key: str
+    scope: Literal["execution", "global", "task"] = "execution"
+    task: str | None = None
+
+
+@dataclass(frozen=True)
+class ContextCondition:
+    ref: ScopedContextKey
+    negate: bool = False
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     agents: dict[str, str]  # name -> command string
     default_agent: str  # name of default agent
@@ -52,14 +65,14 @@ class GitBranchConfig:
     name: str | None
     base: str | None
     reuse: bool
-    name_key: str | None = None
+    name_key: ScopedContextKey | None = None
     name_template: str | None = None
 
 
 @dataclass(frozen=True)
 class GitCommitConfig:
     message_source: str | None
-    message_key: str | None
+    message_key: ScopedContextKey | None
     message_template: str | None = None
 
 
@@ -72,11 +85,11 @@ class GitPushConfig:
 class GitPrConfig:
     base: str | None
     draft: bool
-    title_key: str | None = None
-    body_key: str | None = None
+    title_key: ScopedContextKey | None = None
+    body_key: ScopedContextKey | None = None
     title_template: str | None = None
     body_template: str | None = None
-    number_key: str | None = None
+    number_key: ScopedContextKey | None = None
 
 
 @dataclass(frozen=True)
@@ -107,13 +120,13 @@ class SubTaskConfig:
     before: list[str]
     after: list[str]
     on_failure: list[str]
-    when: str | None = None
+    when: ContextCondition | None = None
     goto: str | None = None
     max_goto: int = 3
     on_max_goto: Literal["fail", "continue"] = "fail"
     wait_for_signal: str | None = None
     routes: list[SubTaskRouteConfig] = field(default_factory=list)
-    must_set: list[str] = field(default_factory=list)
+    must_set: list[ScopedContextKey] = field(default_factory=list)
 
 
 @dataclass
@@ -144,7 +157,7 @@ class PropagationTriggerConfig:
     on_signal: str | None
     when: dict[str, Any] | None = None
     # Context gate using sub-task `when` syntax: `:key` or `!:key`.
-    when_context: str | None = None
+    when_context: ContextCondition | None = None
 
 
 @dataclass(frozen=True)

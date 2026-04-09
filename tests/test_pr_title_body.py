@@ -8,7 +8,7 @@ from propagate_app.config_git import parse_git_pr_config
 from propagate_app.context_store import ensure_context_dir, write_context_value
 from propagate_app.errors import PropagateError
 from propagate_app.git_runtime import load_pr_title_body
-from propagate_app.models import ActiveSignal, GitPrConfig, GitRunState, RuntimeContext
+from propagate_app.models import ActiveSignal, GitPrConfig, GitRunState, RuntimeContext, ScopedContextKey
 
 # ---------------------------------------------------------------------------
 # Parse tests
@@ -18,22 +18,22 @@ from propagate_app.models import ActiveSignal, GitPrConfig, GitRunState, Runtime
 def test_parse_title_key_valid():
     result = parse_git_pr_config("ex", {"title_key": ":pr-title"})
     assert result is not None
-    assert result.title_key == ":pr-title"
+    assert result.title_key == ScopedContextKey(key=":pr-title")
     assert result.body_key is None
 
 
 def test_parse_body_key_valid():
     result = parse_git_pr_config("ex", {"body_key": ":pr-body"})
     assert result is not None
-    assert result.body_key == ":pr-body"
+    assert result.body_key == ScopedContextKey(key=":pr-body")
     assert result.title_key is None
 
 
 def test_parse_both_keys():
     result = parse_git_pr_config("ex", {"title_key": ":pr-title", "body_key": ":pr-body"})
     assert result is not None
-    assert result.title_key == ":pr-title"
-    assert result.body_key == ":pr-body"
+    assert result.title_key == ScopedContextKey(key=":pr-title")
+    assert result.body_key == ScopedContextKey(key=":pr-body")
 
 
 def test_parse_templates():
@@ -80,7 +80,7 @@ def _make_runtime_context(context_root: Path) -> RuntimeContext:
         working_dir=Path("."),
         context_root=context_root,
         execution_name="my-exec",
-        task_id="",
+        task_id="task-1",
         git_state=GitRunState(),
     )
 

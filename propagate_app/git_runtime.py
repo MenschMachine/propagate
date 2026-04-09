@@ -2,6 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .constants import LOGGER
+from .context_refs import coerce_scoped_context_key, read_scoped_context_value, write_scoped_context_value
 from .context_store import ensure_context_dir, read_context_value, resolve_execution_context_dir, write_context_value
 from .errors import PropagateError
 from .git_publish import (
@@ -63,9 +64,9 @@ def git_do_branch(execution_name: str, git_config: GitConfig, runtime_context: R
         return
     branch_config = git_config.branch
     if branch_config.name_key is not None:
-        context_dir = resolve_execution_context_dir(runtime_context)
-        resolved_name = read_context_value(context_dir, branch_config.name_key)
-        LOGGER.debug("Resolved branch name from context key '%s': '%s'.", branch_config.name_key, resolved_name)
+        name_ref = coerce_scoped_context_key(branch_config.name_key)
+        resolved_name = read_scoped_context_value(runtime_context, name_ref)
+        LOGGER.debug("Resolved branch name from context key '%s': '%s'.", name_ref.key, resolved_name)
         branch_config = GitBranchConfig(
             name=resolved_name, base=branch_config.base, reuse=branch_config.reuse,
         )
@@ -211,16 +212,17 @@ def load_pr_title_body(pr_config: GitPrConfig, commit_message: str, runtime_cont
         and pr_config.body_template is None
     ):
         return title, body
-    context_dir = resolve_execution_context_dir(runtime_context)
     if pr_config.title_key is not None:
-        title = read_context_value(context_dir, pr_config.title_key)
-        LOGGER.debug("Loaded PR title from context key '%s'.", pr_config.title_key)
+        title_ref = coerce_scoped_context_key(pr_config.title_key)
+        title = read_scoped_context_value(runtime_context, title_ref)
+        LOGGER.debug("Loaded PR title from context key '%s'.", title_ref.key)
     elif pr_config.title_template is not None:
         title = render_git_template(pr_config.title_template, runtime_context)
         LOGGER.debug("Rendered PR title from template '%s'.", pr_config.title_template)
     if pr_config.body_key is not None:
-        body = read_context_value(context_dir, pr_config.body_key)
-        LOGGER.debug("Loaded PR body from context key '%s'.", pr_config.body_key)
+        body_ref = coerce_scoped_context_key(pr_config.body_key)
+        body = read_scoped_context_value(runtime_context, body_ref)
+        LOGGER.debug("Loaded PR body from context key '%s'.", body_ref.key)
     elif pr_config.body_template is not None:
         body = render_git_template(pr_config.body_template, runtime_context)
         LOGGER.debug("Rendered PR body from template '%s'.", pr_config.body_template)
@@ -258,10 +260,9 @@ def create_execution_git_pr(
             pr_number = pr_url.rstrip("/").split("/")[-1]
             if not pr_number.isdigit():
                 raise PropagateError(f"Could not extract PR number from URL '{pr_url}'.")
-            context_dir = resolve_execution_context_dir(runtime_context)
-            ensure_context_dir(context_dir)
-            write_context_value(context_dir, git_config.pr.number_key, pr_number)
-            LOGGER.debug("Stored PR number '%s' to context key '%s'.", pr_number, git_config.pr.number_key)
+            number_ref = coerce_scoped_context_key(git_config.pr.number_key)
+            write_scoped_context_value(runtime_context, number_ref, pr_number)
+            LOGGER.debug("Stored PR number '%s' to context key '%s'.", pr_number, number_ref.key)
     except PropagateError as error:
         raise wrap_execution_git_phase_error(execution_name, "PR creation", error) from error
 
