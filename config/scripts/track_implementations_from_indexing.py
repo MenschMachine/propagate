@@ -46,6 +46,11 @@ def run_json(cmd: list[str], *, check: bool = True, default=None):
         return default
 
 
+def _repo_owner_name(repo_full_name: str) -> tuple[str, str]:
+    owner, name = repo_full_name.split("/", 1)
+    return owner, name
+
+
 def read_global_context(key: str) -> str:
     result = subprocess.run(
         ["propagate", "context", "get", "--global", key],
@@ -117,18 +122,76 @@ def gh_pr_details(number: int) -> dict | None:
     )
 
 
-def gh_pr_for_commit(commit_sha: str, *, consider_unmerged_prs: bool = False) -> dict | None:
+def gh_pr_numbers_for_commit_rest(commit_sha: str) -> list[int]:
     prs = run_json(
         ["gh", "api", f"repos/{WWW_REPO}/commits/{commit_sha}/pulls"],
         default=[],
     )
-    if not prs:
+    numbers: list[int] = []
+    for pr in prs or []:
+        number = pr.get("number")
+        if isinstance(number, int):
+            numbers.append(number)
+    return numbers
+
+
+def gh_pr_numbers_for_commit_graphql(commit_sha: str) -> list[int]:
+    owner, name = _repo_owner_name(WWW_REPO)
+    query = """
+query($owner: String!, $name: String!, $oid: GitObjectID!) {
+  repository(owner: $owner, name: $name) {
+    object(oid: $oid) {
+      ... on Commit {
+        associatedPullRequests(first: 20) {
+          nodes {
+            number
+          }
+        }
+      }
+    }
+  }
+}
+"""
+    data = run_json(
+        [
+            "gh",
+            "api",
+            "graphql",
+            "-f",
+            f"owner={owner}",
+            "-f",
+            f"name={name}",
+            "-f",
+            f"oid={commit_sha}",
+            "-f",
+            f"query={query}",
+        ],
+        default={},
+    )
+    nodes = (
+        data.get("data", {})
+        .get("repository", {})
+        .get("object", {})
+        .get("associatedPullRequests", {})
+        .get("nodes", [])
+    )
+    numbers: list[int] = []
+    for node in nodes or []:
+        number = node.get("number")
+        if isinstance(number, int):
+            numbers.append(number)
+    return numbers
+
+
+def gh_pr_for_commit(commit_sha: str, *, consider_unmerged_prs: bool = False) -> dict | None:
+    numbers = gh_pr_numbers_for_commit_rest(commit_sha)
+    if not numbers:
+        log.info("PR lookup for commit %s: REST commit->pulls returned no matches, trying GraphQL fallback", commit_sha)
+        numbers = gh_pr_numbers_for_commit_graphql(commit_sha)
+    if not numbers:
         return None
     candidates = []
-    for pr in prs:
-        number = pr.get("number")
-        if not isinstance(number, int):
-            continue
+    for number in sorted(set(numbers)):
         details = gh_pr_details(number)
         if details is not None:
             candidates.append(details)
