@@ -6,6 +6,10 @@
       ref:
         type: string
         required: true
+      before:
+        type: string
+      after:
+        type: string
       head_commit_sha:
         type: string
       sender:
