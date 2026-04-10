@@ -15,9 +15,11 @@ sys.path.insert(0, str(REPO_ROOT / "config" / "scripts"))
 from changed_url_payload import build_changed_url_payload  # noqa: E402
 from track_implementations_from_indexing import (  # noqa: E402
     extract_issue_numbers_from_pr,
+    has_equivalent_pending_entry,
     load_payload,
     normalize_change,
     parse_issue_like_body,
+    resolve_issue_metadata,
     select_best_pr_candidate,
     suggestion_type_from_metadata,
     url_matches_issue_page,
@@ -270,3 +272,67 @@ def test_select_best_pr_candidate_can_include_unmerged_for_testing() -> None:
     selected_with_unmerged = select_best_pr_candidate(prs, consider_unmerged_prs=True)
     assert selected_with_unmerged is not None
     assert selected_with_unmerged["number"] == 124
+
+
+def test_resolve_issue_metadata_reports_explicit_scope_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    pr_data = {
+        "closingIssuesReferences": [{"number": 115}],
+        "body": "",
+    }
+
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_issue",
+        lambda number: {
+            "url": "https://github.com/MenschMachine/pdfdancer-www/issues/115",
+            "body": (
+                "**Page:** `/sdk/fastapi/`\n"
+                "**Action:** `new-page`\n"
+                "**Diagnosis:** `technical`\n"
+            ),
+        },
+    )
+
+    metadata, has_explicit_scope = resolve_issue_metadata(pr_data, "/sdk/python/")
+
+    assert metadata is None
+    assert has_explicit_scope is True
+
+
+def test_has_equivalent_pending_entry_matches_same_event_identity() -> None:
+    entries = [
+        {
+            "url": "/sdk/fastapi/",
+            "date_implemented": "2026-04-10",
+            "suggestion_source": "https://github.com/MenschMachine/pdfdancer-www/issues/115",
+            "change": "Create a dedicated page for /sdk/fastapi/",
+            "status": "pending",
+        }
+    ]
+    candidate = {
+        "url": "/sdk/fastapi/",
+        "date_implemented": "2026-04-10",
+        "suggestion_source": "https://github.com/MenschMachine/pdfdancer-www/issues/115",
+        "change": "Create a dedicated page for /sdk/fastapi/",
+        "status": "pending",
+    }
+    assert has_equivalent_pending_entry(entries, candidate) is True
+
+
+def test_has_equivalent_pending_entry_allows_new_change_on_same_url() -> None:
+    entries = [
+        {
+            "url": "/sdk/fastapi/",
+            "date_implemented": "2026-04-09",
+            "suggestion_source": "https://github.com/MenschMachine/pdfdancer-www/issues/115",
+            "change": "Create a dedicated page for /sdk/fastapi/",
+            "status": "pending",
+        }
+    ]
+    candidate = {
+        "url": "/sdk/fastapi/",
+        "date_implemented": "2026-04-10",
+        "suggestion_source": "https://github.com/MenschMachine/pdfdancer-www/issues/115",
+        "change": "Refresh page content for /sdk/fastapi/",
+        "status": "pending",
+    }
+    assert has_equivalent_pending_entry(entries, candidate) is False

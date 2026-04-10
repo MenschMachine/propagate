@@ -274,12 +274,13 @@ def extract_issue_numbers_from_pr(pr_data: dict | None) -> list[int]:
     return sorted(numbers)
 
 
-def resolve_issue_metadata(pr_data: dict | None, url_path: str) -> dict | None:
+def resolve_issue_metadata(pr_data: dict | None, url_path: str) -> tuple[dict | None, bool]:
     if not pr_data:
         log.info("Issue lookup for %s: no PR data available", url_path)
-        return None
+        return None, False
     best_metadata = None
     best_score = -1
+    has_explicit_issue_scope = False
     issue_numbers = extract_issue_numbers_from_pr(pr_data)
     log.info("Issue lookup for %s: candidate issue numbers=%s", url_path, issue_numbers)
     for issue_number in issue_numbers:
@@ -293,6 +294,8 @@ def resolve_issue_metadata(pr_data: dict | None, url_path: str) -> dict | None:
         if not action and not diagnosis:
             log.info("Issue lookup for %s: issue %s missing action/diagnosis", url_path, issue["url"])
             continue
+        if parsed.get("page"):
+            has_explicit_issue_scope = True
         score = url_matches_issue_page(url_path, parsed.get("page"))
         log.info(
             "Issue lookup for %s: issue=%s page=%r action=%r diagnosis=%r score=%d",
@@ -324,7 +327,7 @@ def resolve_issue_metadata(pr_data: dict | None, url_path: str) -> dict | None:
         log.info("Metadata source for %s: linked issue %s (match_score=%d)", url_path, best_metadata["source"], best_score)
     else:
         log.info("Issue lookup for %s: no usable issue metadata", url_path)
-    return best_metadata
+    return best_metadata, has_explicit_issue_scope
 
 
 def resolve_pr_metadata(pr_data: dict | None, url_path: str) -> dict | None:
@@ -423,8 +426,20 @@ def snapshot_indexed_content(url_path: str, suggestion_type: str, data_dir: Path
     return {"title": title or "", "description": description or ""}
 
 
-def has_pending_entry(entries: list[dict], url_path: str) -> bool:
-    return any(entry.get("url") == url_path and entry.get("status") == "pending" for entry in entries)
+def has_equivalent_pending_entry(entries: list[dict], candidate: dict) -> bool:
+    for entry in entries:
+        if entry.get("status") != "pending":
+            continue
+        if entry.get("url") != candidate.get("url"):
+            continue
+        if entry.get("date_implemented") != candidate.get("date_implemented"):
+            continue
+        if entry.get("suggestion_source") != candidate.get("suggestion_source"):
+            continue
+        if entry.get("change") != candidate.get("change"):
+            continue
+        return True
+    return False
 
 
 def build_entry(url_path: str, metadata: dict, implemented_on: date, data_dir: Path) -> dict:
@@ -494,10 +509,14 @@ def main() -> str:
     appended = []
     skipped = []
     for url_path in changed_paths:
-        if has_pending_entry(entries, url_path):
-            skipped.append({"url": url_path, "reason": "pending entry already exists"})
+        metadata, has_explicit_issue_scope = resolve_issue_metadata(pr_data, url_path)
+        if metadata is None and has_explicit_issue_scope:
+            log.info(
+                "Metadata lookup for %s: skipped (outside linked issue page scope)",
+                url_path,
+            )
+            skipped.append({"url": url_path, "reason": "outside linked issue scope"})
             continue
-        metadata = resolve_issue_metadata(pr_data, url_path)
         if metadata is None:
             log.info("Metadata lookup for %s: falling back to PR body", url_path)
             metadata = resolve_pr_metadata(pr_data, url_path)
@@ -505,6 +524,10 @@ def main() -> str:
             log.info("Metadata lookup for %s: falling back to git reconstruction", url_path)
             metadata = resolve_git_metadata(compare_files, url_path, payload["after"])
         entry = build_entry(url_path, metadata, implemented_on, data_dir)
+        if has_equivalent_pending_entry(entries, entry):
+            log.info("Tracking for %s: skipped (equivalent pending entry already exists)", url_path)
+            skipped.append({"url": url_path, "reason": "equivalent pending entry already exists"})
+            continue
         entries.append(entry)
         appended.append(
             {
