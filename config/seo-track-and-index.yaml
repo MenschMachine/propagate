@@ -1,0 +1,75 @@
+version: "6"
+
+agent:
+  command: 'select-best-agent.sh "Read the file {prompt_file} and follow its instructions."'
+
+context_sources:
+  changed-url-payload:
+    command: "python ${PROPAGATE_CONFIG_DIR}/scripts/detect_changed_urls.py"
+  seo-track-commit:
+    command: 'printf "seo: track implementations %s\n" "$(date -u +%Y-%m-%d)"'
+
+repositories:
+  pdfdancer-www:
+    url: git@github.com:MenschMachine/pdfdancer-www.git
+  pdfdancer-marketing-data:
+    url: git@github.com:MenschMachine/pdfdancer-marketing-data.git
+
+signals:
+  include:
+    - signals/default.yaml
+    - signals/github-signals.yaml
+
+executions:
+  detect-changes:
+    repository: pdfdancer-www
+    signals:
+      - signal: push
+        when:
+          repository: MenschMachine/pdfdancer-www
+          ref: refs/heads/main
+    sub_tasks:
+      - id: capture-changed-urls
+        before:
+          - :changed-url-payload
+          - propagate context set --global :changed-url-payload "$(propagate context get :changed-url-payload)"
+  track-implementations:
+    repository: pdfdancer-marketing-data
+    git:
+      branch:
+        name: main
+        base: main
+        reuse: true
+      commit:
+        message_source: seo-track-commit
+      push:
+        remote: origin
+    before:
+      - git:branch
+    sub_tasks:
+      - id: track
+        before:
+          - python ${PROPAGATE_CONFIG_DIR}/scripts/track_implementations_from_indexing.py
+    after:
+      - git:commit
+      - git:push
+  request-index:
+    repository: pdfdancer-www
+    depends_on:
+      - track-implementations
+    sub_tasks:
+      - id: wait-for-deploy
+        before:
+          - 'echo "Waiting 10 minutes for Cloudflare Pages to deploy..."'
+          - 'sleep 600'
+      - id: submit-to-google
+        before:
+          - venv/bin/pip install -r ${PROPAGATE_CONFIG_DIR}/scripts/requirements-indexing.txt
+          - 'venv/bin/python ${PROPAGATE_CONFIG_DIR}/scripts/submit_request_indexing.py --payload-json "$(propagate context get --global :changed-url-payload)"'
+
+propagation:
+  triggers:
+    - after: detect-changes
+      run: track-implementations
+    - after: track-implementations
+      run: request-index

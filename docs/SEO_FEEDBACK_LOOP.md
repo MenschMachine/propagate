@@ -8,10 +8,11 @@ performance in subsequent runs.
 ```
 Weekly run:
   pull-data → evaluate-implementations → intent-match → analyze → plan-seo → implement-seo
-                                                                                 ↓
-                                                                    track-implementations → request-index
                      ↑
                      └──────────── reads ledger entries written by ─────────────┘
+
+Push-triggered indexing run:
+  detect-changes → track-implementations → request-index
 ```
 
 Two executions own the ledger (`data/feedback/implementations.yaml`), with clear separation:
@@ -33,7 +34,7 @@ They should avoid prescribing a generic section template that implementation mer
 
 Approval gates matter in the middle of the DAG:
 - `plan-seo` only hands off to `implement-seo` after its planning PR is approved
-- `implement-seo` only hands off to `track-implementations` after its implementation PR is approved
+- `implement-seo` only hands off to the request-indexing pipeline after its implementation PR is approved
 
 ## Context scope
 
@@ -41,7 +42,8 @@ SEO handoff keys use **global context** as the source of truth across executions
 evaluation results, intent-match output, analyze findings, implementation briefs, changed URLs, and indexing results.
 
 Execution-local context is reserved for loop-control state such as review findings, brief revision flags, approval
-gates, and check status.
+gates, and check status. The request-indexing pipeline also stores a global `:changed-url-payload` so the changed URLs
+detected in `pdfdancer-www` can be consumed later by `track-implementations` in `pdfdancer-marketing-data`.
 
 The remaining local-to-global copy hooks exist only where a context-source shorthand still writes to execution scope
 first. Treat those copies as producer-side compatibility shims, not the canonical handoff contract.
@@ -206,7 +208,8 @@ indexed_at_implementation:
   description: "Build PDF apps with our Node.js SDK..."
 ```
 
-Recorded by track-implementations when page content data exists. Omitted when no page content is available.
+Recorded by track-implementations when page content data exists for a `meta` suggestion. Omitted when no page content
+is available.
 
 ### Deployment statuses
 
@@ -221,16 +224,18 @@ in the evaluation summary JSON and is surfaced in the analyze report as a techni
 
 ## Execution: `track-implementations`
 
-Runs on pdfdancer-marketing-data. Triggers after `implement-seo` completes. Sole owner of ledger
+Runs on pdfdancer-marketing-data in the push-triggered request-indexing pipeline. Sole owner of ledger
 **append** writes.
 
 **Tasks**:
-1. Read changed URLs from `implement-seo`
-2. Match each changed URL to its applied implementation brief metadata for type and change description
-3. Pull trailing 4 weeks of GSC data as baseline (raw weeks + averages)
-4. Calculate `min_impressions_for_eval` using the type multiplier
-5. Append entries to `data/feedback/implementations.yaml`
-6. Commit to main
+1. Read changed URLs plus before/after refs from the shared changed-url payload
+2. Resolve metadata for each URL from the merged PR's linked issue when available
+3. Fall back to the PR body when no linked issue contains matching metadata
+4. Fall back to reconstructing metadata from compare diffs only when GitHub metadata is insufficient
+5. Pull trailing 4 weeks of GSC data as baseline (raw weeks + averages)
+6. Calculate `min_impressions_for_eval` using the type multiplier
+7. Append entries to `data/feedback/implementations.yaml`
+8. Commit to main
 
 ## Execution: `evaluate-implementations`
 
@@ -254,7 +259,8 @@ source. The script:
 ## Deployment Gate for Indexing
 
 The `request-index` execution waits for the final implementation PR to be merged and deployed before requesting Google
-re-indexing.
+re-indexing. In the request-indexing pipeline it runs after changed URLs have been captured and the ledger entries have
+been appended.
 
 Cloudflare Pages auto-deploys from the main branch. When the implementation PR is merged, GitHub fires a `push` webhook
 targeting `refs/heads/main`. The `wait-for-deploy` sub-task blocks on this signal, then a 10-minute delay (`sleep 600`)
