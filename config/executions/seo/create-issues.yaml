@@ -1,0 +1,5 @@
+create-issues:
+  repository: pdfdancer-www
+  sub_tasks:
+    - id: create-issues
+      prompt: ./prompts/seo/create-issues.md
