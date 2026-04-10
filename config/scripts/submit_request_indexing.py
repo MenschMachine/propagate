@@ -54,13 +54,45 @@ def submit_url(service, url):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Submit changed URLs for indexing")
+    parser.add_argument("--before", help="Git ref for previous state")
+    parser.add_argument("--after", help="Git ref for current state")
+    args = parser.parse_args()
+
+    before_ref = args.before
+    after_ref = args.after
+
+    # Fallback to Propagate context store if not provided via CLI
+    if not before_ref or not after_ref:
+        context_root = os.environ.get("PROPAGATE_CONTEXT_ROOT")
+        execution = os.environ.get("PROPAGATE_EXECUTION")
+        if context_root and execution:
+            context_dir = Path(context_root) / execution
+            if not before_ref:
+                before_file = context_dir / ":signal.before"
+                if before_file.exists():
+                    before_ref = before_file.read_text(encoding="utf-8").strip()
+            if not after_ref:
+                after_file = context_dir / ":signal.after"
+                if after_file.exists():
+                    after_ref = after_file.read_text(encoding="utf-8").strip()
+
+    # Ultimate fallback if context store does not have it (e.g., manual execution without signals)
+    if not before_ref:
+        before_ref = "HEAD~1"
+    if not after_ref:
+        after_ref = "HEAD"
+
+    log.debug("Comparing %s with %s", before_ref, after_ref)
+
     filepath = "src/data/lastmod.json"
 
     # Ensure we have history to compare if we are in a shallow clone
     subprocess.run(["git", "fetch", "origin", "main"], capture_output=True)
 
-    old_data = get_git_file_content("HEAD~1", filepath)
-    new_data = get_git_file_content("HEAD", filepath)
+    old_data = get_git_file_content(before_ref, filepath)
+    new_data = get_git_file_content(after_ref, filepath)
 
     changed_urls = []
     for path, mod_time in new_data.items():
