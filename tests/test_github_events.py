@@ -71,6 +71,8 @@ def test_pull_request_closed_includes_merged_flag():
 def test_push_event():
     body = {
         "ref": "refs/heads/main",
+        "before": "abc111",
+        "after": "def222",
         "head_commit": {"id": "abc123def"},
         "repository": {"full_name": "owner/repo"},
         "sender": {"login": "carol"},
@@ -80,6 +82,8 @@ def test_push_event():
     signal_name, payload = result
     assert signal_name == "push"
     assert payload["ref"] == "refs/heads/main"
+    assert payload["before"] == "abc111"
+    assert payload["after"] == "def222"
     assert payload["head_commit_sha"] == "abc123def"
     assert payload["repository"] == "owner/repo"
     assert payload["sender"] == "carol"
@@ -88,6 +92,8 @@ def test_push_event():
 def test_push_event_without_head_commit():
     body = {
         "ref": "refs/heads/main",
+        "before": "abc111",
+        "after": "def222",
         "head_commit": None,
         "repository": {"full_name": "owner/repo"},
         "sender": {"login": "carol"},
@@ -95,6 +101,8 @@ def test_push_event_without_head_commit():
     result = parse_github_event("push", body)
     assert result is not None
     _, payload = result
+    assert payload["before"] == "abc111"
+    assert payload["after"] == "def222"
     assert payload["head_commit_sha"] == ""
 
 

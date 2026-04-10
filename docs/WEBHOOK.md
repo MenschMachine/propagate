@@ -86,6 +86,8 @@ Unsupported event types are ignored with a 200 response.
 |-------|-------------|
 | `repository` | `owner/repo` |
 | `ref` | Git ref (e.g. `refs/heads/main`) |
+| `before` | Previous commit SHA for the push |
+| `after` | New commit SHA for the push |
 | `head_commit_sha` | HEAD commit SHA |
 | `sender` | GitHub username |
 

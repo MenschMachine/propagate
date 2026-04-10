@@ -48,6 +48,8 @@ def extract_push_payload(body: dict[str, Any]) -> dict[str, Any]:
     return {
         "repository": repo.get("full_name", ""),
         "ref": body.get("ref", ""),
+        "before": body.get("before", ""),
+        "after": body.get("after", ""),
         "head_commit_sha": head_commit.get("id", ""),
         "sender": body.get("sender", {}).get("login", ""),
     }
