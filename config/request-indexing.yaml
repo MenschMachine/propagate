@@ -1,10 +1,7 @@
 version: "6"
 
 agents:
-  default:
-    command: 'select-best-agent.sh "Read the file {prompt_file} and follow its instructions."'
-
-agent: default
+  command: 'select-best-agent.sh "Read the file {prompt_file} and follow its instructions."'
 
 repositories:
   pdfdancer-www:
