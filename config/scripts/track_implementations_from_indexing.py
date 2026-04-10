@@ -78,27 +78,89 @@ def save_ledger(path: Path, entries: list[dict]) -> None:
     path.write_text(yaml.dump(entries, sort_keys=False, default_flow_style=False), encoding="utf-8")
 
 
-def gh_pr_for_commit(commit_sha: str) -> dict | None:
+def _pr_rank_key(pr: dict) -> tuple[str, str, int]:
+    merged_at = pr.get("mergedAt") or ""
+    updated_at = pr.get("updatedAt") or ""
+    number = int(pr.get("number") or 0)
+    return (merged_at, updated_at, number)
+
+
+def select_best_pr_candidate(prs: list[dict], *, consider_unmerged_prs: bool = False) -> dict | None:
+    if not prs:
+        return None
+    filtered = prs
+    if not consider_unmerged_prs:
+        merged_only = [pr for pr in prs if pr.get("mergedAt")]
+        if merged_only:
+            filtered = merged_only
+        return max(filtered, key=_pr_rank_key)
+
+    def latest_key(pr: dict) -> tuple[str, int]:
+        return (pr.get("updatedAt") or "", int(pr.get("number") or 0))
+
+    return max(filtered, key=latest_key)
+
+
+def gh_pr_details(number: int) -> dict | None:
+    return run_json(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(number),
+            "--repo",
+            WWW_REPO,
+            "--json",
+            "body,url,number,title,closingIssuesReferences,mergedAt,updatedAt,state,baseRefName",
+        ],
+        default=None,
+    )
+
+
+def gh_pr_for_commit(commit_sha: str, *, consider_unmerged_prs: bool = False) -> dict | None:
     prs = run_json(
         ["gh", "api", f"repos/{WWW_REPO}/commits/{commit_sha}/pulls"],
         default=[],
     )
     if not prs:
         return None
-    pr = prs[0]
-    return run_json(
-        [
-            "gh",
-            "pr",
-            "view",
-            str(pr["number"]),
-            "--repo",
-            WWW_REPO,
-            "--json",
-            "body,url,number,title,closingIssuesReferences",
-        ],
-        default=None,
+    candidates = []
+    for pr in prs:
+        number = pr.get("number")
+        if not isinstance(number, int):
+            continue
+        details = gh_pr_details(number)
+        if details is not None:
+            candidates.append(details)
+    if not candidates:
+        return None
+    log.info(
+        "PR lookup for commit %s: candidate numbers=%s",
+        commit_sha,
+        [c.get("number") for c in candidates],
     )
+    for candidate in candidates:
+        log.info(
+            "PR candidate #%s (state=%s mergedAt=%s base=%s updatedAt=%s)",
+            candidate.get("number"),
+            candidate.get("state"),
+            candidate.get("mergedAt"),
+            candidate.get("baseRefName"),
+            candidate.get("updatedAt"),
+        )
+    selected = select_best_pr_candidate(candidates, consider_unmerged_prs=consider_unmerged_prs)
+    if selected is not None:
+        log.info(
+            "PR lookup for commit %s: selected PR #%s (state=%s mergedAt=%s base=%s updatedAt=%s consider_unmerged_prs=%s)",
+            commit_sha,
+            selected.get("number"),
+            selected.get("state"),
+            selected.get("mergedAt"),
+            selected.get("baseRefName"),
+            selected.get("updatedAt"),
+            consider_unmerged_prs,
+        )
+    return selected
 
 
 def gh_issue(number: int) -> dict | None:
@@ -142,6 +204,29 @@ def parse_issue_like_body(body: str) -> dict:
     }
 
 
+def normalize_path(value: str | None) -> str | None:
+    if not value:
+        return None
+    if not value.startswith("/"):
+        value = f"/{value}"
+    if value != "/" and value.endswith("/"):
+        value = value[:-1]
+    return value
+
+
+def url_matches_issue_page(url_path: str, issue_page: str | None) -> int:
+    """Return a match score: 0=no match, 2=prefix match, 3=exact match."""
+    normalized_url = normalize_path(url_path)
+    normalized_issue = normalize_path(issue_page)
+    if not normalized_url or not normalized_issue:
+        return 0
+    if normalized_url == normalized_issue:
+        return 3
+    if normalized_issue != "/" and normalized_url.startswith(f"{normalized_issue}/"):
+        return 2
+    return 0
+
+
 def suggestion_type_from_metadata(action: str | None, diagnosis: str | None) -> str:
     normalized_action = (action or "").strip().lower()
     normalized_diagnosis = (diagnosis or "").strip().lower()
@@ -172,38 +257,92 @@ def normalize_change(action: str | None, must_change: str | None, url_path: str)
     return f"Update page content for {url_path}"
 
 
+def extract_issue_numbers_from_pr(pr_data: dict | None) -> list[int]:
+    if not pr_data:
+        return []
+    numbers: set[int] = set()
+    for issue_ref in pr_data.get("closingIssuesReferences") or []:
+        number = issue_ref.get("number")
+        if isinstance(number, int):
+            numbers.add(number)
+
+    body = pr_data.get("body") or ""
+    for match in re.finditer(r"(?<![A-Za-z0-9_])#(\d+)\b", body):
+        numbers.add(int(match.group(1)))
+    for match in re.finditer(r"github\.com/MenschMachine/pdfdancer-www/issues/(\d+)", body):
+        numbers.add(int(match.group(1)))
+    return sorted(numbers)
+
+
 def resolve_issue_metadata(pr_data: dict | None, url_path: str) -> dict | None:
     if not pr_data:
+        log.info("Issue lookup for %s: no PR data available", url_path)
         return None
-    issues = pr_data.get("closingIssuesReferences") or []
-    for issue_ref in issues:
-        issue_number = issue_ref.get("number")
-        if not issue_number:
-            continue
+    best_metadata = None
+    best_score = -1
+    issue_numbers = extract_issue_numbers_from_pr(pr_data)
+    log.info("Issue lookup for %s: candidate issue numbers=%s", url_path, issue_numbers)
+    for issue_number in issue_numbers:
         issue = gh_issue(issue_number)
         if not issue:
+            log.info("Issue lookup for %s: failed to load issue #%s", url_path, issue_number)
             continue
         parsed = parse_issue_like_body(issue.get("body", ""))
-        if parsed.get("page") != url_path:
+        action = parsed.get("action")
+        diagnosis = parsed.get("diagnosis")
+        if not action and not diagnosis:
+            log.info("Issue lookup for %s: issue %s missing action/diagnosis", url_path, issue["url"])
             continue
-        log.info("Metadata source for %s: linked issue %s", url_path, issue["url"])
-        return {
+        score = url_matches_issue_page(url_path, parsed.get("page"))
+        log.info(
+            "Issue lookup for %s: issue=%s page=%r action=%r diagnosis=%r score=%d",
+            url_path,
+            issue["url"],
+            parsed.get("page"),
+            action,
+            diagnosis,
+            score,
+        )
+        if score == 0:
+            if parsed.get("page") is None:
+                score = 1
+                log.info("Issue lookup for %s: issue %s has no page, using fallback score=%d", url_path, issue["url"], score)
+            else:
+                log.info("Issue lookup for %s: issue %s rejected due to page mismatch", url_path, issue["url"])
+                continue
+        metadata = {
             "source": issue["url"],
-            "action": parsed.get("action"),
-            "diagnosis": parsed.get("diagnosis"),
-            "change": normalize_change(parsed.get("change_type") or parsed.get("action"), parsed.get("must_change"), url_path),
+            "action": action,
+            "diagnosis": diagnosis,
+            "change": normalize_change(parsed.get("change_type") or action, parsed.get("must_change"), url_path),
         }
-    return None
+        if score > best_score:
+            best_score = score
+            best_metadata = metadata
+
+    if best_metadata is not None:
+        log.info("Metadata source for %s: linked issue %s (match_score=%d)", url_path, best_metadata["source"], best_score)
+    else:
+        log.info("Issue lookup for %s: no usable issue metadata", url_path)
+    return best_metadata
 
 
 def resolve_pr_metadata(pr_data: dict | None, url_path: str) -> dict | None:
     if not pr_data:
+        log.info("PR body lookup for %s: no PR data available", url_path)
         return None
     parsed = parse_issue_like_body(pr_data.get("body", ""))
-    if parsed.get("page") and parsed["page"] != url_path:
+    if parsed.get("page") and normalize_path(parsed["page"]) != normalize_path(url_path):
+        log.info(
+            "PR body lookup for %s: rejected due to page mismatch page=%r pr=%s",
+            url_path,
+            parsed.get("page"),
+            pr_data["url"],
+        )
         return None
     action = parsed.get("change_type") or parsed.get("action")
     if not action and not parsed.get("diagnosis"):
+        log.info("PR body lookup for %s: missing action/diagnosis in %s", url_path, pr_data["url"])
         return None
     log.info("Metadata source for %s: PR body %s", url_path, pr_data["url"])
     return {
@@ -316,6 +455,11 @@ def main() -> str:
     parser.add_argument("--date", help="Implementation date override (YYYY-MM-DD)")
     parser.add_argument("--ledger-path", default=str(LEDGER_PATH))
     parser.add_argument("--data-dir", default=str(DATA_DIR))
+    parser.add_argument(
+        "--consider-unmerged-prs",
+        action="store_true",
+        help="Consider unmerged PR candidates for commit->PR resolution (useful for testing).",
+    )
     args = parser.parse_args()
 
     implemented_on = date.fromisoformat(args.date) if args.date else date.today()
@@ -340,7 +484,11 @@ def main() -> str:
     for url_path in changed_paths:
         log.info("Tracking implementation URL: %s", url_path)
 
-    pr_data = gh_pr_for_commit(payload["after"])
+    pr_data = gh_pr_for_commit(payload["after"], consider_unmerged_prs=args.consider_unmerged_prs)
+    if pr_data is None:
+        log.info("Commit %s is not associated with a PR via GitHub API", payload["after"])
+    else:
+        log.info("Resolved PR for commit %s: %s", payload["after"], pr_data.get("url"))
     compare_files = gh_compare_files(payload["before"], payload["after"])
 
     appended = []
@@ -351,8 +499,10 @@ def main() -> str:
             continue
         metadata = resolve_issue_metadata(pr_data, url_path)
         if metadata is None:
+            log.info("Metadata lookup for %s: falling back to PR body", url_path)
             metadata = resolve_pr_metadata(pr_data, url_path)
         if metadata is None:
+            log.info("Metadata lookup for %s: falling back to git reconstruction", url_path)
             metadata = resolve_git_metadata(compare_files, url_path, payload["after"])
         entry = build_entry(url_path, metadata, implemented_on, data_dir)
         entries.append(entry)

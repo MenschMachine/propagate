@@ -14,10 +14,13 @@ sys.path.insert(0, str(REPO_ROOT / "config" / "scripts"))
 
 from changed_url_payload import build_changed_url_payload  # noqa: E402
 from track_implementations_from_indexing import (  # noqa: E402
+    extract_issue_numbers_from_pr,
     load_payload,
     normalize_change,
     parse_issue_like_body,
+    select_best_pr_candidate,
     suggestion_type_from_metadata,
+    url_matches_issue_page,
 )
 
 
@@ -197,3 +200,73 @@ def test_track_requires_non_empty_changed_url_payload(monkeypatch: pytest.Monkey
                 f"before={payload.get('before')!r} after={payload.get('after')!r} "
                 f"lastmod_path={payload.get('lastmod_path')!r}"
             )
+
+
+def test_extract_issue_numbers_from_pr_uses_closing_and_body_refs() -> None:
+    pr_data = {
+        "closingIssuesReferences": [{"number": 12}],
+        "body": "Implements #13 and relates to https://github.com/MenschMachine/pdfdancer-www/issues/14",
+    }
+    numbers = extract_issue_numbers_from_pr(pr_data)
+    assert numbers == [12, 13, 14]
+
+
+def test_url_matches_issue_page_supports_prefix_match() -> None:
+    assert url_matches_issue_page("/sdk/python/", "/sdk/") == 2
+    assert url_matches_issue_page("/sdk/python/", "/sdk/python/") == 3
+    assert url_matches_issue_page("/sdk/python/", "/blog/") == 0
+
+
+def test_select_best_pr_candidate_prefers_latest_merged_by_default() -> None:
+    prs = [
+        {
+            "number": 100,
+            "state": "CLOSED",
+            "baseRefName": "main",
+            "mergedAt": None,
+            "updatedAt": "2026-04-10T12:00:00Z",
+        },
+        {
+            "number": 121,
+            "state": "MERGED",
+            "baseRefName": "main",
+            "mergedAt": "2026-04-10T11:00:00Z",
+            "updatedAt": "2026-04-10T11:01:00Z",
+        },
+        {
+            "number": 130,
+            "state": "MERGED",
+            "baseRefName": "main",
+            "mergedAt": "2026-04-10T13:00:00Z",
+            "updatedAt": "2026-04-10T13:01:00Z",
+        },
+    ]
+    selected = select_best_pr_candidate(prs)
+    assert selected is not None
+    assert selected["number"] == 130
+
+
+def test_select_best_pr_candidate_can_include_unmerged_for_testing() -> None:
+    prs = [
+        {
+            "number": 121,
+            "state": "MERGED",
+            "baseRefName": "main",
+            "mergedAt": "2026-04-10T05:07:14Z",
+            "updatedAt": "2026-04-10T05:07:15Z",
+        },
+        {
+            "number": 124,
+            "state": "OPEN",
+            "baseRefName": "main",
+            "mergedAt": None,
+            "updatedAt": "2026-04-10T07:30:00Z",
+        },
+    ]
+    selected = select_best_pr_candidate(prs)
+    assert selected is not None
+    assert selected["number"] == 121
+
+    selected_with_unmerged = select_best_pr_candidate(prs, consider_unmerged_prs=True)
+    assert selected_with_unmerged is not None
+    assert selected_with_unmerged["number"] == 124
