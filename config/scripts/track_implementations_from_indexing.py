@@ -186,6 +186,7 @@ def resolve_issue_metadata(pr_data: dict | None, url_path: str) -> dict | None:
         parsed = parse_issue_like_body(issue.get("body", ""))
         if parsed.get("page") != url_path:
             continue
+        log.info("Metadata source for %s: linked issue %s", url_path, issue["url"])
         return {
             "source": issue["url"],
             "action": parsed.get("action"),
@@ -204,6 +205,7 @@ def resolve_pr_metadata(pr_data: dict | None, url_path: str) -> dict | None:
     action = parsed.get("change_type") or parsed.get("action")
     if not action and not parsed.get("diagnosis"):
         return None
+    log.info("Metadata source for %s: PR body %s", url_path, pr_data["url"])
     return {
         "source": pr_data["url"],
         "action": action,
@@ -227,6 +229,7 @@ def resolve_git_metadata(compare_files: list[dict], url_path: str, commit_sha: s
     else:
         action = "refresh"
         diagnosis = "content-quality"
+    log.info("Metadata source for %s: git reconstruction from %s", url_path, commit_sha)
     return {
         "source": f"git-reconstructed:{commit_sha}",
         "action": action,
