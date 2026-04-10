@@ -75,8 +75,8 @@ def test_build_changed_url_payload_detects_lastmod_deltas() -> None:
     assert payload["after"] == "new"
     assert payload["changed_paths"] == ["/sdk/java/", "/sdk/nodejs/"]
     assert payload["changed_urls"] == [
-        "https://pdfdancer.com/sdk/java/",
-        "https://pdfdancer.com/sdk/nodejs/",
+        "https://www.pdfdancer.com/sdk/java/",
+        "https://www.pdfdancer.com/sdk/nodejs/",
     ]
 
 

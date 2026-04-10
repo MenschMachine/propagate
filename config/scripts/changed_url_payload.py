@@ -12,7 +12,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 LASTMOD_PATH = "src/data/lastmod.json"
-PRODUCTION_ORIGIN = "https://pdfdancer.com"
+PRODUCTION_ORIGIN = "https://www.pdfdancer.com"
 
 
 def get_git_file_content(ref: str, filepath: str, runner=subprocess.run) -> dict:
