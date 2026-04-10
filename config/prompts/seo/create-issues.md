@@ -8,24 +8,130 @@ propagate context get --global :findings
 
 For each finding where `Recommended action class` is not `defer`, check for a duplicate GitHub issue and create one if none exists.
 
-## Duplicate check
-
-Before creating an issue, search for existing open and closed issues:
-
-```bash
-gh issue list --repo MenschMachine/pdfdancer-www --state all --search "SEO: <short title>" --json title --jq '.[].title'
-```
-
-If a matching issue already exists, skip it.
-
 ## Issue title
 
-`SEO: <concise description of the problem and page>` — under 80 characters.
+Titles use a fixed slug so duplicate detection is reliable across runs:
+
+- For findings with a page path: `SEO [/path/]: <concise description>`
+- For `new-page` findings with no existing path: `SEO [query:<primary query>]: <concise description>`
 
 Good examples:
-- `SEO: Low CTR on /convert/ despite high impressions`
-- `SEO: Intent mismatch on /sdk/java/ — rewrite for evaluators`
-- `SEO: New page needed for "pdf redaction api" queries`
+- `SEO [/convert/]: Low CTR despite high impressions`
+- `SEO [/sdk/java/]: Intent mismatch — rewrite for evaluators`
+- `SEO [query:pdf redaction api]: New page opportunity`
+
+Keep the full title under 80 characters.
+
+## Duplicate check
+
+Before creating an issue, search using the slug:
+
+```bash
+gh issue list --repo MenschMachine/pdfdancer-www --state all \
+  --search "SEO [/path/]" --json title --jq '.[].title'
+```
+
+For `new-page` findings:
+
+```bash
+gh issue list --repo MenschMachine/pdfdancer-www --state all \
+  --search "SEO [query:pdf redaction api]" --json title --jq '.[].title'
+```
+
+If any returned title contains the slug, an issue already exists. Fetch it:
+
+```bash
+gh issue list --repo MenschMachine/pdfdancer-www --state all \
+  --search "SEO [/path/]" --json number,title,body,state --jq '.[0]'
+```
+
+Read the existing issue body and compare it against the new finding. Determine which of these four cases applies, then post a comment — do not create a new issue.
+
+### Case 1: Validates
+
+Same diagnosis, same action class, evidence pointing in the same direction. The problem persists.
+
+Comment format:
+```
+**SEO re-analysis — YYYY-MM-DD** · Validates
+
+Same problem confirmed. Updated metrics:
+
+| Metric | Value |
+|--------|-------|
+| Impressions | ... |
+| Clicks | ... |
+| CTR | ... |
+| Position | ... |
+| Trend | ... |
+
+<trend history if available, e.g. CTR: 2.1% → 1.4% → 0.58%>
+
+Still recommended action: `<action class>`
+```
+
+### Case 2: Enriches
+
+Same diagnosis and action class, but new data adds context that wasn't in the original — e.g. competitor data now available, intent breakdown added, additional queries surfaced.
+
+Comment format:
+```
+**SEO re-analysis — YYYY-MM-DD** · Enriches
+
+New data adds context to the original finding.
+
+<describe specifically what is new — competitor entries, intent breakdown, additional queries, etc.>
+
+Updated evidence:
+| Metric | Value |
+...
+```
+
+### Case 3: Contradicts
+
+Different diagnosis or different action class. The original framing may be wrong or the problem has shifted.
+
+Comment format:
+```
+**SEO re-analysis — YYYY-MM-DD** · Contradicts
+
+New analysis suggests the real problem has changed. Please re-scope before starting work.
+
+**Was:** `<original diagnosis>` → `<original action class>`
+**Now:** `<new diagnosis>` → `<new action class>`
+
+**Why:** <one sentence explaining what changed and why the new diagnosis is more accurate>
+
+Updated evidence:
+| Metric | Value |
+...
+
+Queries:
+- `<query>` — X impressions, pos Y.Z
+```
+
+### Case 4: Outdated
+
+Metrics have improved meaningfully or the original problem no longer appears in findings. The issue may no longer need doing.
+
+Comment format:
+```
+**SEO re-analysis — YYYY-MM-DD** · Outdated
+
+This page no longer appears as a top finding. The original problem may be resolved.
+
+**Last known metrics:**
+| Metric | Value |
+...
+
+Consider closing this issue if the page no longer shows the original symptoms.
+```
+
+Post the comment:
+
+```bash
+gh issue comment <number> --repo MenschMachine/pdfdancer-www --body "<comment>"
+```
 
 ## Issue body
 
@@ -132,7 +238,7 @@ Create the issue:
 ```bash
 gh issue create \
   --repo MenschMachine/pdfdancer-www \
-  --title "SEO: <title>" \
+  --title "SEO [/path/]: <description>" \
   --label "seo" \
   --label "<diagnosis>" \
   --label "<action-class>" \
