@@ -64,8 +64,9 @@ executions:
           - 'sleep 600'
       - id: submit-to-google
         before:
-          - venv/bin/pip install -r ${PROPAGATE_CONFIG_DIR}/scripts/requirements-indexing.txt
-          - 'venv/bin/python ${PROPAGATE_CONFIG_DIR}/scripts/submit_request_indexing.py --payload-json "$(propagate context get --global :changed-url-payload)"'
+          - python3 -m venv .venv
+          - .venv/bin/pip install -r ${PROPAGATE_CONFIG_DIR}/scripts/requirements-indexing.txt
+          - '.venv/bin/python ${PROPAGATE_CONFIG_DIR}/scripts/submit_request_indexing.py --payload-json "$(propagate context get --global :changed-url-payload)"'
 
 propagation:
   triggers:
