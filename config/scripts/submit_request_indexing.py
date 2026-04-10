@@ -14,7 +14,9 @@ from googleapiclient.discovery import build
 
 log = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+CONFIG_ROOT = SCRIPT_DIR.parent
+REPO_ROOT = CONFIG_ROOT.parent
 SCOPES = ["https://www.googleapis.com/auth/indexing"]
 load_dotenv(REPO_ROOT / ".env")
 
