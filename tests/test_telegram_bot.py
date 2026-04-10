@@ -215,6 +215,11 @@ def test_parse_chat_ids_invalid():
         _parse_chat_ids("123,abc", "--notify-chats")
 
 
+def test_run_completed_is_a_notify_event():
+    from propagate_telegram.bot import _TELEGRAM_NOTIFY_EVENTS
+    assert "run_completed" in _TELEGRAM_NOTIFY_EVENTS
+
+
 # ---------------------------------------------------------------------------
 # Handler tests (mock Telegram, real ZMQ)
 # ---------------------------------------------------------------------------
