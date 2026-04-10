@@ -318,9 +318,24 @@ def main() -> str:
     implemented_on = date.fromisoformat(args.date) if args.date else date.today()
     payload = load_payload(args.payload_json)
     changed_paths = payload.get("changed_paths", [])
+    if not changed_paths:
+        raise RuntimeError(
+            "Changed URL payload is empty. "
+            f"before={payload.get('before')!r} after={payload.get('after')!r} "
+            f"lastmod_path={payload.get('lastmod_path')!r}"
+    )
     ledger_path = Path(args.ledger_path)
     data_dir = Path(args.data_dir)
     entries = load_ledger(ledger_path)
+
+    log.info(
+        "Tracking implementations from payload: before=%s after=%s changed_count=%d",
+        payload.get("before"),
+        payload.get("after"),
+        len(changed_paths),
+    )
+    for url_path in changed_paths:
+        log.info("Tracking implementation URL: %s", url_path)
 
     pr_data = gh_pr_for_commit(payload["after"])
     compare_files = gh_compare_files(payload["before"], payload["after"])

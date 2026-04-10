@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from propagate import load_config
 
@@ -11,6 +14,7 @@ sys.path.insert(0, str(REPO_ROOT / "config" / "scripts"))
 
 from changed_url_payload import build_changed_url_payload  # noqa: E402
 from track_implementations_from_indexing import (  # noqa: E402
+    load_payload,
     normalize_change,
     parse_issue_like_body,
     suggestion_type_from_metadata,
@@ -50,9 +54,11 @@ def test_build_changed_url_payload_detects_lastmod_deltas() -> None:
 
     def fake_runner(cmd, capture_output, text, check):
         class Result:
-            def __init__(self, stdout: str) -> None:
+            def __init__(self, stdout: str = "") -> None:
                 self.stdout = stdout
 
+        if cmd[:3] == ["git", "rev-parse", "--verify"]:
+            return Result("ok")
         if cmd[:2] == ["git", "fetch"]:
             return Result("")
         ref = cmd[2].split(":", 1)[0]
@@ -93,3 +99,101 @@ def test_parse_issue_body_and_type_mapping() -> None:
     assert normalize_change(parsed["change_type"], parsed["must_change"], parsed["page"]) == (
         "create a dedicated `/sdk/fastapi/` page with implementation-first content."
     )
+
+
+def test_changed_url_payload_reports_count() -> None:
+    outputs = {
+        "old": json.dumps({"/sdk/nodejs/": "a"}),
+        "new": json.dumps({"/sdk/nodejs/": "b"}),
+    }
+
+    def fake_runner(cmd, capture_output, text, check):
+        class Result:
+            def __init__(self, stdout: str = "") -> None:
+                self.stdout = stdout
+
+        if cmd[:3] == ["git", "rev-parse", "--verify"]:
+            return Result("ok")
+        if cmd[:2] == ["git", "fetch"]:
+            return Result("")
+        ref = cmd[2].split(":", 1)[0]
+        return Result(outputs[ref])
+
+    payload = build_changed_url_payload("old", "new", runner=fake_runner)
+
+    assert payload["changed_count"] == 1
+
+
+def test_changed_url_payload_rejects_invalid_ref() -> None:
+    outputs = {
+        "new": json.dumps({"/sdk/nodejs/": "b"}),
+    }
+
+    def fake_runner(cmd, capture_output, text, check):
+        class Result:
+            def __init__(self, stdout: str = "", returncode: int = 0) -> None:
+                self.stdout = stdout
+                self.returncode = returncode
+
+        if cmd[:3] == ["git", "rev-parse", "--verify"]:
+            if cmd[3].startswith("bad-ref"):
+                raise subprocess.CalledProcessError(128, cmd, output="", stderr="fatal: bad revision")
+            return Result("ok")
+        if cmd[:2] == ["git", "fetch"]:
+            return Result("")
+        ref = cmd[2].split(":", 1)[0]
+        return Result(outputs.get(ref, "{}"))
+
+    with pytest.raises(RuntimeError, match="Invalid git ref"):
+        build_changed_url_payload("bad-ref", "new", runner=fake_runner)
+
+
+def test_changed_url_payload_trims_ref_whitespace() -> None:
+    outputs = {
+        "old": json.dumps({"/sdk/nodejs/": "a"}),
+        "new": json.dumps({"/sdk/nodejs/": "b"}),
+    }
+
+    def fake_runner(cmd, capture_output, text, check):
+        class Result:
+            def __init__(self, stdout: str = "") -> None:
+                self.stdout = stdout
+
+        if cmd[:3] == ["git", "rev-parse", "--verify"]:
+            return Result("ok")
+        if cmd[:2] == ["git", "fetch"]:
+            return Result("")
+        ref = cmd[2].split(":", 1)[0]
+        return Result(outputs[ref])
+
+    payload = build_changed_url_payload(" old ", " new ", runner=fake_runner)
+
+    assert payload["before"] == "old"
+    assert payload["after"] == "new"
+
+
+def test_track_requires_non_empty_changed_url_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.read_global_context",
+        lambda key: json.dumps(
+            {
+                "before": "abc",
+                "after": "def",
+                "lastmod_path": "src/data/lastmod.json",
+                "changed_count": 0,
+                "changed_paths": [],
+                "changed_urls": [],
+            }
+        ),
+    )
+
+    payload = load_payload(None)
+
+    with pytest.raises(RuntimeError, match="Changed URL payload is empty"):
+        changed_paths = payload.get("changed_paths", [])
+        if not changed_paths:
+            raise RuntimeError(
+                "Changed URL payload is empty. "
+                f"before={payload.get('before')!r} after={payload.get('after')!r} "
+                f"lastmod_path={payload.get('lastmod_path')!r}"
+            )

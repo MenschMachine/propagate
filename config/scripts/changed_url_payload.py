@@ -30,12 +30,31 @@ def get_git_file_content(ref: str, filepath: str, runner=subprocess.run) -> dict
         return {}
 
 
+def validate_git_ref(ref: str, runner=subprocess.run) -> None:
+    try:
+        runner(
+            ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(f"Invalid git ref: {ref!r}") from error
+
+
 def read_signal_ref(context_dir: Path, name: str) -> str | None:
     ref_file = context_dir / f":signal.{name}"
     if not ref_file.exists():
         return None
     value = ref_file.read_text(encoding="utf-8").strip()
     return value or None
+
+
+def normalize_git_ref(ref: str | None) -> str | None:
+    if ref is None:
+        return None
+    trimmed = ref.strip()
+    return trimmed or None
 
 
 def resolve_git_refs(
@@ -45,15 +64,15 @@ def resolve_git_refs(
     context_root: str | None = None,
     execution: str | None = None,
 ) -> tuple[str, str]:
-    resolved_before = before_ref
-    resolved_after = after_ref
+    resolved_before = normalize_git_ref(before_ref)
+    resolved_after = normalize_git_ref(after_ref)
 
     if (not resolved_before or not resolved_after) and context_root and execution:
         context_dir = Path(context_root) / execution
         if not resolved_before:
-            resolved_before = read_signal_ref(context_dir, "before")
+            resolved_before = normalize_git_ref(read_signal_ref(context_dir, "before"))
         if not resolved_after:
-            resolved_after = read_signal_ref(context_dir, "after")
+            resolved_after = normalize_git_ref(read_signal_ref(context_dir, "after"))
 
     if not resolved_before:
         resolved_before = "HEAD~1"
@@ -81,10 +100,18 @@ def build_changed_url_payload(
 
     log.debug("Comparing %s with %s for %s", before_ref, after_ref, lastmod_path)
 
+    validate_git_ref(before_ref, runner=runner)
+    validate_git_ref(after_ref, runner=runner)
     runner(["git", "fetch", "origin", "main"], capture_output=True, text=True, check=False)
 
     old_data = get_git_file_content(before_ref, lastmod_path, runner=runner)
     new_data = get_git_file_content(after_ref, lastmod_path, runner=runner)
+
+    if not new_data:
+        raise RuntimeError(
+            f"Unable to read {lastmod_path} at {after_ref}. "
+            f"Computed refs were before={before_ref!r}, after={after_ref!r}."
+        )
 
     changed_paths: list[str] = []
     for path, mod_time in new_data.items():
@@ -95,10 +122,15 @@ def build_changed_url_payload(
     changed_paths = sorted(set(changed_paths))
     changed_urls = [f"{origin}{path}" for path in changed_paths]
 
+    log.info("Changed URL payload: before=%s after=%s count=%d", before_ref, after_ref, len(changed_urls))
+    for url in changed_urls:
+        log.info("Changed URL payload item: %s", url)
+
     return {
         "before": before_ref,
         "after": after_ref,
         "lastmod_path": lastmod_path,
+        "changed_count": len(changed_paths),
         "changed_paths": changed_paths,
         "changed_urls": changed_urls,
     }

@@ -18,6 +18,11 @@ def main() -> str:
     args = parser.parse_args()
 
     payload = build_changed_url_payload(args.before, args.after)
+    log_message = (
+        f"Resolved changed URL payload from before={payload['before']} "
+        f"after={payload['after']} count={payload['changed_count']}"
+    )
+    print(log_message, file=sys.stderr)
     result = json.dumps(payload)
     print(result)
     return result
