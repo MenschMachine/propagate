@@ -2,7 +2,7 @@ version: "6"
 
 agents:
   default:
-    command: 'claude --dangerously-skip-permissions --permission-mode bypassPermissions --settings /home/michael/.claude/settings-minimax.json -p "Read the file {prompt_file} and follow its instructions."'
+    command: 'select-best-agent.sh "Read the file {prompt_file} and follow its instructions."'
 
 agent: default
 
