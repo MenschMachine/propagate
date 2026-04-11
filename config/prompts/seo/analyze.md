@@ -33,24 +33,24 @@ Evaluate metrics over the last 4 weeks. Look in `reports/` (last 4 `report.md` f
 - **Improving**: Trending upward.
 - **New**: First appearance.
 
-## 2. Optional Enrichments
+## 2. Context & Enrichments
 
-**Intent Match:**
+**Intent Match (Required):**
 ```bash
 propagate context get --global :intent-match
 ```
-If available, include the intent-match table. Use intent data to override diagnosis (e.g., label as intent mismatch instead of a meta issue).
+Read the intent-match table. Use intent data to override diagnosis (e.g., label as intent mismatch instead of a meta issue). *Always determine and include the "Search Intent" for each page in the report.*
 
-**Page Content Diagnosis:**
+**Page Content Diagnosis (Required):**
 ```bash
 ls data/*/pages/*.json 2>/dev/null | head -1
 ```
-If found, load page JSONs (filename is URL path, alphanumeric replaced with `_`, e.g., `how_to_redact_pdfs.json`):
+Load page JSONs (filename is URL path, alphanumeric replaced with `_`, e.g., `how_to_redact_pdfs.json`):
 - **Meta Alignment**: Check if `title` and `meta_description` contain primary query terms. *Must include current indexed title/description in the report.*
 - **Thin Content**: ~500 words or missing H1 entirely.
 - **Implementation Status**: Use `deployment_status` from `:evaluation-results` (`not_yet_indexed` = technical finding, `confirmed_indexed` = skip, `unknown` = skip).
 
-**Enrichment Data:**
+**Enrichment Data (Optional):**
 ```bash
 ls -d data/enrichment/*/ 2>/dev/null | sort -r | head -1
 ```
@@ -69,6 +69,7 @@ If found, use `competitors-*.json` (for striking distance context) and `keyword-
 ### <short finding title>
 - Page: `/path/` or `n/a`
 - Primary query or query set: `...`
+- Search Intent: `...`
 - Diagnosis: `meta`, `intent-mismatch`, `content-depth`, `content-quality`, `structure`, `new-page-opportunity`, or `technical`
 - Why it matters now: `<one sentence with the decision signal>`
 - Evidence:
