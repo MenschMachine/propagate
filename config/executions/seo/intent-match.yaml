@@ -12,7 +12,16 @@ intent-match:
   before:
     - git:branch
   sub_tasks:
+    - id: check-existing-data
+      before:
+        - |
+          TODAY=$(date -u +%Y-%m-%d)
+          if [ -f "reports/$TODAY/intent-match.md" ]; then
+            propagate context set --stdin --global :intent-match < "reports/$TODAY/intent-match.md"
+            propagate context set :intent-exists "true"
+          fi
     - id: intent-match
+      when: "!:intent-exists"
       prompt: ./prompts/seo/intent-match.md
   after:
     - git:commit

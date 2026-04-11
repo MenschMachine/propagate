@@ -90,5 +90,5 @@ propagation:
       run: intent-match
     - after: intent-match
       run: analyze
-    #- after: analyze
-    #  run: create-issues
+    - after: analyze
+      run: create-issues
