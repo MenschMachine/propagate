@@ -18,6 +18,7 @@ from track_implementations_from_indexing import (  # noqa: E402
     gh_pr_for_commit,
     has_equivalent_pending_entry,
     load_payload,
+    main,
     normalize_change,
     parse_issue_like_body,
     resolve_issue_metadata,
@@ -430,3 +431,46 @@ def test_pr_lookup_uses_merge_commit_message_fallback_when_association_is_empty(
     assert pr_data is not None
     assert pr_data["number"] == 135
     assert "inferred PR #135 from merge commit message fallback" in caplog.text
+
+
+def test_track_implementations_skips_url_without_github_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "track_implementations_from_indexing.py",
+            "--payload-json",
+            json.dumps(
+                {
+                    "before": "oldsha",
+                    "after": "newsha",
+                    "changed_paths": ["/sdk/python/"],
+                }
+            ),
+            "--ledger-path",
+            str(tmp_path / "implementations.yaml"),
+            "--data-dir",
+            str(tmp_path / "data"),
+        ],
+    )
+    monkeypatch.setattr("track_implementations_from_indexing.gh_pr_for_commit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.resolve_issue_metadata",
+        lambda pr_data, url_path: (None, False),
+    )
+    monkeypatch.setattr("track_implementations_from_indexing.resolve_pr_metadata", lambda pr_data, url_path: None)
+
+    result = json.loads(main())
+
+    assert result == {
+        "appended": [],
+        "skipped": [
+            {
+                "url": "/sdk/python/",
+                "reason": "no GitHub metadata found",
+            }
+        ],
+    }
+    assert not (tmp_path / "implementations.yaml").exists()

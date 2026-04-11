@@ -242,7 +242,7 @@ Runs on pdfdancer-marketing-data in the push-triggered request-indexing pipeline
 1. Read changed URLs plus before/after refs from the shared changed-url payload
 2. Resolve metadata for each URL from the merged PR's linked issue when available
 3. Fall back to the PR body when no linked issue contains matching metadata
-4. Fall back to reconstructing metadata from compare diffs only when GitHub metadata is insufficient
+4. Skip URLs when neither linked issues nor the PR body provide usable GitHub metadata
 5. Pull trailing 4 weeks of GSC data as baseline (raw weeks + averages)
 6. Calculate `min_impressions_for_eval` using the type multiplier
 7. Append entries to `data/feedback/implementations.yaml`

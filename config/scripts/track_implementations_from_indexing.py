@@ -348,15 +348,6 @@ def gh_issue(number: int) -> dict | None:
     )
 
 
-def gh_compare_files(before_sha: str, after_sha: str) -> list[dict]:
-    data = run_json(
-        ["gh", "api", f"repos/{WWW_REPO}/compare/{before_sha}...{after_sha}"],
-        default={},
-    )
-    files = data.get("files", [])
-    return files if isinstance(files, list) else []
-
-
 def parse_issue_like_body(body: str) -> dict:
     page_match = re.search(r"\*\*Page:\*\*\s+`([^`]+)`", body)
     action_match = re.search(r"\*\*Action:\*\*\s+`([^`]+)`", body)
@@ -525,30 +516,6 @@ def resolve_pr_metadata(pr_data: dict | None, url_path: str) -> dict | None:
     }
 
 
-def resolve_git_metadata(compare_files: list[dict], url_path: str, commit_sha: str) -> dict:
-    slug = url_path.strip("/") or "index"
-    matched_files = [f for f in compare_files if slug in f.get("filename", "")]
-    status = matched_files[0].get("status", "") if matched_files else ""
-    patch = "\n".join(f.get("patch", "") for f in matched_files)
-    lowered_patch = patch.lower()
-    if status == "added":
-        action = "new-page"
-        diagnosis = "new-page-opportunity"
-    elif "title" in lowered_patch or "description" in lowered_patch or "meta" in lowered_patch:
-        action = "rewrite"
-        diagnosis = "meta"
-    else:
-        action = "refresh"
-        diagnosis = "content-quality"
-    log.info("Metadata source for %s: git reconstruction from %s", url_path, commit_sha)
-    return {
-        "source": f"git-reconstructed:{commit_sha}",
-        "action": action,
-        "diagnosis": diagnosis,
-        "change": normalize_change(action, None, url_path),
-    }
-
-
 def aggregate_baseline(url_path: str, data_dir: Path, implemented_on: date) -> dict:
     dated_dirs = [item for item in list_data_dirs(data_dir) if item[0] <= implemented_on]
     selected = dated_dirs[-4:]
@@ -673,8 +640,6 @@ def main() -> str:
         log.info("Commit %s is not associated with a PR via GitHub API", payload["after"])
     else:
         log.info("Resolved PR for commit %s: %s", payload["after"], pr_data.get("url"))
-    compare_files = gh_compare_files(payload["before"], payload["after"])
-
     appended = []
     skipped = []
     for url_path in changed_paths:
@@ -690,8 +655,9 @@ def main() -> str:
             log.info("Metadata lookup for %s: falling back to PR body", url_path)
             metadata = resolve_pr_metadata(pr_data, url_path)
         if metadata is None:
-            log.info("Metadata lookup for %s: falling back to git reconstruction", url_path)
-            metadata = resolve_git_metadata(compare_files, url_path, payload["after"])
+            log.info("Metadata lookup for %s: skipped (no GitHub metadata found)", url_path)
+            skipped.append({"url": url_path, "reason": "no GitHub metadata found"})
+            continue
         entry = build_entry(url_path, metadata, implemented_on, data_dir)
         if has_equivalent_pending_entry(entries, entry):
             log.info("Tracking for %s: skipped (equivalent pending entry already exists)", url_path)
