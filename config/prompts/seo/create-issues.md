@@ -39,21 +39,21 @@ Keep the full title under 80 characters.
 Before creating an issue, search using the slug:
 
 ```bash
-gh issue list --repo MenschMachine/pdfdancer-www --state all \
+gh issue list --repo MenschMachine/pdfdancer-www --state open \
   --search "SEO [/path/]" --json title --jq '.[].title'
 ```
 
 For `new-page` findings:
 
 ```bash
-gh issue list --repo MenschMachine/pdfdancer-www --state all \
+gh issue list --repo MenschMachine/pdfdancer-www --state open \
   --search "SEO [query:pdf redaction api]" --json title --jq '.[].title'
 ```
 
 If any returned title contains the slug, an issue already exists. Fetch it:
 
 ```bash
-gh issue list --repo MenschMachine/pdfdancer-www --state all \
+gh issue list --repo MenschMachine/pdfdancer-www --state open \
   --search "SEO [/path/]" --json number,title,body,state --jq '.[0]'
 ```
 
