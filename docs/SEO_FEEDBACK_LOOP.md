@@ -12,7 +12,7 @@ Weekly run:
                      └──────────── reads ledger entries written by ─────────────┘
 
 Push-triggered indexing run:
-  detect-changes → track-implementations → request-index
+  detect-changes ──(changed URLs only)──> track-implementations → request-index
 ```
 
 Two executions own the ledger (`data/feedback/implementations.yaml`), with clear separation:
@@ -54,7 +54,9 @@ evaluation results, intent-match output, analyze findings, implementation briefs
 
 Execution-local context is reserved for loop-control state such as review findings, brief revision flags, approval
 gates, and check status. The request-indexing pipeline also stores a global `:changed-url-payload` so the changed URLs
-detected in `pdfdancer-www` can be consumed later by `track-implementations` in `pdfdancer-marketing-data`.
+detected in `pdfdancer-www` can be consumed later by `track-implementations` in `pdfdancer-marketing-data`. The
+`detect-changes` execution also sets a local `:has-changed-urls` gate only when that payload is non-empty, so docs-only
+pushes stop cleanly before any downstream execution activates.
 
 The remaining local-to-global copy hooks exist only where a context-source shorthand still writes to execution scope
 first. Treat those copies as producer-side compatibility shims, not the canonical handoff contract.
@@ -237,6 +239,9 @@ in the evaluation summary JSON and is surfaced in the analyze report as a techni
 
 Runs on pdfdancer-marketing-data in the push-triggered request-indexing pipeline. Sole owner of ledger
 **append** writes.
+
+This execution only activates when `detect-changes` found at least one changed URL in `src/data/lastmod.json`. Pushes
+that change docs or other non-page assets but leave `lastmod.json` unchanged are treated as successful no-ops.
 
 **Tasks**:
 1. Read changed URLs plus before/after refs from the shared changed-url payload

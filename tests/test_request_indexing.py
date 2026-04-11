@@ -39,6 +39,7 @@ def test_request_indexing_config_loads_with_tracking_execution() -> None:
     assert detect.repository == "pdfdancer-www"
     assert [task.task_id for task in detect.sub_tasks] == ["capture-changed-urls"]
     assert ':changed-url-payload' in detect.sub_tasks[0].before
+    assert any(":has-changed-urls" in hook for hook in detect.sub_tasks[0].before)
 
     track = config.executions["track-implementations"]
     assert track.repository == "pdfdancer-marketing-data"
@@ -48,9 +49,20 @@ def test_request_indexing_config_loads_with_tracking_execution() -> None:
     assert request.repository == "pdfdancer-www"
     assert request.depends_on == ["track-implementations"]
 
-    triggers = {(t.after, t.run, t.when_context) for t in config.propagation_triggers}
-    assert ("detect-changes", "track-implementations", None) in triggers
-    assert ("track-implementations", "request-index", None) in triggers
+    detect_trigger = next(
+        trigger
+        for trigger in config.propagation_triggers
+        if trigger.after == "detect-changes" and trigger.run == "track-implementations"
+    )
+    assert detect_trigger.when_context is not None
+    assert detect_trigger.when_context.ref.key == ":has-changed-urls"
+
+    request_trigger = next(
+        trigger
+        for trigger in config.propagation_triggers
+        if trigger.after == "track-implementations" and trigger.run == "request-index"
+    )
+    assert request_trigger.when_context is None
 
 
 def test_build_changed_url_payload_detects_lastmod_deltas() -> None:

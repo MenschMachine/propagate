@@ -33,6 +33,11 @@ executions:
         before:
           - :changed-url-payload
           - propagate context set --global :changed-url-payload "$(propagate context get :changed-url-payload)"
+          - |
+              PAYLOAD="$(propagate context get :changed-url-payload)"
+              if printf '%s' "$PAYLOAD" | python -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("changed_count", 0) > 0 else 1)'; then
+                propagate context set :has-changed-urls "true"
+              fi
   track-implementations:
     repository: pdfdancer-marketing-data
     git:
@@ -72,5 +77,6 @@ propagation:
   triggers:
     - after: detect-changes
       run: track-implementations
+      when_context: :has-changed-urls
     - after: track-implementations
       run: request-index
