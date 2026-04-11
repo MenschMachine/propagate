@@ -53,11 +53,12 @@ def _run_with_event_publish(
     LOGGER.logger.addHandler(log_buffer)
     try:
         fn()
-    except Exception:
+    except Exception as error:
         if pub_socket is not None:
             publish_event(pub_socket, "run_failed", {
                 "signal_type": signal_type,
                 "metadata": metadata,
+                "error": str(error) or error.__class__.__name__,
                 "messages": log_buffer.messages(),
             })
         raise

@@ -47,6 +47,10 @@ def format_event_reply(event: dict) -> str:
         signal_type = event.get("signal_type", "unknown")
         messages = event.get("messages") or []
         lines = [f"Run {'completed' if event_type == 'run_completed' else 'failed'} for signal '{signal_type}'."]
+        if event_type == "run_failed":
+            error = event.get("error")
+            if error:
+                lines.extend(["", f"Error: {error}"])
         if messages:
             lines.append("")
             for msg in messages:
