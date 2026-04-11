@@ -10,6 +10,7 @@ import math
 import re
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -33,6 +34,7 @@ MULTIPLIER_BY_TYPE = {
     "new-content": 4,
     "technical": 2,
 }
+LOOKUP_RETRY_DELAYS_SECONDS = (2, 4, 8)
 
 
 def run_json(cmd: list[str], *, check: bool = True, default=None):
@@ -189,6 +191,10 @@ query($owner: String!, $name: String!, $oid: GitObjectID!) {
     if error:
         return [], error
     payload = data if isinstance(data, dict) else {}
+    graphql_errors = payload.get("errors")
+    if isinstance(graphql_errors, list) and graphql_errors:
+        summarized = "; ".join(str(item.get("message", "")).strip() for item in graphql_errors[:3] if isinstance(item, dict))
+        return [], f"graphql errors: {summarized or 'unknown error'}"
     nodes = (
         payload.get("data", {})
         .get("repository", {})
@@ -204,32 +210,98 @@ query($owner: String!, $name: String!, $oid: GitObjectID!) {
     return numbers, None
 
 
+def gh_pr_number_from_merge_commit_message(commit_sha: str) -> tuple[int | None, str | None]:
+    data, error = run_json_with_diagnostics(
+        ["gh", "api", f"repos/{WWW_REPO}/commits/{commit_sha}"],
+    )
+    if error:
+        return None, error
+    payload = data if isinstance(data, dict) else {}
+    message = payload.get("commit", {}).get("message")
+    if not isinstance(message, str) or not message.strip():
+        return None, "commit response missing commit.message"
+    match = re.match(r"Merge pull request #(\d+)\b", message.strip())
+    if not match:
+        return None, None
+    return int(match.group(1)), None
+
+
 def gh_pr_for_commit(commit_sha: str, *, consider_unmerged_prs: bool = False) -> dict | None:
+    log.info("PR lookup for commit %s: starting association lookup", commit_sha)
     numbers, rest_error = gh_pr_numbers_for_commit_rest(commit_sha)
-    if not numbers:
-        if rest_error:
-            log.warning(
-                "PR lookup for commit %s: REST request failed (%s), trying GraphQL fallback",
-                commit_sha,
-                rest_error,
-            )
-        else:
-            log.info("PR lookup for commit %s: REST commit->pulls returned no matches, trying GraphQL fallback", commit_sha)
-        numbers, graphql_error = gh_pr_numbers_for_commit_graphql(commit_sha)
+    if rest_error:
+        log.warning("PR lookup for commit %s: REST request failed (%s)", commit_sha, rest_error)
     else:
-        graphql_error = None
+        log.info("PR lookup for commit %s: REST returned %d associated PR(s)", commit_sha, len(numbers))
+
+    graphql_error = None
     if not numbers:
+        log.info("PR lookup for commit %s: trying GraphQL fallback", commit_sha)
+        numbers, graphql_error = gh_pr_numbers_for_commit_graphql(commit_sha)
         if graphql_error:
-            log.warning("PR lookup for commit %s: GraphQL fallback failed (%s)", commit_sha, graphql_error)
+            log.warning("PR lookup for commit %s: GraphQL request failed (%s)", commit_sha, graphql_error)
+        else:
+            log.info("PR lookup for commit %s: GraphQL returned %d associated PR(s)", commit_sha, len(numbers))
+
+    if not numbers and not rest_error and not graphql_error:
+        for attempt, delay in enumerate(LOOKUP_RETRY_DELAYS_SECONDS, start=1):
+            log.info(
+                "PR lookup for commit %s: no associated PR yet, retrying after %ss (attempt %d/%d)",
+                commit_sha,
+                delay,
+                attempt,
+                len(LOOKUP_RETRY_DELAYS_SECONDS),
+            )
+            time.sleep(delay)
+            numbers, rest_error = gh_pr_numbers_for_commit_rest(commit_sha)
+            if rest_error:
+                log.warning("PR lookup for commit %s: retry REST request failed (%s)", commit_sha, rest_error)
+            else:
+                log.info("PR lookup for commit %s: retry REST returned %d associated PR(s)", commit_sha, len(numbers))
+            if numbers:
+                break
+            numbers, graphql_error = gh_pr_numbers_for_commit_graphql(commit_sha)
+            if graphql_error:
+                log.warning("PR lookup for commit %s: retry GraphQL request failed (%s)", commit_sha, graphql_error)
+            else:
+                log.info("PR lookup for commit %s: retry GraphQL returned %d associated PR(s)", commit_sha, len(numbers))
+            if numbers:
+                break
+
+    if not numbers:
+        fallback_number, fallback_error = gh_pr_number_from_merge_commit_message(commit_sha)
+        if fallback_error:
+            log.warning(
+                "PR lookup for commit %s: merge-commit fallback lookup failed (%s)",
+                commit_sha,
+                fallback_error,
+            )
+        elif fallback_number is not None:
+            log.info(
+                "PR lookup for commit %s: inferred PR #%s from merge commit message fallback",
+                commit_sha,
+                fallback_number,
+            )
+            numbers = [fallback_number]
+        else:
+            log.info("PR lookup for commit %s: merge commit message fallback found no PR number", commit_sha)
+
+    if not numbers:
         if rest_error or graphql_error:
             log.warning("PR lookup for commit %s: unable to resolve PR due to GitHub API errors", commit_sha)
+        else:
+            log.info("PR lookup for commit %s: no associated PR found after retries and fallback", commit_sha)
         return None
+
     candidates = []
     for number in sorted(set(numbers)):
         details = gh_pr_details(number)
         if details is not None:
             candidates.append(details)
+        else:
+            log.warning("PR lookup for commit %s: failed to load details for PR candidate #%s", commit_sha, number)
     if not candidates:
+        log.warning("PR lookup for commit %s: candidate PR(s) found but detail lookup failed", commit_sha)
         return None
     log.info(
         "PR lookup for commit %s: candidate numbers=%s",

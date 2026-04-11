@@ -248,7 +248,12 @@ Runs on pdfdancer-marketing-data in the push-triggered request-indexing pipeline
 7. Append entries to `data/feedback/implementations.yaml`
 8. Commit to main
 
-When commit-to-PR lookup runs, logs now distinguish between:
+When commit-to-PR lookup runs, it now:
+- logs each lookup phase in detail (REST result count, GraphQL result count, and explicit API error details)
+- retries commit-to-PR association when both APIs return empty results (to handle post-merge propagation lag)
+- falls back to merge-commit-message inference (`Merge pull request #...`) before concluding no PR is associated
+
+Logs distinguish between:
 - successful API calls that return no associated PRs
 - GitHub API failures (REST and/or GraphQL), which trigger the same metadata fallback path but are reported explicitly
 

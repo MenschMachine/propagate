@@ -342,6 +342,7 @@ def test_has_equivalent_pending_entry_allows_new_change_on_same_url() -> None:
 def test_pr_lookup_logs_no_matches_when_rest_and_graphql_succeed_with_empty_results(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    monkeypatch.setattr("track_implementations_from_indexing.LOOKUP_RETRY_DELAYS_SECONDS", ())
     monkeypatch.setattr(
         "track_implementations_from_indexing.gh_pr_numbers_for_commit_rest",
         lambda commit_sha: ([], None),
@@ -349,19 +350,26 @@ def test_pr_lookup_logs_no_matches_when_rest_and_graphql_succeed_with_empty_resu
     monkeypatch.setattr(
         "track_implementations_from_indexing.gh_pr_numbers_for_commit_graphql",
         lambda commit_sha: ([], None),
+    )
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_number_from_merge_commit_message",
+        lambda commit_sha: (None, None),
     )
 
     with caplog.at_level("INFO"):
         pr_data = gh_pr_for_commit("abc123")
 
     assert pr_data is None
-    assert "REST commit->pulls returned no matches" in caplog.text
+    assert "REST returned 0 associated PR(s)" in caplog.text
+    assert "GraphQL returned 0 associated PR(s)" in caplog.text
+    assert "no associated PR found after retries and fallback" in caplog.text
     assert "REST request failed" not in caplog.text
 
 
 def test_pr_lookup_logs_api_failures_separately_from_no_matches(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    monkeypatch.setattr("track_implementations_from_indexing.LOOKUP_RETRY_DELAYS_SECONDS", ())
     monkeypatch.setattr(
         "track_implementations_from_indexing.gh_pr_numbers_for_commit_rest",
         lambda commit_sha: ([], "exit=1 stderr=HTTP 403"),
@@ -369,6 +377,10 @@ def test_pr_lookup_logs_api_failures_separately_from_no_matches(
     monkeypatch.setattr(
         "track_implementations_from_indexing.gh_pr_numbers_for_commit_graphql",
         lambda commit_sha: ([], "exit=1 stderr=HTTP 403"),
+    )
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_number_from_merge_commit_message",
+        lambda commit_sha: (None, "exit=1 stderr=HTTP 403"),
     )
 
     with caplog.at_level("INFO"):
@@ -376,5 +388,45 @@ def test_pr_lookup_logs_api_failures_separately_from_no_matches(
 
     assert pr_data is None
     assert "REST request failed" in caplog.text
-    assert "GraphQL fallback failed" in caplog.text
+    assert "GraphQL request failed" in caplog.text
+    assert "merge-commit fallback lookup failed" in caplog.text
     assert "unable to resolve PR due to GitHub API errors" in caplog.text
+
+
+def test_pr_lookup_uses_merge_commit_message_fallback_when_association_is_empty(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("track_implementations_from_indexing.LOOKUP_RETRY_DELAYS_SECONDS", ())
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_numbers_for_commit_rest",
+        lambda commit_sha: ([], None),
+    )
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_numbers_for_commit_graphql",
+        lambda commit_sha: ([], None),
+    )
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_number_from_merge_commit_message",
+        lambda commit_sha: (135, None),
+    )
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_details",
+        lambda number: {
+            "number": number,
+            "state": "MERGED",
+            "baseRefName": "main",
+            "mergedAt": "2026-04-11T06:49:45Z",
+            "updatedAt": "2026-04-11T06:49:45Z",
+            "url": "https://github.com/MenschMachine/pdfdancer-www/pull/135",
+            "body": "",
+            "title": "Issue/126",
+            "closingIssuesReferences": [],
+        },
+    )
+
+    with caplog.at_level("INFO"):
+        pr_data = gh_pr_for_commit("74c773e24ab73fb8f5a60024368224e235c6a4d2")
+
+    assert pr_data is not None
+    assert pr_data["number"] == 135
+    assert "inferred PR #135 from merge commit message fallback" in caplog.text
