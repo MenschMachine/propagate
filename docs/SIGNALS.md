@@ -405,7 +405,7 @@ Signals can be sent to a running propagate instance from outside the process. Wh
 ### One-shot vs serve mode
 
 - **`propagate run`** — opens the per-config ZMQ socket unconditionally. Runs the DAG once and exits.
-- **`propagate serve`** — opens the ZMQ socket unconditionally and stays alive, processing each incoming signal as a separate DAG run. See [SERVE.md](SERVE.md) for details.
+- **`propagate serve`** — opens the ZMQ socket unconditionally and stays alive. Entry signals are durably queued and processed in strict FIFO (one DAG run per queued entry signal). See [SERVE.md](SERVE.md) for details.
 
 ### How it works
 

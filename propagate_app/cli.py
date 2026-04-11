@@ -20,6 +20,7 @@ from .context_store import (
     resolve_context_dir_for_read,
     resolve_context_dir_for_write,
 )
+from .entry_signal_queue import clear_entry_signal_queue, queue_file_path
 from .errors import AgentInterrupted, PropagateError, build_named_error
 from .models import Config, RunState, RuntimeContext
 from .repo_clone import is_propagate_clone
@@ -389,6 +390,7 @@ def clear_command(config_value: str, force: bool = False) -> int:
         if clear_all_context(context_root):
             cleared.append(f"context ({context_root})")
     state_path = state_file_path(config_path)
+    queue_path = queue_file_path(config_path)
     cloned_repos: dict[str, Path] = {}
     if force:
         cloned_repos = read_cloned_repos(config_path)
@@ -407,6 +409,9 @@ def clear_command(config_value: str, force: bool = False) -> int:
     if state_path.exists():
         clear_run_state(config_path)
         cleared.append(f"run state ({state_path})")
+    if queue_path.exists():
+        clear_entry_signal_queue(config_path)
+        cleared.append(f"entry queue ({queue_path})")
     if cleared:
         LOGGER.info("Cleared: %s", ", ".join(cleared))
     else:

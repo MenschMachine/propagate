@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from .repo_clone import clone_single_repository
 from .routing import prepare_execution_runtime_context, wrap_execution_runtime_error
 from .run_state import save_run_state
 from .signal_reconcile import reconcile_pending_signals
-from .signal_transport import publish_event_if_available, receive_signal
+from .signal_transport import publish_event_if_available, receive_message
 from .signals import select_initial_execution, signal_payload_matches_when, validate_signal_payload
 
 
@@ -38,6 +39,7 @@ def run_execution_schedule(
     stop_after: str | None = None,
     skip_executions: set[str] | None = None,
     skip_tasks: dict[str, set[str]] | None = None,
+    on_entry_signal: Callable[[ExecutionConfig, ActiveSignal, dict], None] | None = None,
 ) -> None:
     execution_graph = build_execution_graph(config)
     received_signal_types: set[str] = set()
@@ -73,6 +75,7 @@ def run_execution_schedule(
                 received_signal_types,
                 current_runtime_context,
                 run_state,
+                on_entry_signal=on_entry_signal,
             )
         execution_name = select_next_runnable_execution(config, execution_graph, executions, skip_executions)
         if execution_name is None:
@@ -87,6 +90,7 @@ def run_execution_schedule(
                     received_signal_types,
                     current_runtime_context,
                     run_state,
+                    on_entry_signal=on_entry_signal,
                 )
                 continue
             completed = _completed_names(executions)
@@ -333,13 +337,27 @@ def _drain_incoming_signals(
     received_signal_types: set[str],
     runtime_context: RuntimeContext,
     run_state: RunState | None = None,
+    on_entry_signal: Callable[[ExecutionConfig, ActiveSignal, dict], None] | None = None,
 ) -> RuntimeContext:
     current_runtime_context = runtime_context
     while True:
-        result = receive_signal(signal_socket, block=False)
-        if result is None:
+        message = receive_message(signal_socket, block=False)
+        if message is None:
             return current_runtime_context
-        active_signal = _process_received_signal(result, config, execution_graph, executions, received_signal_types, run_state)
+        kind, name, payload, metadata = message
+        if kind != "signal":
+            LOGGER.debug("Ignoring non-signal message '%s' while run is active.", name)
+            continue
+        result = (name, payload, metadata)
+        active_signal = _process_received_signal(
+            result,
+            config,
+            execution_graph,
+            executions,
+            received_signal_types,
+            run_state,
+            on_entry_signal=on_entry_signal,
+        )
         if active_signal is not None:
             current_runtime_context = replace(current_runtime_context, active_signal=active_signal)
 
@@ -352,6 +370,7 @@ def _wait_for_signal(
     received_signal_types: set[str],
     runtime_context: RuntimeContext,
     run_state: RunState | None = None,
+    on_entry_signal: Callable[[ExecutionConfig, ActiveSignal, dict], None] | None = None,
 ) -> RuntimeContext:
     pending = _pending_signal_types(execution_graph, executions, received_signal_types)
     LOGGER.info("Waiting for external signal (%s)...", ", ".join(sorted(pending)))
@@ -362,13 +381,26 @@ def _wait_for_signal(
         "metadata": runtime_context.metadata,
     })
     while True:
-        result = receive_signal(signal_socket, block=True, timeout_ms=1000)
-        if result is None:
+        message = receive_message(signal_socket, block=True, timeout_ms=1000)
+        if message is None:
             continue
-        active_signal = _process_received_signal(result, config, execution_graph, executions, received_signal_types, run_state)
+        kind, name, payload, metadata = message
+        if kind != "signal":
+            LOGGER.debug("Ignoring non-signal message '%s' while waiting for signal.", name)
+            continue
+        result = (name, payload, metadata)
+        active_signal = _process_received_signal(
+            result,
+            config,
+            execution_graph,
+            executions,
+            received_signal_types,
+            run_state,
+            on_entry_signal=on_entry_signal,
+        )
         new_pending = _pending_signal_types(execution_graph, executions, received_signal_types)
         if new_pending != pending:
-            signal_type, _ = result
+            signal_type, _, _ = result
             LOGGER.info("Signal '%s' satisfied; resuming execution.", signal_type)
             publish_event_if_available(runtime_context.pub_socket, "signal_received", {
                 "execution": "",
@@ -382,14 +414,15 @@ def _wait_for_signal(
 
 
 def _process_received_signal(
-    result: tuple[str, dict[str, Any]],
+    result: tuple[str, dict[str, Any], dict[str, Any]],
     config: Config,
     execution_graph: ExecutionGraph,
     executions: dict[str, ExecutionStatus],
     received_signal_types: set[str],
     run_state: RunState | None = None,
+    on_entry_signal: Callable[[ExecutionConfig, ActiveSignal, dict], None] | None = None,
 ) -> ActiveSignal | None:
-    signal_type, payload = result
+    signal_type, payload, metadata = result
     if signal_type not in config.signals:
         LOGGER.info("Received unknown signal '%s'; ignoring.", signal_type)
         return None
@@ -400,8 +433,17 @@ def _process_received_signal(
         LOGGER.warning("Received signal '%s' with invalid payload: %s; ignoring.", signal_type, error)
         return None
     active_signal = ActiveSignal(signal_type=signal_type, payload=payload, source="external")
-    if _is_new_entry_signal(config, active_signal):
-        LOGGER.warning("Rejecting entry signal '%s' while a run is already active.", signal_type)
+    try:
+        entry_execution = _resolve_entry_execution(config, active_signal)
+    except PropagateError as error:
+        LOGGER.warning("Ignoring entry signal '%s' while run is active: %s", signal_type, error)
+        return None
+    if entry_execution is not None:
+        if on_entry_signal is not None:
+            on_entry_signal(entry_execution, active_signal, dict(metadata))
+            LOGGER.info("Queued entry signal '%s' while a run is already active.", signal_type)
+        else:
+            LOGGER.warning("Rejecting entry signal '%s' while a run is already active.", signal_type)
         return None
     LOGGER.info("Received external signal '%s'.", signal_type)
     received_signal_types.add(signal_type)
@@ -419,12 +461,13 @@ def _process_received_signal(
     return active_signal
 
 
-def _is_new_entry_signal(config: Config, active_signal: ActiveSignal) -> bool:
+def _resolve_entry_execution(config: Config, active_signal: ActiveSignal) -> ExecutionConfig | None:
     try:
-        select_initial_execution(config, None, active_signal)
-        return True
+        return select_initial_execution(config, None, active_signal)
     except PropagateError as error:
-        return "No execution accepts signal" not in str(error)
+        if "No execution accepts signal" in str(error):
+            return None
+        raise
 
 
 def _pending_signal_types(

@@ -10,6 +10,12 @@ import zmq
 
 from .config_load import load_config
 from .constants import LOGGER, set_project_stem
+from .entry_signal_queue import (
+    QueuedEntrySignal,
+    dequeue_entry_signal,
+    enqueue_entry_signal,
+    load_entry_signal_queue,
+)
 from .errors import AgentInterrupted, PropagateError
 from .log_buffer import ZmqLogHandler
 from .models import ActiveSignal, Config, RunState, RuntimeContext
@@ -249,6 +255,9 @@ def _resume_run(
     run_metadata = metadata if metadata else run_state.metadata
     signal_type = active_signal.signal_type if active_signal else "unknown"
 
+    def on_entry_signal(initial_execution, entry_signal: ActiveSignal, entry_metadata: dict) -> None:
+        _enqueue_entry_signal(config, initial_execution.name, entry_signal, entry_metadata, pub_socket)
+
     def do_run() -> None:
         run_execution_schedule(
             config,
@@ -269,6 +278,7 @@ def _resume_run(
             signal_socket=signal_socket,
             skip_executions=skip_executions,
             skip_tasks=skip_tasks,
+            on_entry_signal=on_entry_signal,
         )
 
     _run_with_event_publish(pub_socket, signal_type, run_metadata, do_run)
@@ -284,6 +294,26 @@ def _serve_loop(
 ) -> None:
     LOGGER.info("Serve loop started, waiting for signals.")
     while not shutdown.is_set():
+        queued = dequeue_entry_signal(config.config_path)
+        if queued is not None:
+            try:
+                _run_queued_entry_signal(
+                    config,
+                    queued,
+                    signal_socket,
+                    pub_socket,
+                    skip_executions=skip_executions,
+                    skip_tasks=skip_tasks,
+                )
+            except AgentInterrupted as exc:
+                _handle_agent_interrupted(exc, config, signal_socket, pub_socket, shutdown)
+            except KeyboardInterrupt:
+                LOGGER.info("Interrupted during run, exiting serve loop.")
+                return
+            except PropagateError as error:
+                LOGGER.error("Run failed for queued signal '%s': %s", queued.active_signal.signal_type, error)
+            continue
+
         result = receive_message(signal_socket, block=True, timeout_ms=1000)
         if result is None:
             continue
@@ -461,38 +491,94 @@ def _handle_incoming_signal(
     except PropagateError as error:
         LOGGER.info("Signal '%s' ignored: %s", signal_type, error)
         return
-    run_metadata = metadata or {}
+    _enqueue_entry_signal(config, initial_execution.name, active_signal, metadata or {}, pub_socket)
+
+
+def _enqueue_entry_signal(
+    config: Config,
+    initial_execution_name: str,
+    active_signal: ActiveSignal,
+    metadata: dict,
+    pub_socket: zmq.Socket | None,
+) -> None:
+    queued = enqueue_entry_signal(
+        config.config_path,
+        initial_execution=initial_execution_name,
+        active_signal=active_signal,
+        metadata=metadata,
+    )
+    pending_count = len(load_entry_signal_queue(config.config_path))
+    LOGGER.info(
+        "Queued entry signal '%s' (#%d). Pending queue length: %d.",
+        active_signal.signal_type,
+        queued.sequence,
+        pending_count,
+    )
+    if pub_socket is not None:
+        publish_event(pub_socket, "entry_signal_queued", {
+            "signal_type": active_signal.signal_type,
+            "initial_execution": initial_execution_name,
+            "sequence": queued.sequence,
+            "pending_count": pending_count,
+            "metadata": metadata,
+        })
+
+
+def _run_queued_entry_signal(
+    config: Config,
+    queued: QueuedEntrySignal,
+    signal_socket: zmq.Socket,
+    pub_socket: zmq.Socket | None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
+) -> None:
+    if queued.initial_execution not in config.executions:
+        raise PropagateError(
+            f"Queued entry signal references unknown execution '{queued.initial_execution}'."
+        )
+    if pub_socket is not None:
+        publish_event(pub_socket, "entry_signal_dequeued", {
+            "signal_type": queued.active_signal.signal_type,
+            "initial_execution": queued.initial_execution,
+            "sequence": queued.sequence,
+            "pending_count": len(load_entry_signal_queue(config.config_path)),
+            "metadata": queued.metadata,
+        })
     run_state = RunState(
         config_path=config.config_path,
-        initial_execution=initial_execution.name,
+        initial_execution=queued.initial_execution,
         executions={},
-        active_signal=active_signal,
+        active_signal=queued.active_signal,
         cloned_repos={},
         initialized_signal_context_dirs=set(),
-        metadata=run_metadata,
+        metadata=queued.metadata,
     )
+
+    def on_entry_signal(initial_execution, active_signal: ActiveSignal, entry_metadata: dict) -> None:
+        _enqueue_entry_signal(config, initial_execution.name, active_signal, entry_metadata, pub_socket)
 
     def do_run() -> None:
         run_execution_schedule(
             config,
-            initial_execution.name,
+            queued.initial_execution,
             RuntimeContext(
                 agents=config.agent.agents,
                 default_agent=config.agent.default_agent,
                 context_sources=config.context_sources,
-                active_signal=active_signal,
+                active_signal=queued.active_signal,
                 initialized_signal_context_dirs=set(),
                 signal_configs=config.signals,
                 signal_socket=signal_socket,
                 config_dir=config.config_path.parent,
                 pub_socket=pub_socket,
-                metadata=run_metadata,
+                metadata=queued.metadata,
             ),
             run_state=run_state,
             signal_socket=signal_socket,
             skip_executions=skip_executions,
             skip_tasks=skip_tasks,
+            on_entry_signal=on_entry_signal,
         )
 
-    _run_with_event_publish(pub_socket, signal_type, run_metadata, do_run)
-    LOGGER.info("Completed run for signal '%s'.", signal_type)
+    _run_with_event_publish(pub_socket, queued.active_signal.signal_type, queued.metadata, do_run)
+    LOGGER.info("Completed run for queued signal '%s'.", queued.active_signal.signal_type)

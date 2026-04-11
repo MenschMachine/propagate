@@ -167,7 +167,7 @@ def test_drain_ignores_unknown_signals(tmp_path):
         close_pull_socket(pull, address)
 
 
-def test_process_received_signal_rejects_new_entry_signal_while_run_is_active(tmp_path):
+def test_process_received_signal_queues_new_entry_signal_while_run_is_active(tmp_path):
     triage = make_execution(
         "triage",
         signals=[ExecutionSignalConfig(signal_name="pull_request.closed", when={"repository": "MenschMachine/pdfdancer-api", "merged": True})],
@@ -185,18 +185,32 @@ def test_process_received_signal_rejects_new_entry_signal_while_run_is_active(tm
     graph = build_execution_graph(config)
     executions = {"active": ExecutionStatus(state="completed")}
     received = set()
-    with patch("propagate_app.scheduler.LOGGER.warning") as mock_warning:
+    queued = []
+
+    def on_entry_signal(initial_execution, active_signal, metadata):
+        queued.append((initial_execution.name, active_signal.signal_type, active_signal.payload, metadata))
+
+    with patch("propagate_app.scheduler.LOGGER.info") as mock_info:
         result = _process_received_signal(
-            ("pull_request.closed", {"repository": "MenschMachine/pdfdancer-api", "merged": True}),
+            ("pull_request.closed", {"repository": "MenschMachine/pdfdancer-api", "merged": True}, {"chat_id": "7"}),
             config,
             graph,
             executions,
             received,
+            on_entry_signal=on_entry_signal,
         )
     assert result is None
     assert "pull_request.closed" not in received
     assert "triage" not in executions
-    mock_warning.assert_any_call("Rejecting entry signal '%s' while a run is already active.", "pull_request.closed")
+    assert queued == [
+        (
+            "triage",
+            "pull_request.closed",
+            {"repository": "MenschMachine/pdfdancer-api", "merged": True},
+            {"chat_id": "7"},
+        ),
+    ]
+    mock_info.assert_any_call("Queued entry signal '%s' while a run is already active.", "pull_request.closed")
 
 
 def test_scheduler_waits_for_signal_then_runs_execution(tmp_path):
@@ -276,7 +290,10 @@ def test_scheduler_passes_signal_socket_into_execution_runtime_context(tmp_path)
         return runtime_context
 
     with (
-        patch("propagate_app.scheduler._drain_incoming_signals", side_effect=lambda _sock, _cfg, _graph, _execs, _recv, ctx, _rs=None: ctx),
+        patch(
+            "propagate_app.scheduler._drain_incoming_signals",
+            side_effect=lambda _sock, _cfg, _graph, _execs, _recv, ctx, _rs=None, **_kwargs: ctx,
+        ),
         patch("propagate_app.scheduler.run_configured_execution", side_effect=mock_run_execution),
     ):
         runtime_context = make_runtime_context()

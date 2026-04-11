@@ -2,6 +2,7 @@ import yaml
 
 from propagate_app.cli import main
 from propagate_app.context_store import get_context_root
+from propagate_app.entry_signal_queue import queue_file_path
 from propagate_app.run_state import state_file_path
 
 
@@ -49,6 +50,17 @@ def test_clear_both_context_and_state(tmp_path):
     assert result == 0
     assert not context_root.exists()
     assert not state_path.exists()
+
+
+def test_clear_removes_entry_signal_queue_file(tmp_path):
+    config_path = _write_config(tmp_path)
+    queue_path = queue_file_path(config_path)
+    queue_path.write_text("version: 1\nnext_sequence: 1\nitems: []\n", encoding="utf-8")
+
+    result = main(["clear", "--config", str(config_path)])
+
+    assert result == 0
+    assert not queue_path.exists()
 
 
 def test_clear_when_nothing_exists(tmp_path):

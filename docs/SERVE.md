@@ -115,6 +115,8 @@ This connects directly to the worker's socket (bypassing the coordinator).
 
 If a state file (`.propagate-state-{name}.yaml`) exists when a worker starts, it resumes from that saved run state before entering the serve loop. This handles crash recovery — if the server was killed mid-run, restarting it picks up where it left off. State files are retained until `propagate clear`, so a fully completed run may also be loaded and immediately no-op.
 
+Entry-signal queue state is persisted separately in `.propagate-queue-{name}.yaml`. Any queued entry signals left from a previous process are drained in FIFO order after startup resume completes (or immediately on startup if no resume is needed).
+
 ---
 
 ## Error handling
@@ -152,6 +154,8 @@ Clients should subscribe to the coordinator PUB socket to receive events from al
 |-------|--------|--------|
 | `run_completed` | After a DAG finishes | `signal_type`, `metadata`, `messages`, `project` |
 | `run_failed` | After a DAG fails | `signal_type`, `metadata`, `messages`, `project` |
+| `entry_signal_queued` | Entry signal added to durable queue | `signal_type`, `initial_execution`, `sequence`, `pending_count`, `metadata`, `project` |
+| `entry_signal_dequeued` | Next queued entry signal selected for execution | `signal_type`, `initial_execution`, `sequence`, `pending_count`, `metadata`, `project` |
 | `waiting_for_signal` | Scheduler pauses for a signal | `execution`, `signal`, `metadata`, `project` |
 | `pr_created` | Git PR hook creates a PR | `execution`, `pr_url`, `metadata`, `project` |
 | `command_failed` | Command (e.g. resume) fails | `command`, `message`, `metadata`, `project` |
@@ -163,7 +167,8 @@ Clients should subscribe to the coordinator PUB socket to receive events from al
 
 ## Limitations
 
-- **Sequential execution per worker.** Each worker handles one DAG at a time. Signals received during an active run are buffered.
+- **Sequential execution per worker.** Each worker handles one DAG at a time. Entry signals are persisted and processed one-by-one.
+- **Strict FIFO for entry signals.** Entry signals run in global arrival order for each worker.
 - **No deduplication.** The same signal sent twice triggers two separate runs.
 - **Each signal type must map to exactly one execution.** Use `when` filters to disambiguate.
 - **No auto-restart.** If a worker dies, it must be reloaded manually via `/load` or `/reload`.
