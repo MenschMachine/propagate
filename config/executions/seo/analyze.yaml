@@ -12,7 +12,19 @@ analyze:
   before:
     - git:branch
   sub_tasks:
+    - id: check-existing-data
+      before:
+        - |
+          TODAY=$(date -u +%Y-%m-%d)
+          if [ -f "reports/$TODAY/report.md" ]; then
+            propagate context set --stdin --global :report < "reports/$TODAY/report.md"
+            if [ -f "reports/$TODAY/findings.yaml" ]; then
+              propagate context set --stdin --global :findings < "reports/$TODAY/findings.yaml"
+            fi
+            propagate context set :report-exists "true"
+          fi
     - id: analyze
+      when: "!:report-exists"
       prompt: ./prompts/seo/analyze.md
   after:
     - git:commit

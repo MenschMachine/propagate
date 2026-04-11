@@ -94,6 +94,8 @@ Write `reports/YYYY-MM-DD/report.md` with exactly these sections:
 
 Keep `Top New Findings` + `Implementation Follow-Ups` to **8 items max** combined.
 
+Write `reports/YYYY-MM-DD/findings.yaml` containing the same YAML payload that you save into propagate context for `:findings`.
+
 ### Finding format
 
 Use this structure for every item in `Top New Findings`, `Implementation Follow-Ups`, and any meaningful deferred item:
@@ -179,5 +181,7 @@ deferred_or_low_confidence:
       history_state: recently-changed-wait
 FINDINGS
 ```
+
+Save the same YAML payload to `reports/YYYY-MM-DD/findings.yaml` so later runs can reuse it without recomputing the analysis.
 
 When in doubt, prefer `defer` over churn and prefer evaluating prior implementations before creating net-new work.
