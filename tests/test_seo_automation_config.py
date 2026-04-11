@@ -13,7 +13,6 @@ def test_config_loads_with_simplified_pipeline() -> None:
     assert tuple(config.executions) == (
         "pull-data",
         "enrich-seo",
-        "evaluate-implementations",
         "intent-match",
         "analyze",
         "create-issues",
@@ -24,21 +23,17 @@ def test_config_loads_with_simplified_pipeline() -> None:
     assert [task.task_id for task in create_issues.sub_tasks] == ["create-issues"]
 
     triggers = {(t.after, t.run, t.when_context) for t in config.propagation_triggers}
-    assert ("pull-data", "evaluate-implementations", None) in triggers
-    assert ("evaluate-implementations", "intent-match", None) in triggers
+    assert ("pull-data", "intent-match", None) in triggers
     assert ("intent-match", "analyze", None) in triggers
     assert ("analyze", "create-issues", None) in triggers
-    assert len(config.propagation_triggers) == 4
+    assert len(config.propagation_triggers) == 3
 
     assert (REPO_ROOT / "config" / "prompts" / "seo" / "create-issues.md").exists()
 
     pull_data = config.executions["pull-data"]
-    fetch_data = pull_data.sub_tasks[1]
+    fetch_data = pull_data.sub_tasks[2]
     assert "propagate context set --global :gsc-data-path \"$(propagate context get :gsc-data-path)\"" in fetch_data.before
     assert "propagate context set --global :posthog-data-path \"$(propagate context get :posthog-data-path)\"" in fetch_data.before
-
-    evaluate = config.executions["evaluate-implementations"].sub_tasks[0]
-    assert "propagate context set --global :evaluation-results \"$(propagate context get :evaluation-results)\"" in evaluate.before
 
 
 def test_create_issues_prompt_structure() -> None:

@@ -13,11 +13,24 @@ pull-data:
   before:
     - git:branch
   sub_tasks:
+    - id: check-existing-data
+      before:
+        - |
+          TODAY=$(date -u +%Y-%m-%d)
+          if [ -f "data/$TODAY/gsc.json" ]; then
+            propagate context set --global :gsc-data-path "data/$TODAY/gsc.json"
+            if [ -f "data/$TODAY/posthog.json" ]; then
+              propagate context set --global :posthog-data-path "data/$TODAY/posthog.json"
+            fi
+            propagate context set :data-exists "true"
+          fi
     - id: install-deps
+      when: "!:data-exists"
       before:
         - cp "${MARKETING_DATA_ENV:-.env}" .env
         - pip install -r requirements.txt
     - id: fetch-data
+      when: "!:data-exists"
       before:
         - :gsc-data-path
         - propagate context set --global :gsc-data-path "$(propagate context get :gsc-data-path)"
@@ -25,6 +38,7 @@ pull-data:
         - propagate context set --global :posthog-data-path "$(propagate context get :posthog-data-path)"
         - python scripts/fetch_page_content.py
     - id: summarize-pull
+      when: "!:data-exists"
       prompt: ./prompts/seo/pull-data-summary.md
   after:
     - git:commit

@@ -42,7 +42,7 @@
 version: "6"
 
 agent:
-  command: 'select-best-agent.sh "Read the file {prompt_file} and follow its instructions."'
+  command: 'select-best-agent.sh -f junie "Read the file {prompt_file} and follow its instructions."'
 
 repositories:
   pdfdancer-marketing-data:
@@ -90,5 +90,5 @@ propagation:
       run: intent-match
     - after: intent-match
       run: analyze
-    - after: analyze
-      run: create-issues
+    #- after: analyze
+    #  run: create-issues
