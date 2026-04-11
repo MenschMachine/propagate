@@ -248,6 +248,10 @@ Runs on pdfdancer-marketing-data in the push-triggered request-indexing pipeline
 7. Append entries to `data/feedback/implementations.yaml`
 8. Commit to main
 
+When commit-to-PR lookup runs, logs now distinguish between:
+- successful API calls that return no associated PRs
+- GitHub API failures (REST and/or GraphQL), which trigger the same metadata fallback path but are reported explicitly
+
 ## Execution: `evaluate-implementations`
 
 Runs on pdfdancer-marketing-data. Triggers after `pull-data` completes (so it has fresh GSC data). Sole owner of

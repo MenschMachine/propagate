@@ -46,6 +46,23 @@ def run_json(cmd: list[str], *, check: bool = True, default=None):
         return default
 
 
+def run_json_with_diagnostics(cmd: list[str], *, check: bool = True) -> tuple[object | None, str | None]:
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=check)
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        stdout = (exc.stdout or "").strip()
+        detail = stderr or stdout or "no output"
+        return None, f"command failed exit={exc.returncode}: {detail}"
+    try:
+        return json.loads(result.stdout), None
+    except json.JSONDecodeError:
+        snippet = (result.stdout or "").strip().replace("\n", " ")
+        if len(snippet) > 200:
+            snippet = snippet[:200] + "..."
+        return None, f"invalid JSON response: {snippet or '<empty>'}"
+
+
 def _repo_owner_name(repo_full_name: str) -> tuple[str, str]:
     owner, name = repo_full_name.split("/", 1)
     return owner, name
@@ -122,20 +139,22 @@ def gh_pr_details(number: int) -> dict | None:
     )
 
 
-def gh_pr_numbers_for_commit_rest(commit_sha: str) -> list[int]:
-    prs = run_json(
+def gh_pr_numbers_for_commit_rest(commit_sha: str) -> tuple[list[int], str | None]:
+    data, error = run_json_with_diagnostics(
         ["gh", "api", f"repos/{WWW_REPO}/commits/{commit_sha}/pulls"],
-        default=[],
     )
+    if error:
+        return [], error
+    prs = data if isinstance(data, list) else []
     numbers: list[int] = []
     for pr in prs or []:
         number = pr.get("number")
         if isinstance(number, int):
             numbers.append(number)
-    return numbers
+    return numbers, None
 
 
-def gh_pr_numbers_for_commit_graphql(commit_sha: str) -> list[int]:
+def gh_pr_numbers_for_commit_graphql(commit_sha: str) -> tuple[list[int], str | None]:
     owner, name = _repo_owner_name(WWW_REPO)
     query = """
 query($owner: String!, $name: String!, $oid: GitObjectID!) {
@@ -152,7 +171,7 @@ query($owner: String!, $name: String!, $oid: GitObjectID!) {
   }
 }
 """
-    data = run_json(
+    data, error = run_json_with_diagnostics(
         [
             "gh",
             "api",
@@ -166,10 +185,12 @@ query($owner: String!, $name: String!, $oid: GitObjectID!) {
             "-f",
             f"query={query}",
         ],
-        default={},
     )
+    if error:
+        return [], error
+    payload = data if isinstance(data, dict) else {}
     nodes = (
-        data.get("data", {})
+        payload.get("data", {})
         .get("repository", {})
         .get("object", {})
         .get("associatedPullRequests", {})
@@ -180,15 +201,28 @@ query($owner: String!, $name: String!, $oid: GitObjectID!) {
         number = node.get("number")
         if isinstance(number, int):
             numbers.append(number)
-    return numbers
+    return numbers, None
 
 
 def gh_pr_for_commit(commit_sha: str, *, consider_unmerged_prs: bool = False) -> dict | None:
-    numbers = gh_pr_numbers_for_commit_rest(commit_sha)
+    numbers, rest_error = gh_pr_numbers_for_commit_rest(commit_sha)
     if not numbers:
-        log.info("PR lookup for commit %s: REST commit->pulls returned no matches, trying GraphQL fallback", commit_sha)
-        numbers = gh_pr_numbers_for_commit_graphql(commit_sha)
+        if rest_error:
+            log.warning(
+                "PR lookup for commit %s: REST request failed (%s), trying GraphQL fallback",
+                commit_sha,
+                rest_error,
+            )
+        else:
+            log.info("PR lookup for commit %s: REST commit->pulls returned no matches, trying GraphQL fallback", commit_sha)
+        numbers, graphql_error = gh_pr_numbers_for_commit_graphql(commit_sha)
+    else:
+        graphql_error = None
     if not numbers:
+        if graphql_error:
+            log.warning("PR lookup for commit %s: GraphQL fallback failed (%s)", commit_sha, graphql_error)
+        if rest_error or graphql_error:
+            log.warning("PR lookup for commit %s: unable to resolve PR due to GitHub API errors", commit_sha)
         return None
     candidates = []
     for number in sorted(set(numbers)):

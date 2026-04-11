@@ -15,6 +15,7 @@ sys.path.insert(0, str(REPO_ROOT / "config" / "scripts"))
 from changed_url_payload import build_changed_url_payload  # noqa: E402
 from track_implementations_from_indexing import (  # noqa: E402
     extract_issue_numbers_from_pr,
+    gh_pr_for_commit,
     has_equivalent_pending_entry,
     load_payload,
     normalize_change,
@@ -336,3 +337,44 @@ def test_has_equivalent_pending_entry_allows_new_change_on_same_url() -> None:
         "status": "pending",
     }
     assert has_equivalent_pending_entry(entries, candidate) is False
+
+
+def test_pr_lookup_logs_no_matches_when_rest_and_graphql_succeed_with_empty_results(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_numbers_for_commit_rest",
+        lambda commit_sha: ([], None),
+    )
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_numbers_for_commit_graphql",
+        lambda commit_sha: ([], None),
+    )
+
+    with caplog.at_level("INFO"):
+        pr_data = gh_pr_for_commit("abc123")
+
+    assert pr_data is None
+    assert "REST commit->pulls returned no matches" in caplog.text
+    assert "REST request failed" not in caplog.text
+
+
+def test_pr_lookup_logs_api_failures_separately_from_no_matches(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_numbers_for_commit_rest",
+        lambda commit_sha: ([], "exit=1 stderr=HTTP 403"),
+    )
+    monkeypatch.setattr(
+        "track_implementations_from_indexing.gh_pr_numbers_for_commit_graphql",
+        lambda commit_sha: ([], "exit=1 stderr=HTTP 403"),
+    )
+
+    with caplog.at_level("INFO"):
+        pr_data = gh_pr_for_commit("def456")
+
+    assert pr_data is None
+    assert "REST request failed" in caplog.text
+    assert "GraphQL fallback failed" in caplog.text
+    assert "unable to resolve PR due to GitHub API errors" in caplog.text
