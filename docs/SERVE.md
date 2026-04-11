@@ -154,8 +154,8 @@ Clients should subscribe to the coordinator PUB socket to receive events from al
 |-------|--------|--------|
 | `run_completed` | After a DAG finishes | `signal_type`, `metadata`, `messages`, `project` |
 | `run_failed` | After a DAG fails | `signal_type`, `metadata`, `messages`, `project` |
-| `entry_signal_queued` | Entry signal added to durable queue | `signal_type`, `initial_execution`, `sequence`, `pending_count`, `metadata`, `project` |
-| `entry_signal_dequeued` | Next queued entry signal selected for execution | `signal_type`, `initial_execution`, `sequence`, `pending_count`, `metadata`, `project` |
+| `entry_signal_queued` | Entry signal added while backlog exists (`pending_count > 1`) | `signal_type`, `initial_execution`, `sequence`, `pending_count`, `metadata`, `project` |
+| `entry_signal_dequeued` | Queued signal selected while backlog remains (`pending_count > 0`) | `signal_type`, `initial_execution`, `sequence`, `pending_count`, `metadata`, `project` |
 | `waiting_for_signal` | Scheduler pauses for a signal | `execution`, `signal`, `metadata`, `project` |
 | `pr_created` | Git PR hook creates a PR | `execution`, `pr_url`, `metadata`, `project` |
 | `command_failed` | Command (e.g. resume) fails | `command`, `message`, `metadata`, `project` |

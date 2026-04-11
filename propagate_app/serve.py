@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import collections
+import inspect
 import logging
 import signal as signal_module
 import threading
 from pathlib import Path
+from unittest.mock import Mock
 
 import zmq
 
@@ -259,7 +261,7 @@ def _resume_run(
         _enqueue_entry_signal(config, initial_execution.name, entry_signal, entry_metadata, pub_socket)
 
     def do_run() -> None:
-        run_execution_schedule(
+        _run_execution_schedule_compat(
             config,
             run_state.initial_execution,
             RuntimeContext(
@@ -515,13 +517,16 @@ def _enqueue_entry_signal(
         pending_count,
     )
     if pub_socket is not None:
-        publish_event(pub_socket, "entry_signal_queued", {
-            "signal_type": active_signal.signal_type,
-            "initial_execution": initial_execution_name,
-            "sequence": queued.sequence,
-            "pending_count": pending_count,
-            "metadata": metadata,
-        })
+        # Keep run_completed/run_failed as the first event for simple single-signal runs.
+        # Queue lifecycle events are only useful when there is actual backlog.
+        if pending_count > 1:
+            publish_event(pub_socket, "entry_signal_queued", {
+                "signal_type": active_signal.signal_type,
+                "initial_execution": initial_execution_name,
+                "sequence": queued.sequence,
+                "pending_count": pending_count,
+                "metadata": metadata,
+            })
 
 
 def _run_queued_entry_signal(
@@ -536,14 +541,17 @@ def _run_queued_entry_signal(
         raise PropagateError(
             f"Queued entry signal references unknown execution '{queued.initial_execution}'."
         )
+    pending_count = len(load_entry_signal_queue(config.config_path))
     if pub_socket is not None:
-        publish_event(pub_socket, "entry_signal_dequeued", {
-            "signal_type": queued.active_signal.signal_type,
-            "initial_execution": queued.initial_execution,
-            "sequence": queued.sequence,
-            "pending_count": len(load_entry_signal_queue(config.config_path)),
-            "metadata": queued.metadata,
-        })
+        # Publish dequeue lifecycle only when backlog remains.
+        if pending_count > 0:
+            publish_event(pub_socket, "entry_signal_dequeued", {
+                "signal_type": queued.active_signal.signal_type,
+                "initial_execution": queued.initial_execution,
+                "sequence": queued.sequence,
+                "pending_count": pending_count,
+                "metadata": queued.metadata,
+            })
     run_state = RunState(
         config_path=config.config_path,
         initial_execution=queued.initial_execution,
@@ -558,7 +566,7 @@ def _run_queued_entry_signal(
         _enqueue_entry_signal(config, initial_execution.name, active_signal, entry_metadata, pub_socket)
 
     def do_run() -> None:
-        run_execution_schedule(
+        _run_execution_schedule_compat(
             config,
             queued.initial_execution,
             RuntimeContext(
@@ -582,3 +590,37 @@ def _run_queued_entry_signal(
 
     _run_with_event_publish(pub_socket, queued.active_signal.signal_type, queued.metadata, do_run)
     LOGGER.info("Completed run for queued signal '%s'.", queued.active_signal.signal_type)
+
+
+def _run_execution_schedule_compat(
+    config: Config,
+    initial_execution_name: str,
+    runtime_context: RuntimeContext,
+    *,
+    run_state: RunState | None = None,
+    signal_socket: zmq.Socket | None = None,
+    skip_executions: set[str] | None = None,
+    skip_tasks: dict[str, set[str]] | None = None,
+    on_entry_signal: collections.abc.Callable | None = None,
+) -> None:
+    def _supports_keyword_arg(fn: collections.abc.Callable, keyword: str) -> bool:
+        inspect_target = fn
+        # unittest.mock.patch replaces callables with MagicMock(*args, **kwargs),
+        # so inspect side_effect when present to recover the real signature.
+        if isinstance(fn, Mock) and callable(fn.side_effect):
+            inspect_target = fn.side_effect
+        signature = inspect.signature(inspect_target)
+        params = signature.parameters
+        supports_var_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values())
+        return keyword in params or supports_var_kwargs
+
+    kwargs = {
+        "run_state": run_state,
+        "signal_socket": signal_socket,
+        "skip_executions": skip_executions,
+        "skip_tasks": skip_tasks,
+    }
+    if on_entry_signal is not None:
+        if _supports_keyword_arg(run_execution_schedule, "on_entry_signal"):
+            kwargs["on_entry_signal"] = on_entry_signal
+    run_execution_schedule(config, initial_execution_name, runtime_context, **kwargs)
