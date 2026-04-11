@@ -6,7 +6,19 @@ Read the findings from the analysis step:
 propagate context get --global :findings
 ```
 
-For each finding where `Recommended action class` is not `defer`, check for a duplicate GitHub issue and create one if none exists.
+The `:findings` payload is grouped into:
+
+- `top_new_findings`
+- `implementation_follow_ups`
+- `deferred_or_low_confidence`
+
+Process the groups with these rules:
+
+- create issues only from `top_new_findings`
+- only consider `implementation_follow_ups` if an item explicitly has a non-`defer` `recommended_action_class`
+- never create issues from `deferred_or_low_confidence`
+
+For each eligible finding, check for a duplicate GitHub issue and create one if none exists.
 
 ## Issue title
 
@@ -221,8 +233,8 @@ Write concrete implementation instructions for a developer picking this up. Incl
 
 Bullet list of observable outcomes that define done. Should be checkable by reading the final page:
 
-- [ ] <concrete criterion>
-- [ ] <concrete criterion>
+- [ ] A concrete criterion
+- [ ] Another concrete criterion
 
 ---
 
@@ -245,4 +257,4 @@ gh issue create \
   --body "<body>"
 ```
 
-Process all non-deferred findings. Do not set any context keys.
+Do not set any context keys.

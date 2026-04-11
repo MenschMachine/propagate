@@ -19,9 +19,20 @@ Two executions own the ledger (`data/feedback/implementations.yaml`), with clear
 - **track-implementations**: appends new `pending` entries (after the final implementation lane)
 - **evaluate-implementations**: scores `pending` → `evaluated` entries (before analyze)
 
-No other execution writes to the ledger. `analyze` reads it (via context) to include in reports. `plan-seo` reads
-effectiveness data from `:findings` only, and writes both the internal strategy and the typed implementation briefs
-that `implement-seo` consumes.
+No other execution writes to the ledger. `analyze` reads it to produce history-aware reports and a grouped
+`:findings` payload. `plan-seo` reads effectiveness data from `:findings` only, and writes both the internal
+strategy and the typed implementation briefs that `implement-seo` consumes.
+
+The `analyze` output is intentionally split into three buckets:
+
+- `top_new_findings`: net-new SEO work that can flow into planning and issue creation
+- `implementation_follow_ups`: previously implemented changes that are ready for evaluation or need evidence-based
+  follow-up
+- `deferred_or_low_confidence`: cooldown, duplicate-recommendation, or low-confidence items that should not create
+  new issues
+
+Each analyzed item also carries a `history` block so downstream steps can distinguish `new-opportunity`,
+`recently-changed-wait`, `ready-to-evaluate`, `follow-up-needed`, and `repeat-recommendation-blocked` states.
 
 Those editorial briefs are intentionally not mini page outlines. They should center:
 - exact page path and change scope
